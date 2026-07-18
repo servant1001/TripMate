@@ -8,4 +8,5 @@ export interface Trip { id: string; name: string; country: string; city: string;
 export interface ItineraryItem { id: string; tripId: string; date: string; time: string; endTime?: string; title: string; location: string; type: string; order?: number; completed: boolean }
 export interface Expense { id: string; tripId: string; title: string; amount: number; payerId: string; kind: ExpenseKind; participantIds: string[]; splitMode?: ExpenseSplitMode; shares?: Record<string, number>; category: string; date: string }
 export interface TodoItem { id: string; tripId: string; title: string; scope?: TodoScope; assigneeId?: string; dueDate?: string; completed: boolean; createdAt: number }
+export interface PackingItem { id: string; tripId: string; name: string; category: string; quantity: number; assignedTo?: string; isShared: boolean; completed: boolean; note?: string; createdBy: string; createdAt: number }
 export interface Settlement { id: string; tripId: string; fromId: string; toId: string; amount: number; date: string; createdAt: number }
