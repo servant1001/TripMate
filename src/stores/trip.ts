@@ -13,6 +13,7 @@ export const useTripStore = defineStore('trips', {
     async addMember(trip: Trip, member: Omit<Member, 'id'>) { const added = await repository.addMember(trip, member); trip.members.push(added) },
     async addItem(input: Omit<ItineraryItem, 'id' | 'completed'>) { const item = await repository.addItinerary(input); this.itinerary.push(item) },
     async updateItem(item: ItineraryItem) { await repository.updateItinerary(item); const index = this.itinerary.findIndex((entry) => entry.id === item.id); if (index >= 0) this.itinerary.splice(index, 1, item) },
+    async reorderItems(items: ItineraryItem[]) { const previousOrders = new Map(this.itinerary.map((item) => [item.id, item.order])); items.forEach((item, order) => { item.order = order }); try { await repository.reorderItinerary(items) } catch (error) { this.itinerary.forEach((item) => { item.order = previousOrders.get(item.id) }); throw error } },
     async deleteItem(item: ItineraryItem) { await repository.deleteItinerary(item); this.itinerary = this.itinerary.filter((entry) => entry.id !== item.id) },
     async toggleItem(id: string) { const item = this.itinerary.find((x) => x.id === id); await repository.toggleItinerary(id, item); if (item) item.completed = !item.completed },
     async addExpense(input: Omit<Expense, 'id'>) { const expense = await repository.addExpense(input); this.expenses.push(expense) },
