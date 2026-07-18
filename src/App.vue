@@ -16,7 +16,7 @@ const current = computed(() => store.trip(activeId.value)); const currentItems =
 const create = reactive({ name: '', country: '日本', city: '東京', startDate: '', endDate: '', currency: 'JPY', budget: 0, coverUrl: '' }); const coverFile = ref<File>(); const edit = reactive({ name: '', country: '', city: '', startDate: '', endDate: '', currency: 'JPY', budget: 0 })
 const member = reactive({ name: '', email: '', role: 'editor' as Role }); const item = reactive({ date: '', time: '', endTime: '', title: '', location: '', type: '景點' }); const editingItemId = ref<string | null>(null); const draggedItemId = ref<string | null>(null); const dragOverItemId = ref<string | null>(null); const editingExpenseId = ref<string | null>(null); const expense = reactive({ title: '', amount: 0, payerId: '', kind: 'shared' as ExpenseKind, splitMode: 'equal' as 'equal' | 'custom', category: '餐飲', date: '' }); const expenseParticipantIds = ref<string[]>([]); const expenseShares = reactive<Record<string, number>>({})
 const invite = reactive({ code: '' })
-const user = ref<User | null>(null); const login = reactive({ email: '', password: '' }); const authMode = ref<'login' | 'register'>('login'); let removeAuthListener: (() => void) | undefined
+const user = ref<User | null>(null); const login = reactive({ email: '', password: '' }); const authMode = ref<'login' | 'register'>('login'); const authSubmitting = ref(false); const authFormError = ref(''); let removeAuthListener: (() => void) | undefined
 const profile = reactive({ displayName: '', defaultCurrency: 'JPY', timezone: 'Asia/Taipei' })
 const currentMember = computed(() => { const signedInUser = user.value; if (!signedInUser) return undefined; return current.value?.members.find((member) => member.id === signedInUser.uid) || current.value?.members.find((member) => member.email.toLowerCase() === (signedInUser.email || '').toLowerCase()) })
 const currentRole = computed<Role | undefined>(() => currentMember.value?.role || (current.value?.ownerId === user.value?.uid ? 'owner' : undefined))
@@ -31,10 +31,10 @@ watch(() => route.fullPath, syncRoute, { immediate: true })
 function authErrorMessage(error: unknown) { const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''; if (code === 'auth/unauthorized-domain') return '此網站尚未加入 Firebase Authentication 的授權網域。'; if (code === 'auth/operation-not-allowed') return 'Firebase 尚未啟用 Google 登入方式。'; if (code === 'auth/account-exists-with-different-credential') return '此 Email 已用其他登入方式註冊，請改用原本的方式登入。'; return error instanceof Error ? error.message : 'Google 登入未完成，請再試一次。' }
 onMounted(async () => { if (!firebaseEnabled || !auth) { await store.load(); return } try { await getRedirectResult(auth) } catch (error) { ElMessage.error(authErrorMessage(error)) } removeAuthListener = onAuthStateChanged(auth, async (signedInUser) => { try { user.value = signedInUser; if (signedInUser) { await ensureUserProfile(signedInUser); await store.load(signedInUser.uid); if (route.meta.public) { const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/trips'; await router.replace(redirect) } } else { store.$patch({ trips: [], itinerary: [], expenses: [], settlements: [] }); if (!route.meta.public) await router.replace({ name: 'login', query: { redirect: route.fullPath } }) } } catch (error) { ElMessage.error(error instanceof Error ? error.message : '無法載入登入資料。') } finally { authResolving.value = false } }) })
 onUnmounted(() => removeAuthListener?.())
-async function submitEmailLogin() { try { await signInWithEmail(login.email, login.password) } catch (error) { ElMessage.error(error instanceof Error ? error.message : '登入失敗。') } }
-async function submitEmailRegistration() { if (login.password.length < 6) return ElMessage.warning('密碼至少需要 6 個字元。'); try { await registerWithEmail(login.email, login.password) } catch (error) { ElMessage.error(error instanceof Error ? error.message : '註冊失敗。') } }
-async function submitGoogleLogin() { try { await signInWithGoogle() } catch (error) { ElMessage.error(authErrorMessage(error)) } }
-async function resetPassword() { if (!login.email) return ElMessage.warning('請先輸入 Email。'); try { await requestPasswordReset(login.email); ElMessage.success('重設密碼信已寄出。') } catch (error) { ElMessage.error(error instanceof Error ? error.message : '無法寄出重設密碼信。') } }
+async function submitEmailLogin() { authFormError.value = ''; authSubmitting.value = true; try { await signInWithEmail(login.email, login.password) } catch (error) { authFormError.value = error instanceof Error ? error.message : '登入失敗，請確認 Email 與密碼。' } finally { authSubmitting.value = false } }
+async function submitEmailRegistration() { authFormError.value = ''; if (login.password.length < 6) { authFormError.value = '密碼至少需要 6 個字元。'; return } authSubmitting.value = true; try { await registerWithEmail(login.email, login.password) } catch (error) { authFormError.value = error instanceof Error ? error.message : '註冊失敗，請稍後再試。' } finally { authSubmitting.value = false } }
+async function submitGoogleLogin() { authFormError.value = ''; authSubmitting.value = true; try { await signInWithGoogle() } catch (error) { authFormError.value = authErrorMessage(error) } finally { authSubmitting.value = false } }
+async function resetPassword() { authFormError.value = ''; if (!login.email) { authFormError.value = '請先輸入要重設的 Email。'; return } try { await requestPasswordReset(login.email); ElMessage.success('重設密碼信已寄出。') } catch (error) { authFormError.value = error instanceof Error ? error.message : '無法寄出重設密碼信。' } }
 async function saveProfile() { if (!user.value) return; try { await updateUserSettings(user.value, profile); user.value = auth?.currentUser || user.value; ElMessage.success('個人資料已更新。') } catch (error) { ElMessage.error(error instanceof Error ? error.message : '無法更新個人資料。') } }
 async function useDemo() { await store.load(); goTrips() }
 async function joinTrip() { if (!user.value) return ElMessage.warning('請先登入後加入旅行。'); if (!invite.code.trim()) return ElMessage.warning('請輸入邀請碼。'); try { const { tripId } = await joinTripByInviteCode(invite.code); await store.load(user.value.uid); showJoin.value = false; invite.code = ''; goTrip(tripId); ElMessage.success('已加入旅行。') } catch (error) { ElMessage.error(error instanceof Error ? error.message : '無法加入旅行。') } }
@@ -83,7 +83,7 @@ async function signOutUser() { await logOut(); ElMessage.success('已登出。')
 
 <template>
   <main class="app-shell">
-    <header>
+    <header v-if="screen !== 'login'">
 <button class="brand" @click="goTrips">Trip<span>Mate</span>
 </button>
 <div class="header-actions">
@@ -99,21 +99,54 @@ async function signOutUser() { await logOut(); ElMessage.success('已登出。')
 <p>正在確認登入狀態…</p>
 </div>
 </section>
-    <section v-if="screen === 'login'" class="auth panel">
-<div>
-<p class="eyebrow">歡迎回來</p>
-<h1>和旅伴一起，安排每一段旅程。</h1>
-<p>{{ firebaseEnabled ? '使用你的 TripMate 帳號登入，即可安全地同步旅行資料。' : '尚未設定 Firebase，因此可先使用本機示範模式體驗完整旅行管理流程。' }}</p>
+    <section v-if="screen === 'login'" class="auth-page">
+<div class="auth-shell">
+<aside class="auth-brand-panel">
+<button class="auth-logo" @click="goTrips" aria-label="TripMate 首頁">Trip<span>Mate</span></button>
+<div class="auth-brand-copy">
+<p class="auth-kicker">TRAVEL TOGETHER</p>
+<h1>和旅伴一起，<br>安排每一段旅程</h1>
+<p>共同規劃行程、記錄開銷，把旅行回憶收藏在一起。</p>
 </div>
+<div class="travel-illustration" aria-hidden="true">
+<div class="travel-photo travel-photo-main"><span>東京</span><i>✦</i></div>
+<div class="travel-photo travel-photo-small"><span>週末出發</span></div>
+<div class="travel-route"><b></b><b></b><b></b></div>
+<div class="travel-suitcase">✦</div>
+</div>
+<ul class="auth-features">
+<li><span>01</span>共同排行程</li>
+<li><span>02</span>多人分帳</li>
+<li><span>03</span>收藏回憶</li>
+</ul>
+</aside>
+<div class="auth-card-wrap">
+<button class="mobile-auth-logo" @click="goTrips" aria-label="TripMate 首頁">Trip<span>Mate</span></button>
 <div class="auth-card">
-<h2>{{ authMode === 'login' ? '登入 TripMate' : '建立 TripMate 帳號' }}</h2>
-<el-input v-model="login.email" placeholder="Email" autocomplete="email" />
-<el-input v-model="login.password" type="password" placeholder="密碼（至少 6 個字元）" show-password :autocomplete="authMode === 'login' ? 'current-password' : 'new-password'" />
-<el-button type="primary" @click="authMode === 'login' ? submitEmailLogin() : submitEmailRegistration()">{{ authMode === 'login' ? 'Email 登入' : '建立帳號' }}</el-button>
-<el-button v-if="firebaseEnabled" @click="submitGoogleLogin">使用 Google 登入</el-button>
-<button v-if="firebaseEnabled && authMode === 'login'" class="link" @click="resetPassword">忘記密碼</button>
-<button v-if="firebaseEnabled" class="link" @click="authMode = authMode === 'login' ? 'register' : 'login'">{{ authMode === 'login' ? '還沒有帳號？立即註冊' : '已有帳號？回到登入' }}</button>
-<button v-else class="link" @click="useDemo">以示範帳號繼續</button>
+<div class="auth-card-heading">
+<h2>{{ authMode === 'login' ? '歡迎回來' : '建立你的帳號' }}</h2>
+<p>{{ authMode === 'login' ? '登入 TripMate，繼續規劃下一段旅程。' : '加入 TripMate，和旅伴一起開始規劃。' }}</p>
+</div>
+<form class="auth-form" @submit.prevent="authMode === 'login' ? submitEmailLogin() : submitEmailRegistration()">
+<div class="auth-field">
+<label for="tripmate-email">Email</label>
+<el-input id="tripmate-email" v-model="login.email" type="email" placeholder="name@example.com" autocomplete="email" :disabled="authSubmitting" />
+</div>
+<div class="auth-field">
+<div class="auth-field-label"><label for="tripmate-password">密碼</label><button v-if="firebaseEnabled && authMode === 'login'" type="button" class="forgot-password" @click="resetPassword">忘記密碼？</button></div>
+<el-input id="tripmate-password" v-model="login.password" type="password" placeholder="輸入密碼" show-password :autocomplete="authMode === 'login' ? 'current-password' : 'new-password'" :disabled="authSubmitting" />
+</div>
+<p v-if="authFormError" class="auth-form-error" role="alert">{{ authFormError }}</p>
+<el-button class="auth-primary-button" native-type="submit" :loading="authSubmitting" :disabled="authSubmitting">{{ authMode === 'login' ? '登入' : '免費註冊' }}</el-button>
+</form>
+<template v-if="firebaseEnabled">
+<div class="auth-divider"><span>或繼續使用</span></div>
+<el-button class="google-auth-button" :loading="authSubmitting" :disabled="authSubmitting" @click="submitGoogleLogin"><span class="google-mark" aria-hidden="true">G</span>使用 Google 登入</el-button>
+<p class="auth-switch">{{ authMode === 'login' ? '還沒有帳號？' : '已經有帳號？' }} <button type="button" @click="authMode = authMode === 'login' ? 'register' : 'login'; authFormError = ''">{{ authMode === 'login' ? '免費註冊' : '回到登入' }}</button></p>
+</template>
+<button v-else type="button" class="auth-demo-button" @click="useDemo">以示範帳號繼續</button>
+</div>
+</div>
 </div>
 </section>
     <section v-else-if="screen === 'trips'" class="page">
