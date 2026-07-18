@@ -37,6 +37,11 @@ export const repository = {
     const db = database; if (firebaseEnabled && db) { const emailKey = member.email.toLowerCase().replace(/[.#$\[\]/]/g, '_'); const memberId = (await get(ref(db, `emailIndex/${emailKey}`))).val() as string | null; if (!memberId) throw new Error('這位旅伴尚未登入 TripMate，請請對方先完成登入後再邀請。'); await update(ref(db), { [`tripMembers/${trip.id}/${memberId}`]: member, [`userTrips/${memberId}/${trip.id}`]: true }); return { id: memberId, ...member } }
     const result = { id: id(), ...member }; trip.members.push(result); await this.updateTrip(trip); return result
   },
+  async removeMember(trip: Trip, memberId: string) {
+    const db = database
+    if (firebaseEnabled && db) { await update(ref(db), { [`tripMembers/${trip.id}/${memberId}`]: null, [`userTrips/${memberId}/${trip.id}`]: null, [`tripMemberBudgets/${trip.id}/${memberId}`]: null }); return }
+    const d = read(); const storedTrip = d.trips.find((entry) => entry.id === trip.id); if (storedTrip) storedTrip.members = storedTrip.members.filter((member) => member.id !== memberId); write(d)
+  },
   async updatePersonalBudget(trip: Trip, memberId: string, personalBudget: number) {
     const budget = Math.max(0, Number(personalBudget) || 0); const db = database
     if (firebaseEnabled && db) { await set(ref(db, `tripMemberBudgets/${trip.id}/${memberId}`), budget); return }

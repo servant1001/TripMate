@@ -13,7 +13,7 @@
         ".write": "auth != null && root.child('tripMembers').child($tripId).child(auth.uid).child('role').val() === 'owner' && newData.val() === null",
         "$uid": {
           ".read": "auth != null && auth.uid === $uid && root.child('tripMembers').child($tripId).child(auth.uid).exists()",
-          ".write": "auth != null && auth.uid === $uid && root.child('tripMembers').child($tripId).child(auth.uid).exists()",
+          ".write": "auth != null && ((auth.uid === $uid && root.child('tripMembers').child($tripId).child(auth.uid).exists()) || (root.child('tripMembers').child($tripId).child(auth.uid).child('role').val() === 'owner' && newData.val() === null))",
           ".validate": "newData.isNumber() && newData.val() >= 0"
         }
       }
