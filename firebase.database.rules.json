@@ -18,8 +18,10 @@
         }
       }
     },
+    "budgets": { "$tripId": { ".read": "auth != null && root.child('tripMembers').child($tripId).child(auth.uid).exists()", ".write": "auth != null && root.child('tripMembers').child($tripId).child(auth.uid).child('role').val() === 'owner'" } },
     "itineraryItems": { "$tripId": { ".read": "auth != null && root.child('tripMembers').child($tripId).child(auth.uid).exists()", ".write": "auth != null && root.child('tripMembers').child($tripId).child(auth.uid).child('role').val() !== 'viewer'" } },
     "expenses": { "$tripId": { ".read": "auth != null && root.child('tripMembers').child($tripId).child(auth.uid).exists()", ".write": "auth != null && root.child('tripMembers').child($tripId).child(auth.uid).child('role').val() !== 'viewer'" } },
-    "settlements": { "$tripId": { ".read": "auth != null && root.child('tripMembers').child($tripId).child(auth.uid).exists()", ".write": "auth != null && root.child('tripMembers').child($tripId).child(auth.uid).child('role').val() !== 'viewer'" } }
+    "settlements": { "$tripId": { ".read": "auth != null && root.child('tripMembers').child($tripId).child(auth.uid).exists()", ".write": "auth != null && root.child('tripMembers').child($tripId).child(auth.uid).child('role').val() !== 'viewer'" } },
+    "todos": { "$tripId": { ".read": "auth != null && root.child('tripMembers').child($tripId).child(auth.uid).exists()", ".write": "auth != null && root.child('tripMembers').child($tripId).child(auth.uid).child('role').val() !== 'viewer'" } }
   }
 }

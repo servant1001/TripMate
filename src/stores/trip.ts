@@ -1,18 +1,23 @@
 import { defineStore } from 'pinia'
-import type { Expense, ItineraryItem, Member, Settlement, Trip } from '../types'
+import type { Expense, ItineraryItem, Member, Settlement, TodoItem, Trip } from '../types'
 import { repository } from '../services/repository'
 
 export const useTripStore = defineStore('trips', {
-  state: () => ({ trips: [] as Trip[], itinerary: [] as ItineraryItem[], expenses: [] as Expense[], settlements: [] as Settlement[], loading: false }),
-  getters: { trip: (s) => (id: string) => s.trips.find((x) => x.id === id), items: (s) => (id: string) => s.itinerary.filter((x) => x.tripId === id), tripExpenses: (s) => (id: string) => s.expenses.filter((x) => x.tripId === id), tripSettlements: (s) => (id: string) => s.settlements.filter((x) => x.tripId === id) },
+  state: () => ({ trips: [] as Trip[], itinerary: [] as ItineraryItem[], expenses: [] as Expense[], settlements: [] as Settlement[], todos: [] as TodoItem[], categoryBudgets: {} as Record<string, Record<string, number>>, loading: false }),
+  getters: { trip: (s) => (id: string) => s.trips.find((x) => x.id === id), items: (s) => (id: string) => s.itinerary.filter((x) => x.tripId === id), tripExpenses: (s) => (id: string) => s.expenses.filter((x) => x.tripId === id), tripSettlements: (s) => (id: string) => s.settlements.filter((x) => x.tripId === id), tripTodos: (s) => (id: string) => s.todos.filter((x) => x.tripId === id), tripCategoryBudgets: (s) => (id: string) => s.categoryBudgets[id] || {} },
   actions: {
     async load(userId?: string) { this.loading = true; try { Object.assign(this, await repository.getData(userId)) } finally { this.loading = false } },
     async createTrip(input: Omit<Trip, 'id' | 'inviteCode'>, userId?: string) { const trip = await repository.addTrip(input, userId); this.trips.push(trip); return trip },
     async updateTrip(trip: Trip) { await repository.updateTrip(trip); const index = this.trips.findIndex((item) => item.id === trip.id); if (index >= 0) this.trips.splice(index, 1, trip) },
-    async deleteTrip(trip: Trip) { await repository.deleteTrip(trip); this.trips = this.trips.filter((item) => item.id !== trip.id); this.itinerary = this.itinerary.filter((item) => item.tripId !== trip.id); this.expenses = this.expenses.filter((item) => item.tripId !== trip.id); this.settlements = this.settlements.filter((item) => item.tripId !== trip.id) },
+    async deleteTrip(trip: Trip) { await repository.deleteTrip(trip); this.trips = this.trips.filter((item) => item.id !== trip.id); this.itinerary = this.itinerary.filter((item) => item.tripId !== trip.id); this.expenses = this.expenses.filter((item) => item.tripId !== trip.id); this.settlements = this.settlements.filter((item) => item.tripId !== trip.id); this.todos = this.todos.filter((item) => item.tripId !== trip.id); delete this.categoryBudgets[trip.id] },
     async addMember(trip: Trip, member: Omit<Member, 'id'>) { const added = await repository.addMember(trip, member); trip.members.push(added) },
     async removeMember(trip: Trip, memberId: string) { await repository.removeMember(trip, memberId); const index = trip.members.findIndex((member) => member.id === memberId); if (index >= 0) trip.members.splice(index, 1) },
     async updatePersonalBudget(tripId: string, memberId: string, personalBudget: number) { const trip = this.trip(tripId); if (!trip) return; await repository.updatePersonalBudget(trip, memberId, personalBudget); const member = trip.members.find((entry) => entry.id === memberId); if (member) member.personalBudget = Math.max(0, Number(personalBudget) || 0) },
+    async updateCategoryBudgets(tripId: string, categoryBudgets: Record<string, number>) { const trip = this.trip(tripId); if (!trip) return; await repository.updateCategoryBudgets(trip, categoryBudgets); this.categoryBudgets[tripId] = Object.fromEntries(Object.entries(categoryBudgets).map(([category, amount]) => [category, Math.max(0, Number(amount) || 0)]).filter(([, amount]) => Number(amount) > 0)) },
+    async addTodo(input: Omit<TodoItem, 'id' | 'completed' | 'createdAt'>) { const todo = await repository.addTodo(input); this.todos.push(todo) },
+    async updateTodo(todo: TodoItem) { await repository.updateTodo(todo); const index = this.todos.findIndex((item) => item.id === todo.id); if (index >= 0) this.todos.splice(index, 1, todo) },
+    async toggleTodo(todo: TodoItem) { await repository.toggleTodo(todo); todo.completed = !todo.completed },
+    async deleteTodo(todo: TodoItem) { await repository.deleteTodo(todo); this.todos = this.todos.filter((item) => item.id !== todo.id) },
     async addItem(input: Omit<ItineraryItem, 'id' | 'completed'>) { const item = await repository.addItinerary(input); this.itinerary.push(item) },
     async updateItem(item: ItineraryItem) { await repository.updateItinerary(item); const index = this.itinerary.findIndex((entry) => entry.id === item.id); if (index >= 0) this.itinerary.splice(index, 1, item) },
     async reorderItems(items: ItineraryItem[]) { const previousOrders = new Map(this.itinerary.map((item) => [item.id, item.order])); items.forEach((item, order) => { item.order = order }); try { await repository.reorderItinerary(items) } catch (error) { this.itinerary.forEach((item) => { item.order = previousOrders.get(item.id) }); throw error } },
