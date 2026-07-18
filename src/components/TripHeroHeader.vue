@@ -8,6 +8,7 @@ defineProps<{
   duration: string
   canEditSettings: boolean
   canManageMembers: boolean
+  openMemberManager: () => void
   roleLabel?: string
 }>()
 
@@ -38,7 +39,7 @@ const emit = defineEmits<{
       </div>
 
       <div class="trip-hero-actions">
-        <el-button v-if="canManageMembers" class="trip-secondary-button" @click="emit('manageMembers')">
+        <el-button v-if="canManageMembers" class="trip-secondary-button" @click.stop="openMemberManager">
           <el-icon><UserFilled /></el-icon>
           成員管理
         </el-button>

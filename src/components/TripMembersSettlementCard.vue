@@ -12,6 +12,7 @@ defineProps<{
   settlements: Settlement[]
   canManageMembers: boolean
   canEditTrip: boolean
+  openMemberManager: () => void
   memberPaid: (memberId: string) => number
   memberName: (memberId: string) => string
 }>()
@@ -30,7 +31,7 @@ function roleName(role: Member['role']) { return role === 'owner' ? '建立者' 
   <section id="members" class="trip-detail-card members-panel">
     <div class="detail-card-heading">
       <div><p class="section-kicker">COMPANIONS</p><h2>旅伴與結算</h2></div>
-      <el-button v-if="canManageMembers" class="members-manage-button" @click="emit('manageMembers')">成員管理</el-button>
+      <el-button v-if="canManageMembers" class="members-manage-button" @click.stop="openMemberManager">成員管理</el-button>
     </div>
 
     <div class="member-summary">
