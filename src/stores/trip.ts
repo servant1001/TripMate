@@ -28,7 +28,7 @@ export const useTripStore = defineStore('trips', {
     async addFavorite(input: Omit<Favorite, 'id' | 'createdAt' | 'addedToItinerary'>) { const favorite = await repository.addFavorite(input); this.favorites.push(favorite) },
     async updateFavorite(favorite: Favorite) { await repository.updateFavorite(favorite); const index = this.favorites.findIndex((entry) => entry.id === favorite.id); if (index >= 0) this.favorites.splice(index, 1, favorite) },
     async deleteFavorite(favorite: Favorite) { await repository.deleteFavorite(favorite); this.favorites = this.favorites.filter((entry) => entry.id !== favorite.id) },
-    async addItem(input: Omit<ItineraryItem, 'id' | 'completed'>) { const item = await repository.addItinerary(input); this.itinerary.push(item) },
+    async addItem(input: Omit<ItineraryItem, 'id' | 'completed'>) { const item = await repository.addItinerary(input); this.itinerary.push(item); return item },
     async updateItem(item: ItineraryItem) { await repository.updateItinerary(item); const index = this.itinerary.findIndex((entry) => entry.id === item.id); if (index >= 0) this.itinerary.splice(index, 1, item) },
     async reorderItems(items: ItineraryItem[]) { const previousOrders = new Map(this.itinerary.map((item) => [item.id, item.order])); items.forEach((item, order) => { item.order = order }); try { await repository.reorderItinerary(items) } catch (error) { this.itinerary.forEach((item) => { item.order = previousOrders.get(item.id) }); throw error } },
     async deleteItem(item: ItineraryItem) { await repository.deleteItinerary(item); this.itinerary = this.itinerary.filter((entry) => entry.id !== item.id) },
