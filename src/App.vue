@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowDown, ArrowUp, Delete, Edit, Location, Plus, Rank, TopRight, WarningFilled } from '@element-plus/icons-vue'
 import type { User } from 'firebase/auth'
 import { getRedirectResult, onAuthStateChanged } from 'firebase/auth'
 import { useRoute, useRouter } from 'vue-router'
+import TripExpenseCard from './components/TripExpenseCard.vue'
+import TripHeroHeader from './components/TripHeroHeader.vue'
+import TripItineraryCard from './components/TripItineraryCard.vue'
+import TripMembersSettlementCard from './components/TripMembersSettlementCard.vue'
 import { useTripStore } from './stores/trip'
 import type { Expense, ExpenseKind, ItineraryItem, Role, Settlement, Trip } from './types'
 import { uploadTripCover } from './services/cloudinary'
@@ -22,6 +25,9 @@ const currentMember = computed(() => { const signedInUser = user.value; if (!sig
 const currentRole = computed<Role | undefined>(() => currentMember.value?.role || (current.value?.ownerId === user.value?.uid ? 'owner' : undefined))
 const canEditTrip = computed(() => !firebaseEnabled || currentRole.value === 'owner' || currentRole.value === 'editor')
 const canManageMembers = computed(() => !firebaseEnabled || current.value?.ownerId === user.value?.uid)
+const canEditTripSettings = computed(() => !firebaseEnabled || current.value?.ownerId === user.value?.uid)
+const userDisplayName = computed(() => user.value?.displayName || user.value?.email?.split('@')[0] || '旅伴')
+const userInitial = computed(() => userDisplayName.value.slice(0, 1).toUpperCase())
 function goTrips() { void router.push({ name: 'trips' }) }
 function goLogin() { void router.push({ name: 'login' }) }
 function goProfile() { void router.push({ name: 'profile' }) }
@@ -66,13 +72,21 @@ function endDrag() { draggedItemId.value = null; dragOverItemId.value = null }
 async function reorderItem(target: ItineraryItem) { const source = currentItems.value.find((entry) => entry.id === draggedItemId.value); draggedItemId.value = null; dragOverItemId.value = null; if (!source || source.id === target.id) return; if (source.date !== target.date) return ElMessage.warning('請在同一天內調整行程順序。'); const entries = itineraryDays.value.find((day) => day.date === target.date)?.entries || []; const sourceIndex = entries.findIndex((entry) => entry.id === source.id); const targetIndex = entries.findIndex((entry) => entry.id === target.id); if (sourceIndex < 0 || targetIndex < 0) return; const reordered = [...entries]; reordered.splice(sourceIndex, 1); reordered.splice(targetIndex, 0, source); try { await store.reorderItems(reordered) } catch (error) { ElMessage.error(error instanceof Error ? error.message : '無法更新行程順序。') } }
 async function moveItem(entry: ItineraryItem, direction: -1 | 1) { if (!canEditTrip.value) return; const entries = itineraryDays.value.find((day) => day.date === entry.date)?.entries || []; const index = entries.findIndex((item) => item.id === entry.id); const targetIndex = index + direction; if (index < 0 || targetIndex < 0 || targetIndex >= entries.length) return; const reordered = [...entries]; [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]]; try { await store.reorderItems(reordered) } catch (error) { ElMessage.error(error instanceof Error ? error.message : '無法更新行程順序。') } }
 function expenseParticipants(expense: { kind: ExpenseKind; payerId: string; participantIds: string[] }) { return expense.kind === 'personal' ? [expense.payerId] : expense.participantIds.length ? expense.participantIds : current.value?.members.map((member) => member.id) || [] }
+function expenseParticipantCount(expense: Expense) { return expenseParticipants(expense).length }
 function expensePayerName(payerId: string) { return current.value?.members.find((member) => member.id === payerId)?.name || '未知成員' }
 function expenseShare(expense: { amount: number; kind: ExpenseKind; payerId: string; participantIds: string[]; splitMode?: 'equal' | 'custom'; shares?: Record<string, number> }) { const participants = expenseParticipants(expense); return participants.length ? expense.amount / participants.length : 0 }
 function expenseShareForMember(expense: { amount: number; kind: ExpenseKind; payerId: string; participantIds: string[]; splitMode?: 'equal' | 'custom'; shares?: Record<string, number> }, memberId: string) { if (expense.kind === 'shared' && expense.splitMode === 'custom' && expense.shares) return Number(expense.shares[memberId]) || 0; return expenseParticipants(expense).includes(memberId) ? expenseShare(expense) : 0 }
 const total = computed(() => currentExpenses.value.reduce((sum, expense) => sum + expense.amount, 0))
 const balances = computed(() => { const trip = current.value; if (!trip) return []; const paid = Object.fromEntries(trip.members.map((member) => [member.id, 0])); const owed = Object.fromEntries(trip.members.map((member) => [member.id, 0])); currentExpenses.value.forEach((expense) => { paid[expense.payerId] = (paid[expense.payerId] || 0) + expense.amount; expenseParticipants(expense).forEach((id) => { owed[id] = (owed[id] || 0) + expenseShareForMember(expense, id) }) }); currentSettlements.value.forEach((settlement) => { paid[settlement.fromId] = (paid[settlement.fromId] || 0) + settlement.amount; paid[settlement.toId] = (paid[settlement.toId] || 0) - settlement.amount }); return trip.members.map((member) => ({ ...member, balance: paid[member.id] - owed[member.id] })) })
 const settlementSuggestions = computed(() => { const creditors = balances.value.filter((member) => member.balance > .01).map((member) => ({ ...member, remaining: member.balance })); const debtors = balances.value.filter((member) => member.balance < -.01).map((member) => ({ ...member, remaining: -member.balance })); const suggestions: { fromId: string; toId: string; from: string; to: string; amount: number }[] = []; let creditorIndex = 0; debtors.forEach((debtor) => { while (debtor.remaining > .01 && creditors[creditorIndex]) { const creditor = creditors[creditorIndex]; const amount = Math.min(debtor.remaining, creditor.remaining); suggestions.push({ fromId: debtor.id, toId: creditor.id, from: debtor.name, to: creditor.name, amount }); debtor.remaining -= amount; creditor.remaining -= amount; if (creditor.remaining <= .01) creditorIndex += 1 } }); return suggestions })
+const activeMemberId = computed(() => currentMember.value?.id || (!firebaseEnabled ? current.value?.ownerId : undefined))
+const myPaid = computed(() => activeMemberId.value ? currentExpenses.value.filter((expense) => expense.payerId === activeMemberId.value).reduce((sum, expense) => sum + expense.amount, 0) : 0)
+const myBalance = computed(() => activeMemberId.value ? balances.value.find((member) => member.id === activeMemberId.value)?.balance || 0 : 0)
+function memberPaid(memberId: string) { return currentExpenses.value.filter((expense) => expense.payerId === memberId).reduce((sum, expense) => sum + expense.amount, 0) }
 function memberName(memberId: string) { return current.value?.members.find((member) => member.id === memberId)?.name || '未知成員' }
+function formatTripDate(date: string) { const value = new Date(`${date}T00:00:00`); return Number.isNaN(value.getTime()) ? date : `${value.getFullYear()} 年 ${value.getMonth() + 1} 月 ${value.getDate()} 日` }
+const tripDateRange = computed(() => current.value ? `${formatTripDate(current.value.startDate)}－${formatTripDate(current.value.endDate)}` : '')
+const tripDuration = computed(() => { if (!current.value) return ''; const start = new Date(`${current.value.startDate}T00:00:00`).getTime(); const end = new Date(`${current.value.endDate}T00:00:00`).getTime(); const days = Math.round((end - start) / 86400000) + 1; return Number.isFinite(days) && days > 0 ? `共 ${days} 天` : '' })
 function localDate() { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` }
 async function confirmSettlement(suggestion: { fromId: string; toId: string; from: string; to: string; amount: number }) { if (!canEditTrip.value || !current.value) return ElMessage.warning('Viewer 僅能查看結算資料。'); try { await ElMessageBox.confirm(`確認「${suggestion.from}」已支付 ${current.value.currency} ${suggestion.amount.toFixed(0)} 給「${suggestion.to}」？`, '標記為已結算', { confirmButtonText: '確認結算', cancelButtonText: '取消', type: 'success' }); await store.addSettlement({ tripId: current.value.id, fromId: suggestion.fromId, toId: suggestion.toId, amount: suggestion.amount, date: localDate(), createdAt: Date.now() }); ElMessage.success('已記錄結算。') } catch (error) { if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '無法記錄結算。') } }
 async function removeSettlement(settlement: Settlement) { if (!canEditTrip.value) return ElMessage.warning('Viewer 僅能查看結算資料。'); try { await ElMessageBox.confirm('確定要復原這筆結算嗎？', '復原結算', { confirmButtonText: '復原', cancelButtonText: '取消', type: 'warning' }); await store.deleteSettlement(settlement); ElMessage.success('結算已復原。') } catch (error) { if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '無法復原結算。') } }
@@ -83,16 +97,25 @@ async function signOutUser() { await logOut(); ElMessage.success('已登出。')
 
 <template>
   <main class="app-shell">
-    <header v-if="screen !== 'login'">
-<button class="brand" @click="goTrips">Trip<span>Mate</span>
-</button>
-<div class="header-actions">
-<span class="status">{{ firebaseEnabled ? 'Firebase 已連線' : '本機示範模式' }}</span>
-<el-button v-if="user" text @click="goProfile">{{ user.displayName || user.email }}</el-button>
-<el-button v-if="user" plain @click="signOutUser">登出</el-button>
-<el-button v-else plain @click="goLogin">帳號</el-button>
-</div>
-</header>
+    <header v-if="screen !== 'login'" class="app-header">
+      <button class="brand" @click="goTrips" aria-label="TripMate 我的旅行">Trip<span>Mate</span></button>
+      <div class="header-actions">
+        <el-dropdown v-if="user" trigger="click">
+          <button class="user-menu-trigger" type="button" aria-label="開啟帳號選單">
+            <span class="user-avatar" aria-hidden="true">{{ userInitial }}</span>
+            <span class="user-display-name">{{ userDisplayName }}</span>
+            <span class="user-menu-caret" aria-hidden="true">⌄</span>
+          </button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item @click="goProfile">個人資料</el-dropdown-item>
+              <el-dropdown-item divided @click="signOutUser">登出</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <el-button v-else class="header-login-button" @click="goLogin">登入</el-button>
+      </div>
+    </header>
     <section v-if="authResolving" class="auth-loading" aria-live="polite">
 <div>
 <strong>TripMate</strong>
@@ -215,139 +238,15 @@ async function signOutUser() { await logOut(); ElMessage.success('已登出。')
 </el-form>
 </div>
 </section>
-    <section v-else-if="current" class="page">
-<button class="back" @click="goTrips">← 所有旅行</button>
-<div class="trip-head">
-<div>
-<p class="eyebrow">{{ current.country }} · {{ current.city }}</p>
-<h1>{{ current.name }}</h1>
-<p>{{ current.startDate }} — {{ current.endDate }} · 預算 {{ current.currency }} {{ current.budget.toLocaleString() }}</p>
-</div>
-<div class="actions">
-<el-button v-if="current.ownerId === user?.uid" @click="startEditTrip">編輯旅行</el-button>
-<el-button v-if="canManageMembers" @click="showMember=true">成員管理（{{ current.members.length }}）</el-button>
-<span v-else class="read-only-badge">{{ currentRole === 'editor' ? 'Editor・可編輯' : 'Viewer・唯讀' }}</span>
-</div>
-</div>
-<nav class="tabs">
-<a href="#itinerary">行程</a>
-<a href="#expenses">開銷</a>
-<a href="#members">成員</a>
-</nav>
-<div class="dashboard">
-<section id="itinerary" class="panel section itinerary-section">
-<div class="section-title itinerary-section-title">
-<div>
-<p class="eyebrow itinerary-eyebrow">ITINERARY</p>
-<h2>每日行程</h2>
-</div>
-<el-button v-if="canEditTrip" class="itinerary-add-button" type="primary" @click="openItemForm()"><el-icon><Plus /></el-icon><span class="itinerary-add-full">新增行程</span><span class="itinerary-add-short">新增</span></el-button>
-<span v-else class="read-only-note">唯讀</span>
-</div>
-<div v-if="currentItems.length" class="itinerary-timeline">
-<section v-for="day in itineraryDays" :key="day.date" class="itinerary-day" :aria-label="formatItineraryDate(day.date)">
-<h3 class="itinerary-date"><span>{{ formatItineraryDate(day.date) }}</span></h3>
-<div class="itinerary-list">
-<article v-for="(entry, entryIndex) in day.entries" :key="entry.id" class="itinerary-entry" :class="{ 'is-completed': entry.completed, 'is-dragging': draggedItemId === entry.id, 'is-drop-target': dragOverItemId === entry.id }" :draggable="canEditTrip" @dragstart="startDrag($event, entry)" @dragend="endDrag" @dragenter.prevent="setDropTarget(entry)" @dragleave="clearDropTarget($event, entry)" @dragover.prevent="setDropTarget(entry)" @drop="reorderItem(entry)">
-<div class="itinerary-checkbox">
-<el-checkbox :model-value="entry.completed" :disabled="!canEditTrip" :aria-label="`將「${entry.title}」標示為${entry.completed ? '未完成' : '已完成'}`" @change="toggleItinerary(entry)" />
-</div>
-<div class="itinerary-time" :aria-label="entry.endTime ? `${entry.time} 至 ${entry.endTime}` : entry.time || '未設定時間'">
-<time>{{ entry.time || '未排時間' }}</time>
-<time v-if="entry.endTime" class="itinerary-end-time">{{ entry.endTime }}</time>
-</div>
-<div class="itinerary-connector" aria-hidden="true"><span class="itinerary-dot"></span></div>
-<div class="itinerary-card">
-<div class="itinerary-card-header">
-<div class="itinerary-card-heading">
-<el-tooltip v-if="canEditTrip" content="可拖曳整張卡片排序" placement="top"><span class="itinerary-drag-handle" aria-hidden="true"><el-icon><Rank /></el-icon></span></el-tooltip>
-<strong>{{ entry.title }}</strong>
-</div>
-<div v-if="canEditTrip" class="itinerary-card-actions">
-<el-tooltip content="編輯行程" placement="top"><el-button class="itinerary-action-button" text circle aria-label="編輯行程" @click="openItemForm(entry)"><el-icon><Edit /></el-icon></el-button></el-tooltip>
-<el-tooltip content="刪除行程" placement="top"><el-button class="itinerary-action-button is-danger" text circle aria-label="刪除行程" @click="removeItem(entry)"><el-icon><Delete /></el-icon></el-button></el-tooltip>
-</div>
-</div>
-<p v-if="entry.type || itineraryDuration(entry)" class="itinerary-card-meta">
-<span v-if="entry.type">{{ entry.type }}</span>
-<span v-if="entry.type && itineraryDuration(entry)" aria-hidden="true">·</span>
-<span v-if="itineraryDuration(entry)">{{ itineraryDuration(entry) }}</span>
-</p>
-<p v-if="itineraryTimeWarning(day.entries, entryIndex)" class="itinerary-time-warning"><el-icon><WarningFilled /></el-icon>{{ itineraryTimeWarning(day.entries, entryIndex) }}</p>
-<a v-if="entry.location" class="itinerary-location is-linked" :href="mapsUrl(entry.location)" target="_blank" rel="noopener" :title="`在地圖中開啟：${entry.location}`">
-<el-icon><Location /></el-icon><span>{{ entry.location }}</span><el-icon class="itinerary-external-icon"><TopRight /></el-icon>
-</a>
-<p v-else class="itinerary-location is-empty"><el-icon><Location /></el-icon><span>尚未設定景點</span></p>
-<div v-if="canEditTrip" class="itinerary-mobile-reorder" aria-label="調整行程順序">
-<el-button :disabled="entryIndex === 0" text size="small" @click="moveItem(entry, -1)"><el-icon><ArrowUp /></el-icon>上移</el-button>
-<el-button :disabled="entryIndex === day.entries.length - 1" text size="small" @click="moveItem(entry, 1)"><el-icon><ArrowDown /></el-icon>下移</el-button>
-</div>
-</div>
-</article>
-</div>
-</section>
-</div>
-<p v-else class="muted">尚未安排任何行程。從抵達日的第一站開始吧。</p>
-</section>
-<section id="expenses" class="panel section">
-<div class="section-title">
-<div>
-<p class="eyebrow">EXPENSES</p>
-<h2>旅行開銷</h2>
-</div>
-<el-button v-if="canEditTrip" text type="primary" @click="openExpenseForm()">新增支出</el-button>
-<span v-else class="read-only-note">唯讀</span>
-</div>
-<div class="expense-total">
-<span>目前支出</span>
-<strong>{{ current.currency }} {{ total.toLocaleString() }}</strong>
-<small v-if="current.budget">預算使用 {{ Math.round(total / current.budget * 100) }}%</small>
-</div>
-<ul v-if="currentExpenses.length" class="expenses">
-<li v-for="e in currentExpenses" :key="e.id">
-<span>{{ e.category }}</span>
-<div>
-<strong>{{ e.title }}</strong>
-<small>{{ expensePayerName(e.payerId) }} 付款・{{ e.kind === 'shared' ? (e.splitMode === 'custom' ? `${expenseParticipants(e).length} 人自訂分攤` : `${expenseParticipants(e).length} 人平均分攤`) : '個人支出' }}</small>
-</div>
-<b>{{ current.currency }} {{ e.amount.toLocaleString() }}<small v-if="e.kind === 'shared' && e.splitMode !== 'custom'">每人 {{ expenseShare(e).toFixed(0) }}</small></b>
-<div v-if="canEditTrip" class="expense-actions">
-<el-tooltip content="編輯支出" placement="top"><el-button class="expense-action-button" text circle aria-label="編輯支出" @click="openExpenseForm(e)"><el-icon><Edit /></el-icon></el-button></el-tooltip>
-<el-tooltip content="刪除支出" placement="top"><el-button class="expense-action-button is-danger" text circle aria-label="刪除支出" @click="removeExpense(e)"><el-icon><Delete /></el-icon></el-button></el-tooltip>
-</div>
-</li>
-</ul>
-<p v-else class="muted">尚未記錄支出。</p>
-</section>
-<section id="members" class="panel section">
-<div class="section-title">
-<div>
-<p class="eyebrow">COMPANIONS</p>
-<h2>旅伴與結算</h2>
-</div>
-<el-button v-if="canManageMembers" text type="primary" @click="showMember=true">邀請成員</el-button>
-</div>
-<div v-if="canManageMembers" class="invite">邀請碼 <strong>{{ current.inviteCode }}</strong>
-<button @click="copyInvite">複製</button>
-</div>
-<div class="balances">
-<div v-for="person in balances" :key="person.id">
-<span>{{ person.name }} <em>{{ person.role }}</em>
-</span>
-<b :class="person.balance >= 0 ? 'positive' : 'negative'">{{ person.balance >= 0 ? '應收' : '應付' }} {{ current.currency }} {{ Math.abs(person.balance).toFixed(0) }}</b>
-</div>
-</div>
-<div v-if="settlementSuggestions.length" class="settlement-suggestions">
-<strong>建議結算</strong>
-<div v-for="suggestion in settlementSuggestions" :key="`${suggestion.fromId}-${suggestion.toId}`" class="settlement-row"><p>{{ suggestion.from }} 付給 {{ suggestion.to }} <b>{{ current.currency }} {{ suggestion.amount.toFixed(0) }}</b></p><el-button v-if="canEditTrip" text type="primary" size="small" @click="confirmSettlement(suggestion)">標記已結算</el-button></div>
-</div>
-<div v-if="currentSettlements.length" class="settlement-history">
-<strong>已結算紀錄</strong>
-<div v-for="settlement in currentSettlements" :key="settlement.id"><span>{{ settlement.date }}・{{ memberName(settlement.fromId) }} → {{ memberName(settlement.toId) }}</span><b>{{ current.currency }} {{ settlement.amount.toFixed(0) }}</b><el-button v-if="canEditTrip" text size="small" class="settlement-undo" @click="removeSettlement(settlement)">復原</el-button></div>
-</div>
-</section>
-</div>
-</section>
+    <section v-else-if="current" class="page trip-detail-page">
+      <TripHeroHeader :trip="current" :date-range="tripDateRange" :duration="tripDuration" :can-edit-settings="canEditTripSettings" :can-manage-members="canManageMembers" :role-label="currentRole === 'editor' ? 'Editor・可編輯' : 'Viewer・唯讀'" @back="goTrips" @edit="startEditTrip" @manage-members="showMember = true" @remove="removeTrip" />
+      <nav class="trip-tabs" aria-label="旅行內容導覽"><a href="#itinerary">行程</a><a href="#expenses">開銷</a><a href="#members">旅伴與結算</a></nav>
+      <div class="trip-detail-layout">
+        <TripItineraryCard :days="itineraryDays" :can-edit-trip="canEditTrip" :dragged-item-id="draggedItemId" :drag-over-item-id="dragOverItemId" :format-date="formatItineraryDate" :duration="itineraryDuration" :time-warning="itineraryTimeWarning" :maps-url="mapsUrl" @add="openItemForm()" @toggle="toggleItinerary" @edit="openItemForm" @remove="removeItem" @move="moveItem" @drag-start="startDrag" @drag-end="endDrag" @drag-enter="setDropTarget" @drag-leave="clearDropTarget" @drop="reorderItem" />
+        <TripExpenseCard :trip="current" :expenses="currentExpenses" :total="total" :my-paid="myPaid" :my-balance="myBalance" :can-edit-trip="canEditTrip" :payer-name="expensePayerName" :participant-count="expenseParticipantCount" :share="expenseShare" @add="openExpenseForm()" @edit="openExpenseForm" @remove="removeExpense" />
+        <TripMembersSettlementCard :trip="current" :balances="balances" :suggestions="settlementSuggestions" :settlements="currentSettlements" :can-manage-members="canManageMembers" :can-edit-trip="canEditTrip" :member-paid="memberPaid" :member-name="memberName" @manage-members="showMember = true" @copy-invite="copyInvite" @settle="confirmSettlement" @undo-settlement="removeSettlement" />
+      </div>
+    </section>
   </main>
   <el-dialog v-model="showJoin" title="使用邀請碼加入旅行" width="min(92vw, 430px)">
 <p class="muted">請向旅行建立者索取邀請碼。加入前需先完成登入。</p>
