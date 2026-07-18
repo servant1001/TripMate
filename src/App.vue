@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { ArrowDown } from '@element-plus/icons-vue'
 import type { User } from 'firebase/auth'
 import { getRedirectResult, onAuthStateChanged } from 'firebase/auth'
 import { useRoute, useRouter } from 'vue-router'
@@ -153,7 +154,7 @@ async function signOutUser() { await logOut(); ElMessage.success('已登出。')
           <button class="user-menu-trigger" type="button" aria-label="開啟帳號選單">
             <span class="user-avatar" aria-hidden="true">{{ userInitial }}</span>
             <span class="user-display-name">{{ userDisplayName }}</span>
-            <span class="user-menu-caret" aria-hidden="true">⌄</span>
+            <el-icon class="user-menu-caret" aria-hidden="true"><ArrowDown /></el-icon>
           </button>
           <template #dropdown>
             <el-dropdown-menu>
