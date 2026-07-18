@@ -12,7 +12,7 @@ defineProps<{
   formatDate: (date: string) => string
   duration: (entry: ItineraryItem) => string
   timeWarning: (entries: ItineraryItem[], index: number) => string
-  mapsUrl: (location: string) => string
+  mapsUrl: (location: string, mapUrl?: string) => string
 }>()
 
 const emit = defineEmits<{
@@ -77,7 +77,7 @@ function itineraryTypeClass(type: string) {
               </div>
               <p v-if="entry.type || duration(entry)" class="itinerary-card-meta"><span v-if="entry.type" class="itinerary-type-chip" :class="itineraryTypeClass(entry.type)">{{ entry.type }}</span><span v-if="entry.type && duration(entry)" aria-hidden="true">·</span><span v-if="duration(entry)">{{ duration(entry) }}</span></p>
               <p v-if="timeWarning(day.entries, entryIndex)" class="itinerary-time-warning"><el-icon><WarningFilled /></el-icon>{{ timeWarning(day.entries, entryIndex) }}</p>
-              <a v-if="entry.location" class="itinerary-location is-linked" :href="mapsUrl(entry.location)" target="_blank" rel="noopener" :title="`在地圖中開啟：${entry.location}`"><el-icon><Location /></el-icon><span>{{ entry.location }}</span><el-icon class="itinerary-external-icon"><TopRight /></el-icon></a>
+              <a v-if="entry.mapUrl || entry.location" class="itinerary-location is-linked" :href="mapsUrl(entry.location, entry.mapUrl)" target="_blank" rel="noopener" :title="`在地圖中開啟：${entry.location || entry.title}`"><el-icon><Location /></el-icon><span>{{ entry.location || '在 Google Maps 開啟' }}</span><el-icon class="itinerary-external-icon"><TopRight /></el-icon></a>
               <p v-else class="itinerary-location is-empty"><el-icon><Location /></el-icon><span>尚未設定地點</span></p>
               <div v-if="canEditTrip" class="itinerary-mobile-reorder" aria-label="調整行程順序"><el-button :disabled="entryIndex === 0" text size="small" @click="emit('move', entry, -1)"><el-icon><ArrowUp /></el-icon>上移</el-button><el-button :disabled="entryIndex === day.entries.length - 1" text size="small" @click="emit('move', entry, 1)"><el-icon><ArrowDown /></el-icon>下移</el-button></div>
             </div>
