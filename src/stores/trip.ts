@@ -1,15 +1,15 @@
 import { defineStore } from 'pinia'
-import type { Expense, ItineraryItem, Member, Trip } from '../types'
+import type { Expense, ItineraryItem, Member, Settlement, Trip } from '../types'
 import { repository } from '../services/repository'
 
 export const useTripStore = defineStore('trips', {
-  state: () => ({ trips: [] as Trip[], itinerary: [] as ItineraryItem[], expenses: [] as Expense[], loading: false }),
-  getters: { trip: (s) => (id: string) => s.trips.find((x) => x.id === id), items: (s) => (id: string) => s.itinerary.filter((x) => x.tripId === id), tripExpenses: (s) => (id: string) => s.expenses.filter((x) => x.tripId === id) },
+  state: () => ({ trips: [] as Trip[], itinerary: [] as ItineraryItem[], expenses: [] as Expense[], settlements: [] as Settlement[], loading: false }),
+  getters: { trip: (s) => (id: string) => s.trips.find((x) => x.id === id), items: (s) => (id: string) => s.itinerary.filter((x) => x.tripId === id), tripExpenses: (s) => (id: string) => s.expenses.filter((x) => x.tripId === id), tripSettlements: (s) => (id: string) => s.settlements.filter((x) => x.tripId === id) },
   actions: {
     async load(userId?: string) { this.loading = true; try { Object.assign(this, await repository.getData(userId)) } finally { this.loading = false } },
     async createTrip(input: Omit<Trip, 'id' | 'inviteCode'>, userId?: string) { const trip = await repository.addTrip(input, userId); this.trips.push(trip); return trip },
     async updateTrip(trip: Trip) { await repository.updateTrip(trip); const index = this.trips.findIndex((item) => item.id === trip.id); if (index >= 0) this.trips.splice(index, 1, trip) },
-    async deleteTrip(trip: Trip) { await repository.deleteTrip(trip); this.trips = this.trips.filter((item) => item.id !== trip.id); this.itinerary = this.itinerary.filter((item) => item.tripId !== trip.id); this.expenses = this.expenses.filter((item) => item.tripId !== trip.id) },
+    async deleteTrip(trip: Trip) { await repository.deleteTrip(trip); this.trips = this.trips.filter((item) => item.id !== trip.id); this.itinerary = this.itinerary.filter((item) => item.tripId !== trip.id); this.expenses = this.expenses.filter((item) => item.tripId !== trip.id); this.settlements = this.settlements.filter((item) => item.tripId !== trip.id) },
     async addMember(trip: Trip, member: Omit<Member, 'id'>) { const added = await repository.addMember(trip, member); trip.members.push(added) },
     async addItem(input: Omit<ItineraryItem, 'id' | 'completed'>) { const item = await repository.addItinerary(input); this.itinerary.push(item) },
     async updateItem(item: ItineraryItem) { await repository.updateItinerary(item); const index = this.itinerary.findIndex((entry) => entry.id === item.id); if (index >= 0) this.itinerary.splice(index, 1, item) },
@@ -19,5 +19,7 @@ export const useTripStore = defineStore('trips', {
     async addExpense(input: Omit<Expense, 'id'>) { const expense = await repository.addExpense(input); this.expenses.push(expense) },
     async updateExpense(expense: Expense) { await repository.updateExpense(expense); const index = this.expenses.findIndex((item) => item.id === expense.id); if (index >= 0) this.expenses.splice(index, 1, expense) },
     async deleteExpense(expense: Expense) { await repository.deleteExpense(expense); this.expenses = this.expenses.filter((item) => item.id !== expense.id) },
+    async addSettlement(input: Omit<Settlement, 'id'>) { const settlement = await repository.addSettlement(input); this.settlements.push(settlement) },
+    async deleteSettlement(settlement: Settlement) { await repository.deleteSettlement(settlement); this.settlements = this.settlements.filter((item) => item.id !== settlement.id) },
   },
 })
