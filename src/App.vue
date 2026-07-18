@@ -6,7 +6,7 @@ import type { User } from 'firebase/auth'
 import { getRedirectResult, onAuthStateChanged } from 'firebase/auth'
 import { useRoute, useRouter } from 'vue-router'
 import { useTripStore } from './stores/trip'
-import type { ExpenseKind, ItineraryItem, Role, Trip } from './types'
+import type { Expense, ExpenseKind, ItineraryItem, Role, Trip } from './types'
 import { uploadTripCover } from './services/cloudinary'
 import { auth, ensureUserProfile, firebaseEnabled, logOut, registerWithEmail, requestPasswordReset, signInWithEmail, signInWithGoogle, updateUserSettings } from './services/firebase'
 import { joinTripByInviteCode } from './services/cloudinary'
@@ -14,7 +14,7 @@ import { joinTripByInviteCode } from './services/cloudinary'
 const router = useRouter(); const route = useRoute(); const store = useTripStore(); const activeId = ref(''); const screen = ref<'trips'|'trip'|'login'|'profile'>('trips'); const authResolving = ref(firebaseEnabled && Boolean(auth)); const showCreate = ref(false); const showEdit = ref(false); const showJoin = ref(false); const showMember = ref(false); const showItem = ref(false); const showExpense = ref(false)
 const current = computed(() => store.trip(activeId.value)); const currentItems = computed(() => store.items(activeId.value)); const currentExpenses = computed(() => store.tripExpenses(activeId.value));
 const create = reactive({ name: '', country: '日本', city: '東京', startDate: '', endDate: '', currency: 'JPY', budget: 0, coverUrl: '' }); const coverFile = ref<File>(); const edit = reactive({ name: '', country: '', city: '', startDate: '', endDate: '', currency: 'JPY', budget: 0 })
-const member = reactive({ name: '', email: '', role: 'editor' as Role }); const item = reactive({ date: '', time: '', endTime: '', title: '', location: '', type: '景點' }); const editingItemId = ref<string | null>(null); const draggedItemId = ref<string | null>(null); const dragOverItemId = ref<string | null>(null); const expense = reactive({ title: '', amount: 0, payerId: '', kind: 'shared' as ExpenseKind, splitMode: 'equal' as 'equal' | 'custom', category: '餐飲', date: '' }); const expenseParticipantIds = ref<string[]>([]); const expenseShares = reactive<Record<string, number>>({})
+const member = reactive({ name: '', email: '', role: 'editor' as Role }); const item = reactive({ date: '', time: '', endTime: '', title: '', location: '', type: '景點' }); const editingItemId = ref<string | null>(null); const draggedItemId = ref<string | null>(null); const dragOverItemId = ref<string | null>(null); const editingExpenseId = ref<string | null>(null); const expense = reactive({ title: '', amount: 0, payerId: '', kind: 'shared' as ExpenseKind, splitMode: 'equal' as 'equal' | 'custom', category: '餐飲', date: '' }); const expenseParticipantIds = ref<string[]>([]); const expenseShares = reactive<Record<string, number>>({})
 const invite = reactive({ code: '' })
 const user = ref<User | null>(null); const login = reactive({ email: '', password: '' }); const authMode = ref<'login' | 'register'>('login'); let removeAuthListener: (() => void) | undefined
 const profile = reactive({ displayName: '', defaultCurrency: 'JPY', timezone: 'Asia/Taipei' })
@@ -48,10 +48,11 @@ async function saveItem() { if (!canEditTrip.value) return ElMessage.warning('Vi
 async function removeItem(entry: ItineraryItem) { if (!canEditTrip.value) return ElMessage.warning('Viewer 僅能查看行程，無法修改。'); try { await ElMessageBox.confirm(`確定刪除「${entry.title}」嗎？`, '刪除行程', { confirmButtonText: '刪除', cancelButtonText: '取消', type: 'warning' }); await store.deleteItem(entry); ElMessage.success('行程已刪除。') } catch (error) { if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '無法刪除行程。') } }
 async function toggleItinerary(entry: ItineraryItem) { if (!canEditTrip.value) return ElMessage.warning('Viewer 僅能查看行程，無法修改。'); await store.toggleItem(entry.id) }
 function resetExpenseShares(ids = expenseParticipantIds.value) { Object.keys(expenseShares).forEach((id) => delete expenseShares[id]); const amount = ids.length ? Number((expense.amount / ids.length).toFixed(2)) : 0; ids.forEach((id) => { expenseShares[id] = amount }) }
-function openExpenseForm() { if (!canEditTrip.value) return ElMessage.warning('Viewer 僅能查看開銷，無法新增。'); const members = current.value?.members || []; Object.assign(expense, { title: '', amount: 0, payerId: currentMember.value?.id || members[0]?.id || '', kind: 'shared', splitMode: 'equal', category: '餐飲', date: new Date().toISOString().slice(0, 10) }); expenseParticipantIds.value = members.map((member) => member.id); resetExpenseShares(); showExpense.value = true }
+function openExpenseForm(existing?: Expense) { if (!canEditTrip.value) return ElMessage.warning('Viewer 僅能查看開銷，無法修改。'); const members = current.value?.members || []; editingExpenseId.value = existing?.id || null; Object.assign(expense, existing ? { title: existing.title, amount: existing.amount, payerId: existing.payerId, kind: existing.kind, splitMode: existing.splitMode || 'equal', category: existing.category, date: existing.date } : { title: '', amount: 0, payerId: currentMember.value?.id || members[0]?.id || '', kind: 'shared', splitMode: 'equal', category: '餐飲', date: new Date().toISOString().slice(0, 10) }); expenseParticipantIds.value = existing ? expenseParticipants(existing) : members.map((member) => member.id); resetExpenseShares(); if (existing?.splitMode === 'custom' && existing.shares) Object.assign(expenseShares, existing.shares); showExpense.value = true }
 function syncExpenseParticipants() { if (expense.kind === 'personal') expenseParticipantIds.value = expense.payerId ? [expense.payerId] : []; else if (!expenseParticipantIds.value.length) expenseParticipantIds.value = (current.value?.members || []).map((member) => member.id); const selected = new Set(expenseParticipantIds.value); Object.keys(expenseShares).forEach((id) => { if (!selected.has(id)) delete expenseShares[id] }); expenseParticipantIds.value.forEach((id) => { if (expenseShares[id] === undefined) expenseShares[id] = 0 }) }
 const customShareTotal = computed(() => expenseParticipantIds.value.reduce((sum, id) => sum + (Number(expenseShares[id]) || 0), 0))
-async function addExpense() { if (!canEditTrip.value) return ElMessage.warning('Viewer 僅能查看開銷，無法新增。'); if (!current.value || !expense.title || expense.amount <= 0 || !expense.payerId) return ElMessage.warning('請完整填寫支出資料。'); const participantIds = expense.kind === 'personal' ? [expense.payerId] : expenseParticipantIds.value; if (!participantIds.length) return ElMessage.warning('請至少選擇一位分攤成員。'); if (expense.kind === 'shared' && expense.splitMode === 'custom' && Math.abs(customShareTotal.value - expense.amount) > .01) return ElMessage.warning('自訂分攤總額必須等於支出金額。'); try { const customShares = expense.kind === 'shared' && expense.splitMode === 'custom' ? Object.fromEntries(participantIds.map((id) => [id, Number(expenseShares[id]) || 0])) : undefined; await store.addExpense({ tripId: current.value.id, ...expense, participantIds, ...(customShares ? { shares: customShares } : {}) }); showExpense.value = false; ElMessage.success('支出已儲存。') } catch (error) { ElMessage.error(error instanceof Error ? error.message : '無法儲存支出。') } }
+async function saveExpense() { if (!canEditTrip.value) return ElMessage.warning('Viewer 僅能查看開銷，無法修改。'); if (!current.value || !expense.title || expense.amount <= 0 || !expense.payerId) return ElMessage.warning('請完整填寫支出資料。'); const participantIds = expense.kind === 'personal' ? [expense.payerId] : expenseParticipantIds.value; if (!participantIds.length) return ElMessage.warning('請至少選擇一位分攤成員。'); if (expense.kind === 'shared' && expense.splitMode === 'custom' && Math.abs(customShareTotal.value - expense.amount) > .01) return ElMessage.warning('自訂分攤總額必須等於支出金額。'); try { const customShares = expense.kind === 'shared' && expense.splitMode === 'custom' ? Object.fromEntries(participantIds.map((id) => [id, Number(expenseShares[id]) || 0])) : {}; const payload = { tripId: current.value.id, ...expense, participantIds, shares: customShares }; const existing = editingExpenseId.value ? currentExpenses.value.find((item) => item.id === editingExpenseId.value) : undefined; if (existing) await store.updateExpense({ ...existing, ...payload }); else await store.addExpense(payload); showExpense.value = false; editingExpenseId.value = null; ElMessage.success('支出已儲存。') } catch (error) { ElMessage.error(error instanceof Error ? error.message : '無法儲存支出。') } }
+async function removeExpense(expense: Expense) { if (!canEditTrip.value) return ElMessage.warning('Viewer 僅能查看開銷，無法修改。'); try { await ElMessageBox.confirm(`確定刪除「${expense.title}」嗎？`, '刪除支出', { confirmButtonText: '刪除', cancelButtonText: '取消', type: 'warning' }); await store.deleteExpense(expense); ElMessage.success('支出已刪除。') } catch (error) { if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '無法刪除支出。') } }
 const itineraryDays = computed(() => Object.entries(currentItems.value.reduce<Record<string, ItineraryItem[]>>((days, entry) => { (days[entry.date] ||= []).push(entry); return days }, {})).sort(([a], [b]) => a.localeCompare(b)).map(([date, entries]) => ({ date, entries: entries.sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || (a.time || '').localeCompare(b.time || '')) })))
 const mapsUrl = (location: string) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`
 const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六']
@@ -257,7 +258,7 @@ async function signOutUser() { await logOut(); ElMessage.success('已登出。')
 <p class="eyebrow">EXPENSES</p>
 <h2>旅行開銷</h2>
 </div>
-<el-button v-if="canEditTrip" text type="primary" @click="openExpenseForm">新增支出</el-button>
+<el-button v-if="canEditTrip" text type="primary" @click="openExpenseForm()">新增支出</el-button>
 <span v-else class="read-only-note">唯讀</span>
 </div>
 <div class="expense-total">
@@ -273,6 +274,10 @@ async function signOutUser() { await logOut(); ElMessage.success('已登出。')
 <small>{{ expensePayerName(e.payerId) }} 付款・{{ e.kind === 'shared' ? (e.splitMode === 'custom' ? `${expenseParticipants(e).length} 人自訂分攤` : `${expenseParticipants(e).length} 人平均分攤`) : '個人支出' }}</small>
 </div>
 <b>{{ current.currency }} {{ e.amount.toLocaleString() }}<small v-if="e.kind === 'shared' && e.splitMode !== 'custom'">每人 {{ expenseShare(e).toFixed(0) }}</small></b>
+<div v-if="canEditTrip" class="expense-actions">
+<el-tooltip content="編輯支出" placement="top"><el-button class="expense-action-button" text circle aria-label="編輯支出" @click="openExpenseForm(e)"><el-icon><Edit /></el-icon></el-button></el-tooltip>
+<el-tooltip content="刪除支出" placement="top"><el-button class="expense-action-button is-danger" text circle aria-label="刪除支出" @click="removeExpense(e)"><el-icon><Delete /></el-icon></el-button></el-tooltip>
+</div>
 </li>
 </ul>
 <p v-else class="muted">尚未記錄支出。</p>
@@ -447,7 +452,7 @@ async function signOutUser() { await logOut(); ElMessage.success('已登出。')
 <el-button type="primary" @click="saveItem">儲存行程</el-button>
 </template>
 </el-dialog>
-  <el-dialog v-model="showExpense" title="新增支出" width="min(92vw, 460px)">
+  <el-dialog v-model="showExpense" :title="editingExpenseId ? '編輯支出' : '新增支出'" width="min(92vw, 460px)">
 <el-form label-position="top">
 <el-form-item label="項目">
 <el-input v-model="expense.title" />
@@ -506,7 +511,7 @@ async function signOutUser() { await logOut(); ElMessage.success('已登出。')
 </el-form>
 <template #footer>
 <el-button @click="showExpense=false">取消</el-button>
-<el-button type="primary" @click="addExpense">儲存支出</el-button>
+<el-button type="primary" @click="saveExpense">儲存支出</el-button>
 </template>
 </el-dialog>
 </template>

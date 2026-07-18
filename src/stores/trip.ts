@@ -17,5 +17,7 @@ export const useTripStore = defineStore('trips', {
     async deleteItem(item: ItineraryItem) { await repository.deleteItinerary(item); this.itinerary = this.itinerary.filter((entry) => entry.id !== item.id) },
     async toggleItem(id: string) { const item = this.itinerary.find((x) => x.id === id); await repository.toggleItinerary(id, item); if (item) item.completed = !item.completed },
     async addExpense(input: Omit<Expense, 'id'>) { const expense = await repository.addExpense(input); this.expenses.push(expense) },
+    async updateExpense(expense: Expense) { await repository.updateExpense(expense); const index = this.expenses.findIndex((item) => item.id === expense.id); if (index >= 0) this.expenses.splice(index, 1, expense) },
+    async deleteExpense(expense: Expense) { await repository.deleteExpense(expense); this.expenses = this.expenses.filter((item) => item.id !== expense.id) },
   },
 })
