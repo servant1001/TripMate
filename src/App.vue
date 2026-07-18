@@ -15,6 +15,7 @@ import { auth, ensureUserProfile, firebaseEnabled, logOut, registerWithEmail, re
 import { joinTripByInviteCode } from './services/cloudinary'
 
 const router = useRouter(); const route = useRoute(); const store = useTripStore(); const activeId = ref(''); const screen = ref<'trips'|'trip'|'login'|'profile'>('trips'); const authResolving = ref(firebaseEnabled && Boolean(auth)); const showCreate = ref(false); const showEdit = ref(false); const showJoin = ref(false); const showMember = ref(false); const showItem = ref(false); const showExpense = ref(false); const showPersonalBudget = ref(false); const savingPersonalBudget = ref(false)
+type TripTab = 'overview' | 'itinerary' | 'expenses' | 'members'
 const current = computed(() => store.trip(activeId.value)); const currentItems = computed(() => store.items(activeId.value)); const currentExpenses = computed(() => store.tripExpenses(activeId.value)); const currentSettlements = computed(() => store.tripSettlements(activeId.value));
 const create = reactive({ name: '', country: '日本', city: '東京', startDate: '', endDate: '', currency: 'JPY', budget: 0, coverUrl: '' }); const coverFile = ref<File>(); const edit = reactive({ name: '', country: '', city: '', startDate: '', endDate: '', currency: 'JPY', budget: 0 })
 const member = reactive({ name: '', email: '', role: 'editor' as Role }); const item = reactive({ date: '', time: '', endTime: '', title: '', location: '', type: '景點' }); const editingItemId = ref<string | null>(null); const draggedItemId = ref<string | null>(null); const dragOverItemId = ref<string | null>(null); const editingExpenseId = ref<string | null>(null); const expense = reactive({ title: '', amount: 0, payerId: '', kind: 'shared' as ExpenseKind, splitMode: 'equal' as 'equal' | 'custom', category: '餐飲', date: '' }); const expenseParticipantIds = ref<string[]>([]); const expenseShares = reactive<Record<string, number>>({})
@@ -32,6 +33,16 @@ function goTrips() { void router.push({ name: 'trips' }) }
 function goLogin() { void router.push({ name: 'login' }) }
 function goProfile() { void router.push({ name: 'profile' }) }
 function goTrip(tripId: string) { void router.push({ name: 'trip-dashboard', params: { tripId } }) }
+const activeTripTab = computed<TripTab>(() => {
+  const tab = route.query.tab
+  return tab === 'itinerary' || tab === 'expenses' || tab === 'members' ? tab : 'overview'
+})
+function selectTripTab(tab: TripTab) {
+  if (tab === activeTripTab.value) return
+  const query = { ...route.query }
+  delete query.tab
+  void router.push({ name: 'trip-dashboard', params: { tripId: activeId.value }, query: tab === 'overview' ? query : { ...query, tab } })
+}
 function syncRoute() { const name = String(route.name || 'trips'); if (name === 'login' || name === 'register' || name === 'forgot-password') { screen.value = 'login'; authMode.value = name === 'register' ? 'register' : 'login'; return } if (name === 'profile') { screen.value = 'profile'; if (user.value) profile.displayName = user.value.displayName || user.value.email?.split('@')[0] || ''; return } if (name === 'trip-dashboard') { activeId.value = String(route.params.tripId); screen.value = 'trip'; return } screen.value = 'trips'; showCreate.value = name === 'trip-create' }
 watch(() => route.fullPath, syncRoute, { immediate: true })
 function authErrorMessage(error: unknown) { const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''; if (code === 'auth/unauthorized-domain') return '此網站尚未加入 Firebase Authentication 的授權網域。'; if (code === 'auth/operation-not-allowed') return 'Firebase 尚未啟用 Google 登入方式。'; if (code === 'auth/account-exists-with-different-credential') return '此 Email 已用其他登入方式註冊，請改用原本的方式登入。'; return error instanceof Error ? error.message : 'Google 登入未完成，請再試一次。' }
@@ -245,11 +256,16 @@ async function signOutUser() { await logOut(); ElMessage.success('已登出。')
 </section>
     <section v-else-if="current" class="page trip-detail-page">
       <TripHeroHeader :trip="current" :date-range="tripDateRange" :duration="tripDuration" :can-edit-settings="canEditTripSettings" :can-manage-members="canManageMembers" :role-label="currentRole === 'editor' ? 'Editor・可編輯' : 'Viewer・唯讀'" @back="goTrips" @edit="startEditTrip" @manage-members="showMember = true" @remove="removeTrip" />
-      <nav class="trip-tabs" aria-label="旅行內容導覽"><a href="#itinerary">行程</a><a href="#expenses">開銷</a><a href="#members">旅伴與結算</a></nav>
-      <div class="trip-detail-layout">
-        <TripItineraryCard :days="itineraryDays" :can-edit-trip="canEditTrip" :dragged-item-id="draggedItemId" :drag-over-item-id="dragOverItemId" :format-date="formatItineraryDate" :duration="itineraryDuration" :time-warning="itineraryTimeWarning" :maps-url="mapsUrl" @add="openItemForm()" @toggle="toggleItinerary" @edit="openItemForm" @remove="removeItem" @move="moveItem" @drag-start="startDrag" @drag-end="endDrag" @drag-enter="setDropTarget" @drag-leave="clearDropTarget" @drop="reorderItem" />
-        <TripExpenseCard :trip="current" :expenses="currentExpenses" :total="total" :my-paid="myPaid" :my-balance="myBalance" :personal-budget="personalBudget" :personal-spent="myExpense" :can-set-personal-budget="Boolean(activeMemberId)" :can-edit-trip="canEditTrip" :payer-name="expensePayerName" :participant-count="expenseParticipantCount" :share="expenseShare" @add="openExpenseForm()" @set-personal-budget="openPersonalBudgetForm" @edit="openExpenseForm" @remove="removeExpense" />
-        <TripMembersSettlementCard :trip="current" :balances="balances" :suggestions="settlementSuggestions" :settlements="currentSettlements" :can-manage-members="canManageMembers" :can-edit-trip="canEditTrip" :member-paid="memberPaid" :member-name="memberName" @manage-members="showMember = true" @copy-invite="copyInvite" @settle="confirmSettlement" @undo-settlement="removeSettlement" />
+      <nav class="trip-tabs" aria-label="旅行內容導覽" role="tablist">
+        <button type="button" role="tab" :aria-selected="activeTripTab === 'overview'" :class="{ 'is-active': activeTripTab === 'overview' }" @click="selectTripTab('overview')">總覽</button>
+        <button type="button" role="tab" :aria-selected="activeTripTab === 'itinerary'" :class="{ 'is-active': activeTripTab === 'itinerary' }" @click="selectTripTab('itinerary')">行程</button>
+        <button type="button" role="tab" :aria-selected="activeTripTab === 'expenses'" :class="{ 'is-active': activeTripTab === 'expenses' }" @click="selectTripTab('expenses')">開銷</button>
+        <button type="button" role="tab" :aria-selected="activeTripTab === 'members'" :class="{ 'is-active': activeTripTab === 'members' }" @click="selectTripTab('members')">旅伴與結算</button>
+      </nav>
+      <div class="trip-detail-layout" :class="{ 'is-single-detail': activeTripTab !== 'overview' }" role="tabpanel" :aria-label="activeTripTab === 'overview' ? '旅行總覽' : activeTripTab === 'itinerary' ? '行程' : activeTripTab === 'expenses' ? '開銷' : '旅伴與結算'">
+        <TripItineraryCard v-if="activeTripTab === 'overview' || activeTripTab === 'itinerary'" :days="itineraryDays" :can-edit-trip="canEditTrip" :dragged-item-id="draggedItemId" :drag-over-item-id="dragOverItemId" :format-date="formatItineraryDate" :duration="itineraryDuration" :time-warning="itineraryTimeWarning" :maps-url="mapsUrl" @add="openItemForm()" @toggle="toggleItinerary" @edit="openItemForm" @remove="removeItem" @move="moveItem" @drag-start="startDrag" @drag-end="endDrag" @drag-enter="setDropTarget" @drag-leave="clearDropTarget" @drop="reorderItem" />
+        <TripExpenseCard v-if="activeTripTab === 'overview' || activeTripTab === 'expenses'" :trip="current" :expenses="currentExpenses" :total="total" :my-paid="myPaid" :my-balance="myBalance" :personal-budget="personalBudget" :personal-spent="myExpense" :can-set-personal-budget="Boolean(activeMemberId)" :can-edit-trip="canEditTrip" :payer-name="expensePayerName" :participant-count="expenseParticipantCount" :share="expenseShare" @add="openExpenseForm()" @set-personal-budget="openPersonalBudgetForm" @edit="openExpenseForm" @remove="removeExpense" />
+        <TripMembersSettlementCard v-if="activeTripTab === 'overview' || activeTripTab === 'members'" :trip="current" :balances="balances" :suggestions="settlementSuggestions" :settlements="currentSettlements" :can-manage-members="canManageMembers" :can-edit-trip="canEditTrip" :member-paid="memberPaid" :member-name="memberName" @manage-members="showMember = true" @copy-invite="copyInvite" @settle="confirmSettlement" @undo-settlement="removeSettlement" />
       </div>
     </section>
   </main>
