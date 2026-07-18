@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Delete, Edit, Location, Plus, TopRight } from '@element-plus/icons-vue'
 import type { User } from 'firebase/auth'
 import { getRedirectResult, onAuthStateChanged } from 'firebase/auth'
 import { useRoute, useRouter } from 'vue-router'
@@ -13,7 +14,7 @@ import { joinTripByInviteCode } from './services/cloudinary'
 const router = useRouter(); const route = useRoute(); const store = useTripStore(); const activeId = ref(''); const screen = ref<'trips'|'trip'|'login'|'profile'>('trips'); const authResolving = ref(firebaseEnabled && Boolean(auth)); const showCreate = ref(false); const showEdit = ref(false); const showJoin = ref(false); const showMember = ref(false); const showItem = ref(false); const showExpense = ref(false)
 const current = computed(() => store.trip(activeId.value)); const currentItems = computed(() => store.items(activeId.value)); const currentExpenses = computed(() => store.tripExpenses(activeId.value));
 const create = reactive({ name: '', country: '日本', city: '東京', startDate: '', endDate: '', currency: 'JPY', budget: 0, coverUrl: '' }); const coverFile = ref<File>(); const edit = reactive({ name: '', country: '', city: '', startDate: '', endDate: '', currency: 'JPY', budget: 0 })
-const member = reactive({ name: '', email: '', role: 'editor' as Role }); const item = reactive({ date: '', time: '', title: '', location: '', type: '景點' }); const editingItemId = ref<string | null>(null); const expense = reactive({ title: '', amount: 0, payerId: '', kind: 'shared' as ExpenseKind, category: '餐飲', date: '' })
+const member = reactive({ name: '', email: '', role: 'editor' as Role }); const item = reactive({ date: '', time: '', endTime: '', title: '', location: '', type: '景點' }); const editingItemId = ref<string | null>(null); const expense = reactive({ title: '', amount: 0, payerId: '', kind: 'shared' as ExpenseKind, category: '餐飲', date: '' })
 const invite = reactive({ code: '' })
 const user = ref<User | null>(null); const login = reactive({ email: '', password: '' }); const authMode = ref<'login' | 'register'>('login'); let removeAuthListener: (() => void) | undefined
 const profile = reactive({ displayName: '', defaultCurrency: 'JPY', timezone: 'Asia/Taipei' })
@@ -38,10 +39,15 @@ function startEditTrip() { if (!current.value) return; if (current.value.ownerId
 async function saveTrip() { if (!current.value || !edit.name || !edit.startDate || !edit.endDate) return ElMessage.warning('請填寫旅行名稱與日期。'); try { await store.updateTrip({ ...current.value, ...edit }); showEdit.value = false; ElMessage.success('旅行設定已更新。') } catch (error) { ElMessage.error(error instanceof Error ? error.message : '無法更新旅行。') } }
 async function removeTrip() { if (!current.value || current.value.ownerId !== user.value?.uid) return ElMessage.warning('只有旅行建立者可以刪除旅行。'); try { await ElMessageBox.confirm(`確定要刪除「${current.value.name}」嗎？行程與開銷資料也會一併移除。`, '刪除旅行', { confirmButtonText: '刪除', cancelButtonText: '取消', type: 'warning' }); await store.deleteTrip(current.value); goTrips(); ElMessage.success('旅行已刪除。') } catch (error) { if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '無法刪除旅行。') } }
 async function addMember() { if (!current.value || !member.name || !member.email) return ElMessage.warning('請填寫成員名稱與 Email。'); try { await store.addMember(current.value, member); showMember.value = false; Object.assign(member, { name: '', email: '', role: 'editor' }); ElMessage.success('已新增旅行成員。') } catch (error) { ElMessage.error(error instanceof Error ? error.message : '無法新增成員。') } }
-function openItemForm(entry?: ItineraryItem) { editingItemId.value = entry?.id || null; Object.assign(item, entry ? { date: entry.date, time: entry.time, title: entry.title, location: entry.location, type: entry.type } : { date: '', time: '', title: '', location: '', type: '景點' }); showItem.value = true }
-async function saveItem() { if (!activeId.value || !item.title || !item.date) return ElMessage.warning('請填寫行程名稱與日期。'); try { const existing = editingItemId.value ? currentItems.value.find((entry) => entry.id === editingItemId.value) : undefined; if (existing) await store.updateItem({ ...existing, ...item }); else await store.addItem({ tripId: activeId.value, ...item }); showItem.value = false; editingItemId.value = null } catch (error) { ElMessage.error(error instanceof Error ? error.message : '無法儲存行程。') } }
+function openItemForm(entry?: ItineraryItem) { editingItemId.value = entry?.id || null; Object.assign(item, entry ? { date: entry.date, time: entry.time, endTime: entry.endTime || '', title: entry.title, location: entry.location, type: entry.type } : { date: '', time: '', endTime: '', title: '', location: '', type: '景點' }); showItem.value = true }
+async function saveItem() { if (!activeId.value || !item.title || !item.date) return ElMessage.warning('請填寫行程名稱與日期。'); if (item.endTime && item.time && item.endTime <= item.time) return ElMessage.warning('結束時間必須晚於開始時間。'); const conflict = currentItems.value.some((entry) => entry.id !== editingItemId.value && entry.date === item.date && item.time && entry.time && entry.time < (item.endTime || item.time) && (entry.endTime || entry.time) > item.time); if (conflict) return ElMessage.warning('此時段與既有行程重疊，請調整時間。'); try { const existing = editingItemId.value ? currentItems.value.find((entry) => entry.id === editingItemId.value) : undefined; if (existing) await store.updateItem({ ...existing, ...item }); else await store.addItem({ tripId: activeId.value, ...item, order: currentItems.value.filter((entry) => entry.date === item.date).length }); showItem.value = false; editingItemId.value = null } catch (error) { ElMessage.error(error instanceof Error ? error.message : '無法儲存行程。') } }
 async function removeItem(entry: ItineraryItem) { try { await ElMessageBox.confirm(`確定刪除「${entry.title}」嗎？`, '刪除行程', { confirmButtonText: '刪除', cancelButtonText: '取消', type: 'warning' }); await store.deleteItem(entry); ElMessage.success('行程已刪除。') } catch (error) { if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '無法刪除行程。') } }
 async function addExpense() { if (!current.value || !expense.title || expense.amount <= 0 || !expense.payerId) return ElMessage.warning('請完整填寫支出資料。'); await store.addExpense({ tripId: current.value.id, ...expense, participantIds: current.value.members.map((m) => m.id) }); showExpense.value = false; Object.assign(expense, { title: '', amount: 0, payerId: '', kind: 'shared', category: '餐飲', date: '' }) }
+const itineraryDays = computed(() => Object.entries(currentItems.value.reduce<Record<string, ItineraryItem[]>>((days, entry) => { (days[entry.date] ||= []).push(entry); return days }, {})).sort(([a], [b]) => a.localeCompare(b)).map(([date, entries]) => ({ date, entries: entries.sort((a, b) => (a.time || '').localeCompare(b.time || '') || (a.order || 0) - (b.order || 0)) })))
+const mapsUrl = (location: string) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`
+const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六']
+function formatItineraryDate(date: string) { const value = new Date(`${date}T00:00:00`); return Number.isNaN(value.getTime()) ? date : `${value.getFullYear()} 年 ${value.getMonth() + 1} 月 ${value.getDate()} 日・${weekdays[value.getDay()]}` }
+function itineraryDuration(entry: ItineraryItem) { if (!entry.time || !entry.endTime) return ''; const [startHour, startMinute] = entry.time.split(':').map(Number); const [endHour, endMinute] = entry.endTime.split(':').map(Number); const minutes = (endHour * 60 + endMinute) - (startHour * 60 + startMinute); if (!Number.isFinite(minutes) || minutes <= 0) return ''; const hours = Math.floor(minutes / 60); const remainingMinutes = minutes % 60; return `約 ${hours ? `${hours} 小時` : ''}${hours && remainingMinutes ? ' ' : ''}${remainingMinutes ? `${remainingMinutes} 分` : ''}` }
 const total = computed(() => currentExpenses.value.reduce((sum, e) => sum + e.amount, 0)); const balances = computed(() => { const trip = current.value; if (!trip) return []; const paid = Object.fromEntries(trip.members.map((m) => [m.id, 0])); const owed = Object.fromEntries(trip.members.map((m) => [m.id, 0])); currentExpenses.value.forEach((e) => { paid[e.payerId] += e.amount; const shares = e.kind === 'personal' ? [e.payerId] : e.participantIds; shares.forEach((id) => owed[id] += e.amount / shares.length) }); return trip.members.map((m) => ({ ...m, balance: paid[m.id] - owed[m.id] })) })
 function openTrip(t: Trip) { goTrip(t.id) }
 async function copyInvite() { await navigator.clipboard.writeText(current.value?.inviteCode || ''); ElMessage.success('邀請碼已複製。') }
@@ -169,22 +175,50 @@ async function signOutUser() { await logOut(); ElMessage.success('已登出。')
 <a href="#members">成員</a>
 </nav>
 <div class="dashboard">
-<section id="itinerary" class="panel section">
-<div class="section-title">
+<section id="itinerary" class="panel section itinerary-section">
+<div class="section-title itinerary-section-title">
 <div>
-<p class="eyebrow">ITINERARY</p>
+<p class="eyebrow itinerary-eyebrow">ITINERARY</p>
 <h2>每日行程</h2>
 </div>
-<el-button text type="primary" @click="openItemForm()">新增</el-button>
+<el-button class="itinerary-add-button" type="primary" @click="openItemForm()"><el-icon><Plus /></el-icon><span class="itinerary-add-full">新增行程</span><span class="itinerary-add-short">新增</span></el-button>
 </div>
-<div v-if="currentItems.length" class="timeline">
-<div v-for="entry in currentItems" :key="entry.id" class="event">
-<el-checkbox :model-value="entry.completed" @change="store.toggleItem(entry.id)" />
-<time>{{ entry.date }} {{ entry.time }}</time>
+<div v-if="currentItems.length" class="itinerary-timeline">
+<section v-for="day in itineraryDays" :key="day.date" class="itinerary-day" :aria-label="formatItineraryDate(day.date)">
+<h3 class="itinerary-date"><span>{{ formatItineraryDate(day.date) }}</span></h3>
+<div class="itinerary-list">
+<article v-for="entry in day.entries" :key="entry.id" class="itinerary-entry" :class="{ 'is-completed': entry.completed }">
+<div class="itinerary-checkbox">
+<el-checkbox :model-value="entry.completed" :aria-label="`將「${entry.title}」標示為${entry.completed ? '未完成' : '已完成'}`" @change="store.toggleItem(entry.id)" />
+</div>
+<div class="itinerary-time" :aria-label="entry.endTime ? `${entry.time} 至 ${entry.endTime}` : entry.time || '未設定時間'">
+<time>{{ entry.time || '未排時間' }}</time>
+<time v-if="entry.endTime" class="itinerary-end-time">{{ entry.endTime }}</time>
+</div>
+<div class="itinerary-connector" aria-hidden="true"><span class="itinerary-dot"></span></div>
+<div class="itinerary-card">
+<div class="itinerary-card-header">
+<div class="itinerary-card-heading">
 <strong>{{ entry.title }}</strong>
-<span>{{ entry.type }} · {{ entry.location || '未設定地點' }}</span>
-<span class="event-actions"><button class="link" @click="openItemForm(entry)">編輯</button><button class="link danger-link" @click="removeItem(entry)">刪除</button></span>
 </div>
+<div class="itinerary-card-actions">
+<el-tooltip content="編輯行程" placement="top"><el-button class="itinerary-action-button" text circle aria-label="編輯行程" @click="openItemForm(entry)"><el-icon><Edit /></el-icon></el-button></el-tooltip>
+<el-tooltip content="刪除行程" placement="top"><el-button class="itinerary-action-button is-danger" text circle aria-label="刪除行程" @click="removeItem(entry)"><el-icon><Delete /></el-icon></el-button></el-tooltip>
+</div>
+</div>
+<p v-if="entry.type || itineraryDuration(entry)" class="itinerary-card-meta">
+<span v-if="entry.type">{{ entry.type }}</span>
+<span v-if="entry.type && itineraryDuration(entry)" aria-hidden="true">·</span>
+<span v-if="itineraryDuration(entry)">{{ itineraryDuration(entry) }}</span>
+</p>
+<a v-if="entry.location" class="itinerary-location is-linked" :href="mapsUrl(entry.location)" target="_blank" rel="noopener" :title="`在地圖中開啟：${entry.location}`">
+<el-icon><Location /></el-icon><span>{{ entry.location }}</span><el-icon class="itinerary-external-icon"><TopRight /></el-icon>
+</a>
+<p v-else class="itinerary-location is-empty"><el-icon><Location /></el-icon><span>尚未設定景點</span></p>
+</div>
+</article>
+</div>
+</section>
 </div>
 <p v-else class="muted">尚未安排任何行程。從抵達日的第一站開始吧。</p>
 </section>
@@ -346,17 +380,20 @@ async function signOutUser() { await logOut(); ElMessage.success('已登出。')
 <el-button type="primary" @click="addMember">加入成員</el-button>
 </template>
 </el-dialog>
-  <el-dialog v-model="showItem" :title="editingItemId ? '編輯行程' : '新增行程'" width="min(92vw, 460px)">
-<el-form label-position="top">
+  <el-dialog v-model="showItem" :title="editingItemId ? '編輯行程' : '新增行程'" class="itinerary-dialog" width="min(92vw, 520px)">
+<el-form class="itinerary-form" label-position="top">
 <el-form-item label="行程名稱">
 <el-input v-model="item.title" />
 </el-form-item>
-<div class="two-col">
 <el-form-item label="日期">
-<el-date-picker v-model="item.date" type="date" value-format="YYYY-MM-DD" />
+<el-date-picker v-model="item.date" type="date" value-format="YYYY-MM-DD" placeholder="選擇日期" />
 </el-form-item>
-<el-form-item label="時間">
-<el-time-picker v-model="item.time" value-format="HH:mm" format="HH:mm" />
+<div class="itinerary-time-grid">
+<el-form-item label="開始時間">
+<el-time-picker v-model="item.time" value-format="HH:mm" format="HH:mm" placeholder="選擇開始時間" />
+</el-form-item>
+<el-form-item label="結束時間">
+<el-time-picker v-model="item.endTime" value-format="HH:mm" format="HH:mm" placeholder="選擇結束時間（選填）" />
 </el-form-item>
 </div>
 <el-form-item label="類型">
