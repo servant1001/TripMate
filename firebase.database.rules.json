@@ -24,6 +24,7 @@
     "settlements": { "$tripId": { ".read": "auth != null && root.child('tripMembers').child($tripId).child(auth.uid).exists()", ".write": "auth != null && root.child('tripMembers').child($tripId).child(auth.uid).child('role').val() !== 'viewer'" } },
     "todos": { "$tripId": { ".read": "auth != null && root.child('tripMembers').child($tripId).child(auth.uid).exists()", ".write": "auth != null && root.child('tripMembers').child($tripId).child(auth.uid).child('role').val() !== 'viewer'" } },
     "packingItems": { "$tripId": { ".read": "auth != null && root.child('tripMembers').child($tripId).child(auth.uid).exists()", ".write": "auth != null && root.child('tripMembers').child($tripId).child(auth.uid).child('role').val() !== 'viewer'" } },
-    "bookings": { "$tripId": { ".read": "auth != null && root.child('tripMembers').child($tripId).child(auth.uid).exists()", ".write": "auth != null && root.child('tripMembers').child($tripId).child(auth.uid).child('role').val() !== 'viewer'" } }
+    "bookings": { "$tripId": { ".read": "auth != null && root.child('tripMembers').child($tripId).child(auth.uid).exists()", ".write": "auth != null && root.child('tripMembers').child($tripId).child(auth.uid).child('role').val() !== 'viewer'" } },
+    "favorites": { "$tripId": { ".read": "auth != null && root.child('tripMembers').child($tripId).child(auth.uid).exists()", ".write": "auth != null && root.child('tripMembers').child($tripId).child(auth.uid).child('role').val() !== 'viewer'" } }
   }
 }

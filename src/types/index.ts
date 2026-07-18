@@ -11,4 +11,6 @@ export interface TodoItem { id: string; tripId: string; title: string; scope?: T
 export interface PackingItem { id: string; tripId: string; name: string; category: string; quantity: number; assignedTo?: string; isShared: boolean; completed: boolean; note?: string; createdBy: string; createdAt: number }
 export type BookingType = 'flight' | 'hotel' | 'transport' | 'ticket' | 'restaurant' | 'other'
 export interface Booking { id: string; tripId: string; type: BookingType; title: string; startDate: string; endDate?: string; location?: string; bookingNumber?: string; bookedBy?: string; contact?: string; website?: string; note?: string; createdBy: string; createdAt: number }
+export type FavoriteType = 'attraction' | 'restaurant' | 'shop' | 'cafe' | 'stay' | 'alternative' | 'other'
+export interface Favorite { id: string; tripId: string; name: string; type: FavoriteType; location?: string; website?: string; imageUrl?: string; estimatedCost?: number; recommendedBy?: string; note?: string; addedToItinerary: boolean; createdBy: string; createdAt: number }
 export interface Settlement { id: string; tripId: string; fromId: string; toId: string; amount: number; date: string; createdAt: number }
