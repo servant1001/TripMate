@@ -5,7 +5,7 @@ export type TodoScope = 'shared' | 'personal'
 
 export interface Member { id: string; name: string; email: string; role: Role; personalBudget?: number }
 export interface Trip { id: string; name: string; country: string; city: string; startDate: string; endDate: string; currency: string; budget: number; coverUrl?: string; inviteCode: string; ownerId: string; members: Member[] }
-export interface ItineraryItem { id: string; tripId: string; date: string; time: string; endTime?: string; title: string; location: string; mapUrl?: string; imageUrl?: string; type: string; order?: number; completed: boolean }
+export interface ItineraryItem { id: string; tripId: string; date: string; time: string; endTime?: string; title: string; location: string; mapUrl?: string; imageUrl?: string; note?: string; type: string; order?: number; completed: boolean }
 export interface Expense { id: string; tripId: string; title: string; amount: number; payerId: string; kind: ExpenseKind; participantIds: string[]; splitMode?: ExpenseSplitMode; shares?: Record<string, number>; category: string; date: string }
 export interface TodoItem { id: string; tripId: string; title: string; scope?: TodoScope; assigneeId?: string; dueDate?: string; completed: boolean; createdAt: number }
 export interface PackingItem { id: string; tripId: string; name: string; category: string; quantity: number; assignedTo?: string; isShared: boolean; order?: number; completed: boolean; note?: string; createdBy: string; createdAt: number }
