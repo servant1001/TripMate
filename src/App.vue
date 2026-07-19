@@ -8,6 +8,7 @@ import { useRoute, useRouter } from 'vue-router'
 import TripExpenseCard from './components/TripExpenseCard.vue'
 import TripHeroHeader from './components/TripHeroHeader.vue'
 import TripItineraryCard from './components/TripItineraryCard.vue'
+import TripMapCard from './components/TripMapCard.vue'
 import TripBookingCard from './components/TripBookingCard.vue'
 import TripFavoriteCard from './components/TripFavoriteCard.vue'
 import TripMembersSettlementCard from './components/TripMembersSettlementCard.vue'
@@ -21,7 +22,7 @@ import { auth, ensureUserProfile, firebaseEnabled, logOut, registerWithEmail, re
 import { joinTripByInviteCode } from './services/cloudinary'
 
 const router = useRouter(); const route = useRoute(); const store = useTripStore(); const activeId = ref(''); const screen = ref<'trips'|'trip'|'login'|'profile'>('trips'); const authResolving = ref(firebaseEnabled && Boolean(auth)); const showCreate = ref(false); const showEdit = ref(false); const showJoin = ref(false); const showMember = ref(false); const showItem = ref(false); const showExpense = ref(false); const showTodo = ref(false); const showPacking = ref(false); const showBooking = ref(false); const showFavorite = ref(false); const showPersonalBudget = ref(false); const savingPersonalBudget = ref(false); const showCategoryBudgets = ref(false); const savingCategoryBudgets = ref(false)
-type TripTab = 'overview' | 'itinerary' | 'expenses' | 'todos' | 'packing' | 'bookings' | 'favorites' | 'members'
+type TripTab = 'overview' | 'itinerary' | 'map' | 'expenses' | 'todos' | 'packing' | 'bookings' | 'favorites' | 'members'
 const current = computed(() => store.trip(activeId.value)); const currentItems = computed(() => store.items(activeId.value)); const currentExpenses = computed(() => store.tripExpenses(activeId.value)); const currentTodos = computed(() => store.tripTodos(activeId.value)); const currentPackingItems = computed(() => store.tripPackingItems(activeId.value)); const currentBookings = computed(() => store.tripBookings(activeId.value)); const currentFavorites = computed(() => store.tripFavorites(activeId.value)); const currentSettlements = computed(() => store.tripSettlements(activeId.value));
 const insertAfterItemId = ref<string | null>(null)
 const create = reactive({ name: '', country: '日本', city: '東京', startDate: '', endDate: '', currency: 'JPY', budget: 0, coverUrl: '' }); const coverFile = ref<File>(); const edit = reactive({ name: '', country: '', city: '', startDate: '', endDate: '', currency: 'JPY', budget: 0, coverUrl: '' }); const editCoverFile = ref<File>(); const editCoverPreview = ref(''); const savingTrip = ref(false)
@@ -42,7 +43,7 @@ function goProfile() { void router.push({ name: 'profile' }) }
 function goTrip(tripId: string) { void router.push({ name: 'trip-dashboard', params: { tripId } }) }
 const activeTripTab = computed<TripTab>(() => {
   const tab = route.query.tab
-  return tab === 'itinerary' || tab === 'expenses' || tab === 'todos' || tab === 'packing' || tab === 'bookings' || tab === 'favorites' || tab === 'members' ? tab : 'overview'
+  return tab === 'itinerary' || tab === 'map' || tab === 'expenses' || tab === 'todos' || tab === 'packing' || tab === 'bookings' || tab === 'favorites' || tab === 'members' ? tab : 'overview'
 })
 function selectTripTab(tab: TripTab) {
   if (tab === activeTripTab.value) return
@@ -303,6 +304,7 @@ async function signOutUser() { await logOut(); ElMessage.success('已登出。')
       <nav class="trip-tabs" aria-label="旅行內容導覽" role="tablist">
         <button type="button" role="tab" :aria-selected="activeTripTab === 'overview'" :class="{ 'is-active': activeTripTab === 'overview' }" @click="selectTripTab('overview')">總覽</button>
         <button type="button" role="tab" :aria-selected="activeTripTab === 'itinerary'" :class="{ 'is-active': activeTripTab === 'itinerary' }" @click="selectTripTab('itinerary')">行程</button>
+        <button type="button" role="tab" :aria-selected="activeTripTab === 'map'" :class="{ 'is-active': activeTripTab === 'map' }" @click="selectTripTab('map')">地圖</button>
         <button type="button" role="tab" :aria-selected="activeTripTab === 'expenses'" :class="{ 'is-active': activeTripTab === 'expenses' }" @click="selectTripTab('expenses')">開銷</button>
         <button type="button" role="tab" :aria-selected="activeTripTab === 'todos'" :class="{ 'is-active': activeTripTab === 'todos' }" @click="selectTripTab('todos')">待辦</button>
         <button type="button" role="tab" :aria-selected="activeTripTab === 'packing'" :class="{ 'is-active': activeTripTab === 'packing' }" @click="selectTripTab('packing')">行李</button>
@@ -310,8 +312,9 @@ async function signOutUser() { await logOut(); ElMessage.success('已登出。')
         <button type="button" role="tab" :aria-selected="activeTripTab === 'favorites'" :class="{ 'is-active': activeTripTab === 'favorites' }" @click="selectTripTab('favorites')">收藏</button>
         <button type="button" role="tab" :aria-selected="activeTripTab === 'members'" :class="{ 'is-active': activeTripTab === 'members' }" @click="selectTripTab('members')">旅伴與結算</button>
       </nav>
-      <div class="trip-detail-layout" :class="{ 'is-single-detail': activeTripTab !== 'overview' }" role="tabpanel" :aria-label="activeTripTab === 'overview' ? '旅行總覽' : activeTripTab === 'itinerary' ? '行程' : activeTripTab === 'expenses' ? '開銷' : activeTripTab === 'todos' ? '待辦' : activeTripTab === 'packing' ? '行李' : activeTripTab === 'bookings' ? '預訂' : activeTripTab === 'favorites' ? '收藏' : '旅伴與結算'">
+      <div class="trip-detail-layout" :class="{ 'is-single-detail': activeTripTab !== 'overview' }" role="tabpanel" :aria-label="activeTripTab === 'overview' ? '旅行總覽' : activeTripTab === 'itinerary' ? '行程' : activeTripTab === 'map' ? '地圖' : activeTripTab === 'expenses' ? '開銷' : activeTripTab === 'todos' ? '待辦' : activeTripTab === 'packing' ? '行李' : activeTripTab === 'bookings' ? '預訂' : activeTripTab === 'favorites' ? '收藏' : '旅伴與結算'">
         <TripItineraryCard v-if="activeTripTab === 'overview' || activeTripTab === 'itinerary'" :days="itineraryDays" :can-edit-trip="canEditTrip" :dragged-item-id="draggedItemId" :drag-over-item-id="dragOverItemId" :format-date="formatItineraryDate" :duration="itineraryDuration" :time-warning="itineraryTimeWarning" :maps-url="mapsUrl" @add="openItemForm()" @add-after="openItemFormAfter" @toggle="toggleItinerary" @edit="openItemForm" @remove="removeItem" @move="moveItem" @drag-start="startDrag" @drag-end="endDrag" @drag-enter="setDropTarget" @drag-leave="clearDropTarget" @drop="reorderItem" />
+        <TripMapCard v-if="activeTripTab === 'map'" :days="itineraryDays" :format-date="formatItineraryDate" :maps-url="mapsUrl" />
         <TripExpenseCard v-if="activeTripTab === 'overview' || activeTripTab === 'expenses'" :trip="current" :expenses="currentExpenses" :total="total" :my-paid="myPaid" :my-balance="myBalance" :personal-budget="personalBudget" :personal-spent="myExpense" :category-budgets="categoryBudgetSummary" :can-set-personal-budget="Boolean(activeMemberId)" :can-manage-category-budgets="canEditTripSettings" :can-edit-trip="canEditTrip" :payer-name="expensePayerName" :participant-count="expenseParticipantCount" :share="expenseShare" @add="openExpenseForm()" @set-personal-budget="openPersonalBudgetForm" @manage-category-budgets="openCategoryBudgetForm" @edit="openExpenseForm" @remove="removeExpense" />
         <TripTodoCard v-if="activeTripTab === 'todos'" :trip="current" :todos="currentTodos" :can-edit-trip="canEditTrip" :member-name="memberName" @add="openTodoForm()" @toggle="toggleTodo" @edit="openTodoForm" @remove="removeTodo" />
         <TripPackingCard v-if="activeTripTab === 'packing'" :trip="current" :items="currentPackingItems" :can-edit-trip="canEditTrip" :member-name="memberName" @add="openPackingForm()" @toggle="togglePackingItem" @edit="openPackingForm" @remove="removePackingItem" />
