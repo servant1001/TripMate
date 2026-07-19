@@ -13,4 +13,5 @@ export type BookingType = 'flight' | 'hotel' | 'transport' | 'ticket' | 'restaur
 export interface Booking { id: string; tripId: string; type: BookingType; title: string; startDate: string; endDate?: string; location?: string; bookingNumber?: string; bookedBy?: string; contact?: string; website?: string; note?: string; createdBy: string; createdAt: number }
 export type FavoriteType = 'attraction' | 'restaurant' | 'shop' | 'cafe' | 'stay' | 'alternative' | 'other'
 export interface Favorite { id: string; tripId: string; name: string; type: FavoriteType; location?: string; mapUrl?: string; website?: string; imageUrl?: string; estimatedCost?: number; recommendedBy?: string; note?: string; addedToItinerary: boolean; createdBy: string; createdAt: number }
+export interface AlbumPhoto { id: string; tripId: string; imageUrl: string; caption?: string; tripDate?: string; itineraryItemId?: string; uploadedBy: string; createdAt: number }
 export interface Settlement { id: string; tripId: string; fromId: string; toId: string; amount: number; date: string; createdAt: number }
