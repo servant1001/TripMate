@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowDown } from '@element-plus/icons-vue'
+import { ArrowDown, Close, Menu } from '@element-plus/icons-vue'
 import type { User } from 'firebase/auth'
 import { getRedirectResult, onAuthStateChanged } from 'firebase/auth'
 import { useRoute, useRouter } from 'vue-router'
@@ -23,7 +23,7 @@ import { uploadTripCover, uploadTripImage } from './services/cloudinary'
 import { auth, ensureUserProfile, firebaseEnabled, logOut, registerWithEmail, requestPasswordReset, signInWithEmail, signInWithGoogle, updateUserSettings } from './services/firebase'
 import { joinTripByInviteCode } from './services/cloudinary'
 
-const router = useRouter(); const route = useRoute(); const store = useTripStore(); const activeId = ref(''); const screen = ref<'trips'|'trip'|'login'|'profile'>('trips'); const authResolving = ref(firebaseEnabled && Boolean(auth)); const showCreate = ref(false); const showEdit = ref(false); const showJoin = ref(false); const showMember = ref(false); const showItem = ref(false); const showExpense = ref(false); const showTodo = ref(false); const showPacking = ref(false); const showBooking = ref(false); const showFavorite = ref(false); const showAlbum = ref(false); const savingAlbum = ref(false); const showShopping = ref(false); const savingShopping = ref(false); const showPersonalBudget = ref(false); const savingPersonalBudget = ref(false); const showCategoryBudgets = ref(false); const savingCategoryBudgets = ref(false)
+const router = useRouter(); const route = useRoute(); const store = useTripStore(); const activeId = ref(''); const screen = ref<'trips'|'trip'|'login'|'profile'>('trips'); const authResolving = ref(firebaseEnabled && Boolean(auth)); const showCreate = ref(false); const showEdit = ref(false); const showJoin = ref(false); const showMember = ref(false); const showItem = ref(false); const showExpense = ref(false); const showTodo = ref(false); const showPacking = ref(false); const showBooking = ref(false); const showFavorite = ref(false); const showAlbum = ref(false); const savingAlbum = ref(false); const showShopping = ref(false); const savingShopping = ref(false); const showPersonalBudget = ref(false); const savingPersonalBudget = ref(false); const showCategoryBudgets = ref(false); const savingCategoryBudgets = ref(false); const mobileTripMenuOpen = ref(false)
 type TripTab = 'overview' | 'itinerary' | 'map' | 'expenses' | 'todos' | 'packing' | 'bookings' | 'favorites' | 'album' | 'shopping' | 'members'
 const current = computed(() => store.trip(activeId.value)); const currentItems = computed(() => store.items(activeId.value)); const currentExpenses = computed(() => store.tripExpenses(activeId.value)); const currentTodos = computed(() => store.tripTodos(activeId.value)); const currentPackingItems = computed(() => store.tripPackingItems(activeId.value)); const currentBookings = computed(() => store.tripBookings(activeId.value)); const currentFavorites = computed(() => store.tripFavorites(activeId.value)); const currentAlbumPhotos = computed(() => store.tripAlbumPhotos(activeId.value)); const currentShoppingItems = computed(() => store.tripShoppingItems(activeId.value)); const currentSettlements = computed(() => store.tripSettlements(activeId.value));
 const insertAfterItemId = ref<string | null>(null)
@@ -47,7 +47,10 @@ const activeTripTab = computed<TripTab>(() => {
   const tab = route.query.tab
   return tab === 'itinerary' || tab === 'map' || tab === 'expenses' || tab === 'todos' || tab === 'packing' || tab === 'bookings' || tab === 'favorites' || tab === 'album' || tab === 'shopping' || tab === 'members' ? tab : 'overview'
 })
+const tripTabLabels: Record<TripTab, string> = { overview: '總覽', itinerary: '行程', map: '地圖', expenses: '開銷', todos: '待辦', packing: '行李', bookings: '預訂', favorites: '收藏', album: '相簿', shopping: '購物', members: '旅伴與結算' }
+const tripTabOptions: TripTab[] = ['overview', 'itinerary', 'expenses', 'todos', 'packing', 'bookings', 'favorites', 'shopping', 'album', 'map', 'members']
 function selectTripTab(tab: TripTab) {
+  mobileTripMenuOpen.value = false
   if (tab === activeTripTab.value) return
   const query = { ...route.query }
   delete query.tab
@@ -177,7 +180,10 @@ async function signOutUser() { await logOut(); ElMessage.success('已登出。')
 <template>
   <main class="app-shell">
     <header v-if="screen !== 'login'" class="app-header">
-      <button class="brand" @click="goTrips" aria-label="TripMate 我的旅行">Trip<span>Mate</span></button>
+      <div class="header-brand-area">
+        <el-button v-if="screen === 'trip' && current" class="mobile-trip-header-menu" text circle aria-label="開啟旅行內容選單" title="開啟旅行內容選單" @click="mobileTripMenuOpen = true"><el-icon><Menu /></el-icon></el-button>
+        <button class="brand" @click="goTrips" aria-label="TripMate 我的旅行">Trip<span>Mate</span></button>
+      </div>
       <div class="header-actions">
         <el-dropdown v-if="user" trigger="click">
           <button class="user-menu-trigger" type="button" aria-label="開啟帳號選單">
@@ -319,17 +325,23 @@ async function signOutUser() { await logOut(); ElMessage.success('已登出。')
 </section>
     <section v-else-if="current" class="page trip-detail-page">
       <TripHeroHeader :trip="current" :date-range="tripDateRange" :duration="tripDuration" :can-edit-settings="canEditTripSettings" :can-manage-members="canManageMembers" :open-member-manager="openMemberManager" :role-label="currentRole === 'editor' ? 'Editor・可編輯' : 'Viewer・唯讀'" @back="goTrips" @edit="startEditTrip" @remove="removeTrip" />
+      <el-drawer v-model="mobileTripMenuOpen" class="mobile-trip-drawer" direction="ltr" size="min(82vw, 300px)" :with-header="false">
+        <div class="mobile-trip-drawer-heading"><div><span>TRIPMATE</span><strong>旅行內容</strong></div><el-button text circle aria-label="關閉內容選單" title="關閉內容選單" @click="mobileTripMenuOpen = false"><el-icon><Close /></el-icon></el-button></div>
+        <nav class="mobile-trip-drawer-nav" aria-label="旅行內容導覽">
+          <button v-for="tab in tripTabOptions" :key="tab" type="button" :class="{ 'is-active': activeTripTab === tab }" @click="selectTripTab(tab)">{{ tripTabLabels[tab] }}</button>
+        </nav>
+      </el-drawer>
       <nav class="trip-tabs" aria-label="旅行內容導覽" role="tablist">
         <button type="button" role="tab" :aria-selected="activeTripTab === 'overview'" :class="{ 'is-active': activeTripTab === 'overview' }" @click="selectTripTab('overview')">總覽</button>
         <button type="button" role="tab" :aria-selected="activeTripTab === 'itinerary'" :class="{ 'is-active': activeTripTab === 'itinerary' }" @click="selectTripTab('itinerary')">行程</button>
-        <button type="button" role="tab" :aria-selected="activeTripTab === 'map'" :class="{ 'is-active': activeTripTab === 'map' }" @click="selectTripTab('map')">地圖</button>
         <button type="button" role="tab" :aria-selected="activeTripTab === 'expenses'" :class="{ 'is-active': activeTripTab === 'expenses' }" @click="selectTripTab('expenses')">開銷</button>
         <button type="button" role="tab" :aria-selected="activeTripTab === 'todos'" :class="{ 'is-active': activeTripTab === 'todos' }" @click="selectTripTab('todos')">待辦</button>
         <button type="button" role="tab" :aria-selected="activeTripTab === 'packing'" :class="{ 'is-active': activeTripTab === 'packing' }" @click="selectTripTab('packing')">行李</button>
         <button type="button" role="tab" :aria-selected="activeTripTab === 'bookings'" :class="{ 'is-active': activeTripTab === 'bookings' }" @click="selectTripTab('bookings')">預訂</button>
         <button type="button" role="tab" :aria-selected="activeTripTab === 'favorites'" :class="{ 'is-active': activeTripTab === 'favorites' }" @click="selectTripTab('favorites')">收藏</button>
-        <button type="button" role="tab" :aria-selected="activeTripTab === 'album'" :class="{ 'is-active': activeTripTab === 'album' }" @click="selectTripTab('album')">相簿</button>
         <button type="button" role="tab" :aria-selected="activeTripTab === 'shopping'" :class="{ 'is-active': activeTripTab === 'shopping' }" @click="selectTripTab('shopping')">購物</button>
+        <button type="button" role="tab" :aria-selected="activeTripTab === 'album'" :class="{ 'is-active': activeTripTab === 'album' }" @click="selectTripTab('album')">相簿</button>
+        <button type="button" role="tab" :aria-selected="activeTripTab === 'map'" :class="{ 'is-active': activeTripTab === 'map' }" @click="selectTripTab('map')">地圖</button>
         <button type="button" role="tab" :aria-selected="activeTripTab === 'members'" :class="{ 'is-active': activeTripTab === 'members' }" @click="selectTripTab('members')">旅伴與結算</button>
       </nav>
       <div class="trip-detail-layout" :class="{ 'is-single-detail': activeTripTab !== 'overview' }" role="tabpanel" :aria-label="activeTripTab === 'overview' ? '旅行總覽' : activeTripTab === 'itinerary' ? '行程' : activeTripTab === 'map' ? '地圖' : activeTripTab === 'expenses' ? '開銷' : activeTripTab === 'todos' ? '待辦' : activeTripTab === 'packing' ? '行李' : activeTripTab === 'bookings' ? '預訂' : activeTripTab === 'favorites' ? '收藏' : activeTripTab === 'album' ? '旅行相簿' : activeTripTab === 'shopping' ? '購物清單' : '旅伴與結算'">
