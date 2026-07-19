@@ -28,6 +28,7 @@ export const useTripStore = defineStore('trips', {
     async deleteBooking(booking: Booking) { await repository.deleteBooking(booking); this.bookings = this.bookings.filter((entry) => entry.id !== booking.id) },
     async addFavorite(input: Omit<Favorite, 'id' | 'createdAt' | 'addedToItinerary'>) { const favorite = await repository.addFavorite(input); this.favorites.push(favorite) },
     async updateFavorite(favorite: Favorite) { await repository.updateFavorite(favorite); const index = this.favorites.findIndex((entry) => entry.id === favorite.id); if (index >= 0) this.favorites.splice(index, 1, favorite) },
+    async reorderFavorites(favorites: Favorite[]) { const previousOrders = new Map(this.favorites.map((favorite) => [favorite.id, favorite.order])); favorites.forEach((favorite, order) => { favorite.order = order }); try { await repository.reorderFavorites(favorites) } catch (error) { this.favorites.forEach((favorite) => { favorite.order = previousOrders.get(favorite.id) }); throw error } },
     async deleteFavorite(favorite: Favorite) { await repository.deleteFavorite(favorite); this.favorites = this.favorites.filter((entry) => entry.id !== favorite.id) },
     async addAlbumPhoto(input: Omit<AlbumPhoto, 'id' | 'createdAt'>) { const photo = await repository.addAlbumPhoto(input); this.albumPhotos.push(photo) },
     async updateAlbumPhoto(photo: AlbumPhoto) { await repository.updateAlbumPhoto(photo); const index = this.albumPhotos.findIndex((entry) => entry.id === photo.id); if (index >= 0) this.albumPhotos.splice(index, 1, photo) },
