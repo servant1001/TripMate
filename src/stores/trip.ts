@@ -20,6 +20,7 @@ export const useTripStore = defineStore('trips', {
     async deleteTodo(todo: TodoItem) { await repository.deleteTodo(todo); this.todos = this.todos.filter((item) => item.id !== todo.id) },
     async addPackingItem(input: Omit<PackingItem, 'id' | 'completed' | 'createdAt'>) { const item = await repository.addPackingItem(input); this.packingItems.push(item) },
     async updatePackingItem(item: PackingItem) { await repository.updatePackingItem(item); const index = this.packingItems.findIndex((entry) => entry.id === item.id); if (index >= 0) this.packingItems.splice(index, 1, item) },
+    async reorderPackingItems(items: PackingItem[]) { const previousOrders = new Map(this.packingItems.map((item) => [item.id, item.order])); items.forEach((item, order) => { item.order = order }); try { await repository.reorderPackingItems(items) } catch (error) { this.packingItems.forEach((item) => { item.order = previousOrders.get(item.id) }); throw error } },
     async togglePackingItem(item: PackingItem) { await repository.togglePackingItem(item); item.completed = !item.completed },
     async deletePackingItem(item: PackingItem) { await repository.deletePackingItem(item); this.packingItems = this.packingItems.filter((entry) => entry.id !== item.id) },
     async addBooking(input: Omit<Booking, 'id' | 'createdAt'>) { const booking = await repository.addBooking(input); this.bookings.push(booking) },

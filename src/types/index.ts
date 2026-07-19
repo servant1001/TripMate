@@ -8,7 +8,7 @@ export interface Trip { id: string; name: string; country: string; city: string;
 export interface ItineraryItem { id: string; tripId: string; date: string; time: string; endTime?: string; title: string; location: string; mapUrl?: string; imageUrl?: string; type: string; order?: number; completed: boolean }
 export interface Expense { id: string; tripId: string; title: string; amount: number; payerId: string; kind: ExpenseKind; participantIds: string[]; splitMode?: ExpenseSplitMode; shares?: Record<string, number>; category: string; date: string }
 export interface TodoItem { id: string; tripId: string; title: string; scope?: TodoScope; assigneeId?: string; dueDate?: string; completed: boolean; createdAt: number }
-export interface PackingItem { id: string; tripId: string; name: string; category: string; quantity: number; assignedTo?: string; isShared: boolean; completed: boolean; note?: string; createdBy: string; createdAt: number }
+export interface PackingItem { id: string; tripId: string; name: string; category: string; quantity: number; assignedTo?: string; isShared: boolean; order?: number; completed: boolean; note?: string; createdBy: string; createdAt: number }
 export type BookingType = 'flight' | 'hotel' | 'transport' | 'ticket' | 'restaurant' | 'other'
 export interface Booking { id: string; tripId: string; type: BookingType; title: string; startDate: string; endDate?: string; location?: string; bookingNumber?: string; bookedBy?: string; contact?: string; website?: string; note?: string; createdBy: string; createdAt: number }
 export type FavoriteType = 'attraction' | 'restaurant' | 'shop' | 'cafe' | 'stay' | 'alternative' | 'other'
