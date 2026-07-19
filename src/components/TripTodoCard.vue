@@ -39,7 +39,19 @@ function dueLabel(todo: TodoItem) {
   return `截止 ${due.getMonth() + 1} 月 ${due.getDate()} 日`
 }
 
-const orderedTodos = (todos: TodoItem[]) => [...todos.filter((todo) => !todo.completed), ...todos.filter((todo) => todo.completed)]
+function dueTimestamp(todo: TodoItem) {
+  if (!todo.dueDate) return Number.POSITIVE_INFINITY
+  const timestamp = new Date(`${todo.dueDate}T00:00:00`).getTime()
+  return Number.isNaN(timestamp) ? Number.POSITIVE_INFINITY : timestamp
+}
+
+const orderedTodos = (todos: TodoItem[]) => [...todos].sort((a, b) => {
+  const completionOrder = Number(a.completed) - Number(b.completed)
+  if (completionOrder) return completionOrder
+  const dueOrder = dueTimestamp(a) - dueTimestamp(b)
+  if (dueOrder) return dueOrder
+  return a.createdAt - b.createdAt
+})
 const sharedTodos = () => props.todos.filter((todo) => todo.scope !== 'personal')
 const personalTodos = () => props.todos.filter((todo) => todo.scope === 'personal')
 const openTodos = () => props.todos.filter((todo) => !todo.completed)
