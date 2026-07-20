@@ -45,6 +45,15 @@ const emit = defineEmits<{
   sortPersonal: [
     payload: { parentId: string; oldIndex: number; newIndex: number },
   ];
+  move: [
+    payload: {
+      itemId: string;
+      from: string;
+      to: string;
+      oldIndex: number;
+      newIndex: number;
+    },
+  ];
 }>();
 
 const collapsedIds = ref(new Set<string>());
@@ -116,6 +125,49 @@ function destroySortables() {
   sortableInstances.clear();
 }
 
+function handleSortableEnd(
+  sourceScope: string,
+  event: {
+    to: HTMLElement;
+    item: HTMLElement;
+    oldIndex?: number;
+    newIndex?: number;
+  },
+) {
+  const { oldIndex, newIndex } = event;
+  const targetScope = event.to.dataset.sortScope;
+  const itemId = event.item.dataset.itineraryId;
+  if (!targetScope || !itemId || oldIndex == null || newIndex == null) return;
+  if (sourceScope === targetScope) {
+    if (oldIndex === newIndex) return;
+    if (sourceScope.startsWith("day:")) {
+      emit("sort", { date: sourceScope.slice(4), oldIndex, newIndex });
+    } else {
+      emit("sortPersonal", {
+        parentId: sourceScope.slice("personal:".length),
+        oldIndex,
+        newIndex,
+      });
+    }
+    return;
+  }
+  emit("move", {
+    itemId,
+    from: sourceScope,
+    to: targetScope,
+    oldIndex,
+    newIndex,
+  });
+}
+
+const sortableGroup = {
+  name: "trip-itinerary",
+  pull: (_to: Sortable, _from: Sortable, dragged: HTMLElement) =>
+    !dragged.classList.contains("is-free-activity"),
+  put: (_to: Sortable, _from: Sortable, dragged: HTMLElement) =>
+    !dragged.classList.contains("is-free-activity"),
+};
+
 async function syncSortables() {
   await nextTick();
   destroySortables();
@@ -129,6 +181,7 @@ async function syncSortables() {
       Sortable.create(list, {
         animation: 180,
         easing: "cubic-bezier(.2,.8,.2,1)",
+        group: sortableGroup,
         handle: ".itinerary-drag-handle",
         draggable: ".itinerary-entry",
         delay: 160,
@@ -139,10 +192,7 @@ async function syncSortables() {
         ghostClass: "itinerary-sort-ghost",
         chosenClass: "itinerary-sort-chosen",
         dragClass: "itinerary-sort-drag",
-        onEnd: ({ oldIndex, newIndex }) => {
-          if (oldIndex != null && newIndex != null && oldIndex !== newIndex)
-            emit("sort", { date: day.date, oldIndex, newIndex });
-        },
+        onEnd: (event) => handleSortableEnd(key, event),
       }),
     );
   });
@@ -156,9 +206,10 @@ async function syncSortables() {
       sortableInstances.set(
         key,
         Sortable.create(list, {
-          animation: 180,
-          easing: "cubic-bezier(.2,.8,.2,1)",
-          handle: ".personal-drag-handle",
+        animation: 180,
+        easing: "cubic-bezier(.2,.8,.2,1)",
+        group: sortableGroup,
+        handle: ".personal-drag-handle",
           draggable: ".personal-itinerary-entry",
           delay: 160,
           delayOnTouchOnly: true,
@@ -168,10 +219,7 @@ async function syncSortables() {
           ghostClass: "itinerary-sort-ghost",
           chosenClass: "itinerary-sort-chosen",
           dragClass: "itinerary-sort-drag",
-          onEnd: ({ oldIndex, newIndex }) => {
-            if (oldIndex != null && newIndex != null && oldIndex !== newIndex)
-              emit("sortPersonal", { parentId: group.id, oldIndex, newIndex });
-          },
+          onEnd: (event) => handleSortableEnd(key, event),
         }),
       );
     });
@@ -307,6 +355,7 @@ function sharedLabel(entry: ItineraryItem) {
         </div>
         <div
           class="itinerary-list"
+          :data-sort-scope="`day:${day.date}`"
           :ref="
             (element) =>
               registerSortableList(`day:${day.date}`, element as Element | null)
@@ -316,6 +365,7 @@ function sharedLabel(entry: ItineraryItem) {
             v-for="(entry, entryIndex) in day.entries"
             :key="entry.id"
             class="itinerary-entry"
+            :data-itinerary-id="entry.id"
             :class="[
               {
                 'is-completed': entry.completed,
@@ -562,6 +612,7 @@ function sharedLabel(entry: ItineraryItem) {
                   <div
                     v-if="personalEntries(entry).length"
                     class="personal-itinerary-list"
+                    :data-sort-scope="`personal:${entry.id}`"
                     :ref="
                       (element) =>
                         registerSortableList(
@@ -578,6 +629,7 @@ function sharedLabel(entry: ItineraryItem) {
                       v-for="personal in personalEntries(entry)"
                       :key="personal.id"
                       class="personal-itinerary-entry"
+                      :data-itinerary-id="personal.id"
                       :class="{
                         'is-completed': personal.completed,
                         'is-sortable-enabled': sortingEnabled && canEditTrip,
