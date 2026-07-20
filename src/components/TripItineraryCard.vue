@@ -80,6 +80,13 @@ function collapseAll() {
     props.days.flatMap((day) => day.entries.map((entry) => entry.id)),
   );
 }
+const allEntriesExpanded = computed(() => {
+  const entryIds = props.days.flatMap((day) => day.entries.map((entry) => entry.id))
+  return entryIds.length > 0 && entryIds.every((id) => !collapsedIds.value.has(id))
+})
+function toggleAllEntries() {
+  allEntriesExpanded.value ? collapseAll() : expandAll()
+}
 function personalEntries(group: ItineraryItem) {
   return props.personalItems
     .filter((entry) => entry.parentFreeActivityId === group.id)
@@ -264,6 +271,23 @@ function sharedLabel(entry: ItineraryItem) {
             ><el-icon><Plus /></el-icon
             ><span class="itinerary-add-full">新增行程</span
             ><span class="itinerary-add-short">新增</span></el-button
+          ><div class="itinerary-mobile-toolbar" role="group" aria-label="行程操作">
+            <el-button
+              class="itinerary-mobile-expand-toggle"
+              :aria-label="allEntriesExpanded ? '收合全部行程' : '展開全部行程'"
+              @click="toggleAllEntries"
+              ><span>{{ allEntriesExpanded ? "收合全部" : "展開全部" }}</span
+              ><el-icon><CaretBottom v-if="!allEntriesExpanded" /><CaretBottom v-else class="itinerary-mobile-collapse-icon" /></el-icon></el-button
+            ><el-button
+              class="itinerary-sort-toggle itinerary-mobile-sort"
+              :class="{ 'is-active': sortingEnabled }"
+              :aria-pressed="sortingEnabled"
+              @click="emit('toggleSorting')"
+              ><el-icon><Rank /></el-icon><span>{{ sortingEnabled ? "保存" : "排序" }}</span></el-button
+            ><el-button class="coral-button itinerary-mobile-add" @click="emit('add')"
+              ><el-icon><Plus /></el-icon><span>新增</span></el-button
+            >
+          </div
           ></template
         >
         <span v-else class="readonly-chip">唯讀</span>
@@ -334,7 +358,7 @@ function sharedLabel(entry: ItineraryItem) {
                   ? 'is-free-card'
                   : itineraryTypeClass(entry.type),
               ]"
-            >
+              >
               <div class="itinerary-card-header">
                 <img
                   v-if="entry.imageUrl && !isFreeActivity(entry)"
@@ -1952,4 +1976,46 @@ function sharedLabel(entry: ItineraryItem) {
   .personal-itinerary-card :deep(.el-dropdown) { position:absolute; z-index:2; top:4px; right:3px; }
   .personal-more-button { width:36px!important; min-width:36px!important; height:36px!important; margin:0!important; }
 }
+@media (max-width: 720px) {
+  .itinerary-entry { grid-template-columns: 22px 42px 10px minmax(0, 1fr); }
+  .itinerary-checkbox { padding-top:13px; }
+  .itinerary-checkbox :deep(.el-checkbox) { width:24px; height:24px; margin:-3px 0 0; }
+  .itinerary-checkbox :deep(.el-checkbox__inner) { width:15px; height:15px; }
+  .itinerary-time { padding:14px 2px 0 0; font-size:12px; white-space:nowrap; }
+  .itinerary-connector::after { top:18px; }
+  .itinerary-dot { width:8px; height:8px; margin-top:16px; box-shadow:0 0 0 3px #fff; }
+  .itinerary-card:not(.is-free-card) { padding:12px; }
+  .itinerary-card:not(.is-free-card) .itinerary-card-header { position:relative; display:grid; grid-template-columns:52px minmax(0, 1fr); gap:9px; min-width:0; }
+  .itinerary-card:not(.is-free-card) .itinerary-card-image { grid-column:1; grid-row:1 / span 2; width:52px; height:52px; flex-basis:52px; }
+  .itinerary-card:not(.is-free-card) .itinerary-card-heading { display:grid; grid-template-columns:minmax(0, 1fr); grid-template-rows:auto auto; grid-column:2; grid-row:1 / span 2; min-width:0; padding-right:0; }
+  .itinerary-card:not(.is-free-card) .itinerary-card-heading > div { display:contents; }
+  .itinerary-card:not(.is-free-card) .itinerary-scope-tag { grid-row:1; justify-self:start; margin:0 0 4px; }
+  .itinerary-card:not(.is-free-card) .itinerary-card-heading strong { display:-webkit-box; grid-row:2; overflow:hidden; min-width:0; padding-right:0; color:#163b37; font-size:15px; line-height:1.42; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
+  .itinerary-card:not(.is-free-card) .itinerary-card-controls { position:absolute; z-index:2; top:-5px; right:-6px; display:flex; gap:0; }
+  .itinerary-card:not(.is-free-card) .itinerary-collapse-button, .itinerary-card:not(.is-free-card) .itinerary-more-button { width:36px!important; min-width:36px!important; height:36px!important; margin:0!important; }
+  .itinerary-card:not(.is-free-card) .itinerary-drag-handle { position:absolute; z-index:3; top:28px; left:-60px; width:22px; height:22px; margin:0; background:rgba(255,255,255,.8); }
+  .itinerary-card:not(.is-free-card) .itinerary-card-body { margin-top:10px; }
+  .itinerary-card:not(.is-free-card) .itinerary-card-meta { gap:4px; margin:0 0 8px; color:#81918c; font-size:12px; }
+  .itinerary-card:not(.is-free-card) .itinerary-type-chip { font-size:10px; }
+  .itinerary-card:not(.is-free-card) .itinerary-transport-route { gap:5px; margin-top:4px; }
+  .itinerary-card:not(.is-free-card) .itinerary-transport-stop { padding:7px 19px 7px 8px; border-color:#e3ece8; background:#f9fbfa; }
+  .itinerary-card:not(.is-free-card) .itinerary-transport-stop strong { display:-webkit-box; overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
+  .itinerary-card:not(.is-free-card) .itinerary-transport-arrow { color:#81a99e; font-size:15px; }
+}
+@media (max-width: 390px) {
+  .itinerary-entry { grid-template-columns:20px 40px 9px minmax(0, 1fr); }
+  .itinerary-card:not(.is-free-card) .itinerary-card-header { grid-template-columns:48px minmax(0, 1fr); gap:8px; }
+  .itinerary-card:not(.is-free-card) .itinerary-card-image { width:48px; height:48px; flex-basis:48px; }
+  .itinerary-card:not(.is-free-card) .itinerary-transport-route { grid-template-columns:minmax(0, 1fr); gap:4px; }
+  .itinerary-card:not(.is-free-card) .itinerary-transport-arrow { transform:rotate(90deg); min-height:13px; }
+}
+@media (max-width: 720px) {
+  .itinerary-card:not(.is-free-card) .itinerary-card-controls { position:absolute!important; top:-4px!important; right:4px!important; left:auto!important; bottom:auto!important; grid-column:auto!important; grid-row:auto!important; margin:0!important; }
+  .itinerary-card:not(.is-free-card) .itinerary-scope-tag { margin-right:74px; }
+  .itinerary-card.is-free-card .itinerary-card-header { position:relative; }
+  .itinerary-card.is-free-card .itinerary-card-controls { position:absolute!important; top:-4px!important; right:-4px!important; left:auto!important; bottom:auto!important; grid-column:auto!important; grid-row:auto!important; margin:0!important; }
+  .itinerary-card.is-free-card .itinerary-scope-tag { margin-right:74px; }
+  .itinerary-entry.is-free-activity .free-activity-marker { width:18px; height:18px; margin:0; font-size:14px; line-height:1; }
+}
+.itinerary-add{margin-left:0!important}.itinerary-mobile-toolbar{display:none}@media(max-width:720px){.itinerary-heading-actions>.itinerary-expand-actions,.itinerary-heading-actions>.itinerary-sort-toggle,.itinerary-heading-actions>.itinerary-add{display:none}.itinerary-mobile-toolbar{display:flex;align-items:center;gap:8px;width:100%;min-width:0;box-sizing:border-box}.itinerary-mobile-toolbar :deep(.el-button){min-height:44px;margin-left:0;padding:0 10px;border-radius:10px;font-size:14px;font-weight:700;white-space:nowrap}.itinerary-mobile-expand-toggle{flex:1;min-width:0;border-color:#d3e3dc;background:#f8fbf9;color:#416d62}.itinerary-mobile-expand-toggle span{overflow:hidden;text-overflow:ellipsis}.itinerary-mobile-sort,.itinerary-mobile-add{flex:0 0 auto}.itinerary-mobile-sort{min-width:68px;border-color:#bfd7cd;color:#2f7d70}.itinerary-mobile-add{min-width:66px}.itinerary-mobile-collapse-icon{transform:rotate(180deg)}}
 </style>
