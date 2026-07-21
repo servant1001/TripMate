@@ -225,6 +225,13 @@ async function sortItineraryItems({ date, oldIndex, newIndex }: { date: string; 
   reordered.splice(newIndex, 0, moved)
   try { await store.reorderItems(reordered) } catch (error) { ElMessage.error(error instanceof Error ? error.message : '無法更新行程順序。') }
 }
+async function sortGroupItineraryItems({ groupId, oldIndex, newIndex }: { groupId: string; oldIndex: number; newIndex: number }) {
+  if (!canEditTrip.value || !itinerarySortingEnabled.value || oldIndex === newIndex) return
+  const entries = currentItems.value.filter((entry) => entry.itineraryGroupId === groupId).sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || (a.time || '').localeCompare(b.time || ''))
+  if (oldIndex < 0 || newIndex < 0 || oldIndex >= entries.length || newIndex >= entries.length) return
+  const reordered = [...entries]; const [moved] = reordered.splice(oldIndex, 1); if (!moved) return; reordered.splice(newIndex, 0, moved)
+  try { await store.reorderItems(reordered) } catch (error) { ElMessage.error(error instanceof Error ? error.message : '無法更新群組內行程順序。') }
+}
 async function sortPersonalItineraryItems({ parentId, oldIndex, newIndex }: { parentId: string; oldIndex: number; newIndex: number }) {
   if (!canEditTrip.value || !itinerarySortingEnabled.value || oldIndex === newIndex) return
   const entries = currentPersonalItems.value.filter((entry) => entry.parentFreeActivityId === parentId).sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || (a.time || '').localeCompare(b.time || ''))
@@ -235,48 +242,34 @@ async function sortPersonalItineraryItems({ parentId, oldIndex, newIndex }: { pa
 async function moveItineraryItem({ itemId, from, to, oldIndex, newIndex }: { itemId: string; from: string; to: string; oldIndex: number; newIndex: number }) {
   if (!canEditTrip.value || !itinerarySortingEnabled.value || from === to) return
   const entry = currentItems.value.find((item) => item.id === itemId)
-  if (!entry) return
-  const sourceIsPersonal = from.startsWith('personal:')
-  const targetIsPersonal = to.startsWith('personal:')
-  const sourceIsDay = from.startsWith('day:')
-  const targetIsDay = to.startsWith('day:')
-  if ((!sourceIsPersonal && !sourceIsDay) || (!targetIsPersonal && !targetIsDay) || entry.activityKind === 'free') return
-
-  const sourceEntries = (sourceIsPersonal
-    ? currentPersonalItems.value.filter((item) => item.parentFreeActivityId === from.slice('personal:'.length))
-    : itineraryDays.value.find((day) => day.date === from.slice('day:'.length))?.entries || [])
-    .sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || (a.time || '').localeCompare(b.time || ''))
+  if (!entry || entry.activityKind === 'free' || entry.activityKind === 'group') return
+  const sourceIsPersonal = from.startsWith('personal:'); const targetIsPersonal = to.startsWith('personal:')
+  const sourceIsDay = from.startsWith('day:'); const targetIsDay = to.startsWith('day:')
+  const sourceIsGroup = from.startsWith('group:'); const targetIsGroup = to.startsWith('group:')
+  if ((!sourceIsPersonal && !sourceIsDay && !sourceIsGroup) || (!targetIsPersonal && !targetIsDay && !targetIsGroup)) return
+  const byOrder = (a: ItineraryItem, b: ItineraryItem) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || (a.time || '').localeCompare(b.time || '')
+  const entriesFor = (scope: string) => scope.startsWith('personal:') ? currentPersonalItems.value.filter((item) => item.parentFreeActivityId === scope.slice('personal:'.length)).sort(byOrder) : scope.startsWith('group:') ? currentItems.value.filter((item) => item.itineraryGroupId === scope.slice('group:'.length)).sort(byOrder) : (itineraryDays.value.find((day) => day.date === scope.slice('day:'.length))?.entries || []).filter((item) => !item.itineraryGroupId).sort(byOrder)
+  const sourceEntries = entriesFor(from)
   if (oldIndex < 0 || oldIndex >= sourceEntries.length || newIndex < 0) return
-
   const previous = { ...entry }
-  let moved: ItineraryItem
-  let targetEntries: ItineraryItem[]
+  let moved: ItineraryItem; let targetEntries: ItineraryItem[]
   if (targetIsPersonal) {
-    const parentFreeActivityId = to.slice('personal:'.length)
-    const group = currentItems.value.find((item) => item.id === parentFreeActivityId && item.activityKind === 'free')
-    if (!group || !user.value?.uid) return
-    moved = { ...entry, activityKind: 'personal', ownerId: user.value.uid, parentFreeActivityId, date: group.date }
-    targetEntries = currentPersonalItems.value.filter((item) => item.parentFreeActivityId === parentFreeActivityId && item.id !== entry.id)
-  } else {
-    const date = to.slice('day:'.length)
+    const parentFreeActivityId = to.slice('personal:'.length); const freeGroup = currentItems.value.find((item) => item.id === parentFreeActivityId && item.activityKind === 'free')
+    if (!freeGroup || !user.value?.uid) return
+    moved = { ...entry, activityKind: 'personal', ownerId: user.value.uid, parentFreeActivityId, itineraryGroupId: '', date: freeGroup.date }
+  } else if (targetIsGroup) {
+    const itineraryGroupId = to.slice('group:'.length); const placeGroup = currentItems.value.find((item) => item.id === itineraryGroupId && item.activityKind === 'group')
+    if (!placeGroup) return
     const { ownerId: _ownerId, parentFreeActivityId: _parentFreeActivityId, ...sharedEntry } = entry
-    moved = { ...sharedEntry, activityKind: 'shared', date }
-    targetEntries = (itineraryDays.value.find((day) => day.date === date)?.entries || []).filter((item) => item.id !== entry.id)
+    moved = { ...sharedEntry, activityKind: 'shared', ownerId: '', parentFreeActivityId: '', itineraryGroupId, date: placeGroup.date }
+  } else {
+    const date = to.slice('day:'.length); const { ownerId: _ownerId, parentFreeActivityId: _parentFreeActivityId, ...sharedEntry } = entry
+    moved = { ...sharedEntry, activityKind: 'shared', ownerId: '', parentFreeActivityId: '', itineraryGroupId: '', date }
   }
-
+  targetEntries = entriesFor(to).filter((item) => item.id !== entry.id)
   const reorderedSource = sourceEntries.filter((item) => item.id !== entry.id)
-  const reorderedTarget = [...targetEntries].sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || (a.time || '').localeCompare(b.time || ''))
-  reorderedTarget.splice(Math.min(Math.max(newIndex, 0), reorderedTarget.length), 0, moved)
-
-  try {
-    await store.moveItem(moved, previous)
-    if (reorderedSource.length) await store.reorderItems(reorderedSource)
-    await store.reorderItems(reorderedTarget)
-    const visibilityChanged = sourceIsPersonal !== targetIsPersonal
-    ElMessage.success(visibilityChanged ? (targetIsPersonal ? '已移入自由活動，僅自己可見。' : '已轉為共用行程，所有旅伴可見。') : '已移動行程。')
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '無法移動行程。')
-  }
+  const reorderedTarget = [...targetEntries]; reorderedTarget.splice(Math.min(Math.max(newIndex, 0), reorderedTarget.length), 0, moved)
+  try { await store.moveItem(moved, previous); if (reorderedSource.length) await store.reorderItems(reorderedSource); await store.reorderItems(reorderedTarget); ElMessage.success(targetIsGroup ? '已移入地點群組。' : sourceIsGroup && targetIsDay ? '已移出地點群組。' : targetIsPersonal ? '已移入自由活動，僅自己可見。' : '已移動行程。') } catch (error) { ElMessage.error(error instanceof Error ? error.message : '無法移動行程。') }
 }
 function expenseParticipants(expense: { kind: ExpenseKind; payerId: string; participantIds: string[] }) { return expense.kind === 'personal' ? [expense.payerId] : expense.participantIds.length ? expense.participantIds : current.value?.members.map((member) => member.id) || [] }
 function expenseParticipantCount(expense: Expense) { return expenseParticipants(expense).length }
@@ -477,7 +470,7 @@ async function signOutUser() { await logOut(); ElMessage.success('已登出。')
         <button type="button" role="tab" :aria-selected="activeTripTab === 'members'" :class="{ 'is-active': activeTripTab === 'members' }" @click="selectTripTab('members')">旅伴與結算</button>
       </nav>
       <div class="trip-detail-layout" :class="{ 'is-single-detail': activeTripTab !== 'overview' }" role="tabpanel" :aria-label="activeTripTab === 'overview' ? '旅行總覽' : activeTripTab === 'itinerary' ? '行程' : activeTripTab === 'map' ? '地圖' : activeTripTab === 'expenses' ? '開銷' : activeTripTab === 'todos' ? '待辦' : activeTripTab === 'packing' ? '行李' : activeTripTab === 'bookings' ? '預訂' : activeTripTab === 'favorites' ? '收藏' : activeTripTab === 'album' ? '旅行相簿' : activeTripTab === 'shopping' ? '購物清單' : '旅伴與結算'">
-<TripItineraryCard v-if="activeTripTab === 'overview' || activeTripTab === 'itinerary'" :days="itineraryDays" :personal-items="currentPersonalItems" :shopping-items="currentShoppingItems" :can-edit-trip="canEditTrip" :sorting-enabled="itinerarySortingEnabled" :format-date="formatItineraryDate" :duration="itineraryDuration" :time-warning="itineraryTimeWarning" :maps-url="mapsUrl" @add="openNewItemForm" @add-after="openItemFormAfter" @add-personal="openPersonalItemForm" @toggle="toggleItinerary" @edit="openItemFormForEdit" @remove="removeItem" @create-group="openItineraryGroupForm($event.entries)" @edit-group="openItineraryGroupForm([], $event)" @dissolve-group="dissolveItineraryGroup" @toggle-sorting="toggleItinerarySorting" @sort="sortItineraryItems" @sort-personal="sortPersonalItineraryItems" @move="moveItineraryItem" />
+<TripItineraryCard v-if="activeTripTab === 'overview' || activeTripTab === 'itinerary'" :days="itineraryDays" :personal-items="currentPersonalItems" :shopping-items="currentShoppingItems" :can-edit-trip="canEditTrip" :sorting-enabled="itinerarySortingEnabled" :format-date="formatItineraryDate" :duration="itineraryDuration" :time-warning="itineraryTimeWarning" :maps-url="mapsUrl" @add="openNewItemForm" @add-after="openItemFormAfter" @add-personal="openPersonalItemForm" @toggle="toggleItinerary" @edit="openItemFormForEdit" @remove="removeItem" @create-group="openItineraryGroupForm($event.entries)" @edit-group="openItineraryGroupForm([], $event)" @dissolve-group="dissolveItineraryGroup" @toggle-sorting="toggleItinerarySorting" @sort="sortItineraryItems" @sort-group="sortGroupItineraryItems" @sort-personal="sortPersonalItineraryItems" @move="moveItineraryItem" />
         <TripMapCard v-if="activeTripTab === 'map'" :days="itineraryDays" :format-date="formatItineraryDate" :maps-url="mapsUrl" />
         <TripExpenseCard v-if="activeTripTab === 'overview' || activeTripTab === 'expenses'" :trip="current" :expenses="currentExpenses" :total="total" :my-paid="myPaid" :my-balance="myBalance" :personal-budget="personalBudget" :personal-spent="myExpense" :category-budgets="categoryBudgetSummary" :can-set-personal-budget="Boolean(activeMemberId)" :can-manage-category-budgets="canEditTripSettings" :can-edit-trip="canEditTrip" :payer-name="expensePayerName" :participant-count="expenseParticipantCount" :share="expenseShare" @add="openExpenseForm()" @set-personal-budget="openPersonalBudgetForm" @manage-category-budgets="openCategoryBudgetForm" @edit="openExpenseForm" @remove="removeExpense" />
         <TripTodoCard v-if="activeTripTab === 'todos'" :trip="current" :todos="currentTodos" :can-edit-trip="canEditTrip" :member-name="memberName" @add="openTodoForm()" @toggle="toggleTodo" @edit="openTodoForm" @remove="removeTodo" />

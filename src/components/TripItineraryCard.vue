@@ -45,6 +45,7 @@ const emit = defineEmits<{
   sortPersonal: [
     payload: { parentId: string; oldIndex: number; newIndex: number },
   ];
+  sortGroup: [payload: { groupId: string; oldIndex: number; newIndex: number }];
   move: [
     payload: {
       itemId: string;
@@ -167,6 +168,8 @@ function handleSortableEnd(
     if (oldIndex === newIndex) return;
     if (sourceScope.startsWith("day:")) {
       emit("sort", { date: sourceScope.slice(4), oldIndex, newIndex });
+    } else if (sourceScope.startsWith("group:")) {
+      emit("sortGroup", { groupId: sourceScope.slice("group:".length), oldIndex, newIndex });
     } else {
       emit("sortPersonal", {
         parentId: sourceScope.slice("personal:".length),
@@ -192,6 +195,11 @@ const sortableGroup = {
   put: (_to: Sortable, _from: Sortable, dragged: HTMLElement) =>
     !dragged.classList.contains("is-free-activity"),
 };
+const sharedSortableGroup = {
+  name: "trip-itinerary-shared",
+  pull: (_to: Sortable, _from: Sortable, dragged: HTMLElement) => !dragged.classList.contains("is-free-activity") && !dragged.classList.contains("is-itinerary-group"),
+  put: (_to: Sortable, _from: Sortable, dragged: HTMLElement) => !dragged.classList.contains("is-free-activity") && !dragged.classList.contains("is-itinerary-group"),
+};
 
 async function syncSortables() {
   await nextTick();
@@ -206,7 +214,7 @@ async function syncSortables() {
       Sortable.create(list, {
         animation: 180,
         easing: "cubic-bezier(.2,.8,.2,1)",
-        group: sortableGroup,
+        group: sharedSortableGroup,
         handle: ".itinerary-drag-handle",
         draggable: ".itinerary-entry",
         delay: 160,
@@ -220,6 +228,28 @@ async function syncSortables() {
         onEnd: (event) => handleSortableEnd(key, event),
       }),
     );
+  });
+  props.days.flatMap((day) => day.entries.filter(isItineraryGroup)).forEach((group) => {
+    if (isCollapsed(group)) return;
+    const key = `group:${group.id}`;
+    const list = sortableLists.get(key);
+    if (!list) return;
+    sortableInstances.set(key, Sortable.create(list, {
+      animation: 180,
+      easing: "cubic-bezier(.2,.8,.2,1)",
+      group: sharedSortableGroup,
+      handle: ".group-drag-handle",
+      draggable: ".itinerary-group-member",
+      delay: 160,
+      delayOnTouchOnly: true,
+      touchStartThreshold: 5,
+      forceFallback: true,
+      fallbackTolerance: 4,
+      ghostClass: "itinerary-sort-ghost",
+      chosenClass: "itinerary-sort-chosen",
+      dragClass: "itinerary-sort-drag",
+      onEnd: (event) => handleSortableEnd(key, event),
+    }));
   });
   props.days
     .flatMap((day) => day.entries.filter(isFreeActivity))
@@ -257,7 +287,7 @@ watch(
     props.days
       .map(
         (day) =>
-          `${day.date}:${day.entries.map((entry) => entry.id).join(",")}`,
+          `${day.date}:${day.entries.map((entry) => `${entry.id}:${entry.itineraryGroupId || ''}`).join(",")}`,
       )
       .join("|"),
     props.personalItems
@@ -540,7 +570,7 @@ function sharedLabel(entry: ItineraryItem) {
               <div v-show="!isCollapsed(entry)" class="itinerary-card-body">
                 <template v-if="isItineraryGroup(entry)">
                   <div class="itinerary-group-summary"><p><strong>{{ entry.location || '未設定區域' }}</strong><span>共 {{ groupMembers(day, entry).length }} 項</span><span v-if="groupTypeSummary(day, entry)">{{ groupTypeSummary(day, entry) }}</span></p><a v-if="entry.mapUrl || entry.location" :href="mapsUrl(entry.location || entry.title, entry.mapUrl)" target="_blank" rel="noopener"><el-icon><Location /></el-icon>在 Google Maps 開啟 <el-icon><TopRight /></el-icon></a></div>
-                  <div class="itinerary-group-members"><article v-for="(child, childIndex) in groupMembers(day, entry)" :key="child.id" class="itinerary-group-member" :class="[itineraryTypeClass(child.type), { 'is-completed': child.completed }]"><el-checkbox :model-value="child.completed" :disabled="!canEditTrip" :aria-label="`將「${child.title}」標示為${child.completed ? '未完成' : '完成'}`" @change="emit('toggle', child)" /><img v-if="child.imageUrl" :src="child.imageUrl" :alt="`${child.title} 圖片`" /><span v-else class="itinerary-group-member-placeholder">{{ child.type.slice(0, 1) }}</span><span class="itinerary-group-member-copy"><strong>{{ child.title }}</strong><small><time>{{ child.time || '未排時間' }}</time><template v-if="child.endTime">－{{ child.endTime }}</template><em>{{ child.type }}</em><template v-if="duration(child)">· {{ duration(child) }}</template></small></span><el-dropdown v-if="canEditTrip" trigger="click" @command="handleEntryAction($event, child)"><el-button class="itinerary-more-button" text circle aria-label="更多子行程操作"><el-icon><MoreFilled /></el-icon></el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="edit">編輯行程</el-dropdown-item><el-dropdown-item command="add-after">在此後新增行程</el-dropdown-item><el-dropdown-item command="remove" divided class="itinerary-delete-menu-item">刪除行程</el-dropdown-item></el-dropdown-menu></template></el-dropdown><div class="itinerary-group-member-detail"><p v-if="timeWarning(groupMembers(day, entry), childIndex)" class="itinerary-time-warning"><el-icon><WarningFilled /></el-icon>{{ timeWarning(groupMembers(day, entry), childIndex) }}</p><p v-if="child.note" class="itinerary-note">{{ child.note }}</p><el-button v-if="shoppingItemsFor(child).length" class="itinerary-shopping-button" text @click.stop="openShoppingPreview(child)"><el-icon><ShoppingCart /></el-icon>採購清單 {{ shoppingItemsFor(child).length }} 項</el-button><div v-if="child.type === '交通' && child.transportDestinationName" class="itinerary-transport-route" aria-label="交通路線"><a v-if="child.mapUrl || child.location" class="itinerary-transport-stop is-linked" :href="mapsUrl(child.location || child.title, child.mapUrl)" target="_blank" rel="noopener"><span class="itinerary-transport-stop-label">出發</span><strong>{{ child.location || child.title }}</strong><el-icon><TopRight /></el-icon></a><p v-else class="itinerary-transport-stop"><span class="itinerary-transport-stop-label">出發</span><strong>{{ child.title }}</strong></p><span class="itinerary-transport-arrow" aria-hidden="true">→</span><a v-if="child.transportDestinationMapUrl || child.transportDestinationLocation" class="itinerary-transport-stop is-linked" :href="mapsUrl(child.transportDestinationLocation || child.transportDestinationName, child.transportDestinationMapUrl)" target="_blank" rel="noopener"><span class="itinerary-transport-stop-label">抵達</span><strong>{{ child.transportDestinationLocation || child.transportDestinationName }}</strong><el-icon><TopRight /></el-icon></a><p v-else class="itinerary-transport-stop"><span class="itinerary-transport-stop-label">抵達</span><strong>{{ child.transportDestinationName }}</strong></p></div><a v-else-if="child.mapUrl || child.location" class="itinerary-location is-linked" :href="mapsUrl(child.location, child.mapUrl)" target="_blank" rel="noopener"><el-icon><Location /></el-icon><span>{{ child.location || '在 Google Maps 開啟' }}</span><el-icon class="itinerary-external-icon"><TopRight /></el-icon></a><p v-else class="itinerary-location is-empty"><el-icon><Location /></el-icon><span>尚未設定地點</span></p></div></article></div>
+                  <div class="itinerary-group-members" :data-sort-scope="`group:${entry.id}`" :ref="(element) => registerSortableList(`group:${entry.id}`, element as Element | null)"><article v-for="(child, childIndex) in groupMembers(day, entry)" :key="child.id" class="itinerary-group-member" :data-itinerary-id="child.id" :class="[itineraryTypeClass(child.type), { 'is-completed': child.completed, 'is-sortable-enabled': sortingEnabled && canEditTrip }]"><el-checkbox :model-value="child.completed" :disabled="!canEditTrip" :aria-label="`將「${child.title}」標示為${child.completed ? '未完成' : '完成'}`" @change="emit('toggle', child)" /><img v-if="child.imageUrl" :src="child.imageUrl" :alt="`${child.title} 圖片`" /><span v-else class="itinerary-group-member-placeholder">{{ child.type.slice(0, 1) }}</span><span class="itinerary-group-member-copy"><el-tooltip v-if="sortingEnabled && canEditTrip" content="長按並拖曳排序" placement="top"><span class="group-drag-handle" aria-hidden="true"><el-icon><Rank /></el-icon></span></el-tooltip><strong>{{ child.title }}</strong><small><time>{{ child.time || '未排時間' }}</time><template v-if="child.endTime">－{{ child.endTime }}</template><em>{{ child.type }}</em><template v-if="duration(child)">· {{ duration(child) }}</template></small></span><el-dropdown v-if="canEditTrip" trigger="click" @command="handleEntryAction($event, child)"><el-button class="itinerary-more-button" text circle aria-label="更多子行程操作"><el-icon><MoreFilled /></el-icon></el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="edit">編輯行程</el-dropdown-item><el-dropdown-item command="add-after">在此後新增行程</el-dropdown-item><el-dropdown-item command="remove" divided class="itinerary-delete-menu-item">刪除行程</el-dropdown-item></el-dropdown-menu></template></el-dropdown><div class="itinerary-group-member-detail"><p v-if="timeWarning(groupMembers(day, entry), childIndex)" class="itinerary-time-warning"><el-icon><WarningFilled /></el-icon>{{ timeWarning(groupMembers(day, entry), childIndex) }}</p><p v-if="child.note" class="itinerary-note">{{ child.note }}</p><el-button v-if="shoppingItemsFor(child).length" class="itinerary-shopping-button" text @click.stop="openShoppingPreview(child)"><el-icon><ShoppingCart /></el-icon>採購清單 {{ shoppingItemsFor(child).length }} 項</el-button><div v-if="child.type === '交通' && child.transportDestinationName" class="itinerary-transport-route" aria-label="交通路線"><a v-if="child.mapUrl || child.location" class="itinerary-transport-stop is-linked" :href="mapsUrl(child.location || child.title, child.mapUrl)" target="_blank" rel="noopener"><span class="itinerary-transport-stop-label">出發</span><strong>{{ child.location || child.title }}</strong><el-icon><TopRight /></el-icon></a><p v-else class="itinerary-transport-stop"><span class="itinerary-transport-stop-label">出發</span><strong>{{ child.title }}</strong></p><span class="itinerary-transport-arrow" aria-hidden="true">→</span><a v-if="child.transportDestinationMapUrl || child.transportDestinationLocation" class="itinerary-transport-stop is-linked" :href="mapsUrl(child.transportDestinationLocation || child.transportDestinationName, child.transportDestinationMapUrl)" target="_blank" rel="noopener"><span class="itinerary-transport-stop-label">抵達</span><strong>{{ child.transportDestinationLocation || child.transportDestinationName }}</strong><el-icon><TopRight /></el-icon></a><p v-else class="itinerary-transport-stop"><span class="itinerary-transport-stop-label">抵達</span><strong>{{ child.transportDestinationName }}</strong></p></div><a v-else-if="child.mapUrl || child.location" class="itinerary-location is-linked" :href="mapsUrl(child.location, child.mapUrl)" target="_blank" rel="noopener"><el-icon><Location /></el-icon><span>{{ child.location || '在 Google Maps 開啟' }}</span><el-icon class="itinerary-external-icon"><TopRight /></el-icon></a><p v-else class="itinerary-location is-empty"><el-icon><Location /></el-icon><span>尚未設定地點</span></p></div></article></div>
                 </template>
                 <template v-if="!isFreeActivity(entry) && !isItineraryGroup(entry)"
                   ><p
@@ -2216,4 +2246,5 @@ function sharedLabel(entry: ItineraryItem) {
 @media(max-width:720px){.itinerary-group-member :deep(.el-checkbox){position:absolute!important;z-index:3;top:8px;left:8px;width:18px;height:18px;margin:0!important;padding:0!important;border-radius:4px;background:rgba(255,255,255,.92);line-height:18px}.itinerary-group-member :deep(.el-checkbox__input){display:grid;width:18px;height:18px;place-items:center}.itinerary-group-member :deep(.el-checkbox__inner){width:14px;height:14px}}
 @media(max-width:720px){.itinerary-card.is-itinerary-group-card .itinerary-card-header{grid-template-columns:minmax(0,1fr);gap:0}.itinerary-card.is-itinerary-group-card .itinerary-card-heading{grid-column:1;grid-row:1 / span 2}.itinerary-card.is-itinerary-group-card .itinerary-scope-tag{margin-right:74px}}
 .itinerary-card.is-itinerary-group-card{border-color:#a9cdd2;background:#f1f7f8}.is-itinerary-group .itinerary-dot{border-color:#5e9da7;background:#eff8f8}.itinerary-card.is-itinerary-group-card .itinerary-scope-tag{background:#ddeff1;color:#2f6d78}.itinerary-card.is-itinerary-group-card .itinerary-card-heading strong{color:#244f57}.itinerary-card.is-itinerary-group-card .itinerary-group-summary{border-bottom-color:#cfe2e5}.itinerary-card.is-itinerary-group-card .itinerary-group-summary p{color:#517980}.itinerary-card.is-itinerary-group-card .itinerary-group-summary p strong{color:#2f5f69}.itinerary-card.is-itinerary-group-card .itinerary-group-summary a{color:#347b86}.itinerary-card.is-itinerary-group-card .itinerary-group-member{border-color:#d2e3e5;background:#fff}.itinerary-card.is-itinerary-group-card .itinerary-group-member-placeholder{background:#e5f1f3;color:#2f6d78}
+.group-drag-handle{display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;margin:-4px 2px -4px -5px;border-radius:6px;color:#4c8c96;cursor:grab;touch-action:none}.group-drag-handle:hover{background:#e6f2f3;color:#286d78}.group-drag-handle:active{cursor:grabbing}.itinerary-group-member.is-sortable-enabled{cursor:grab}.itinerary-group-member.is-sortable-enabled:active{cursor:grabbing}@media(max-width:720px){.group-drag-handle{position:absolute;top:5px;right:38px;width:30px;height:30px;margin:0;background:rgba(255,255,255,.88)}}
 </style>
