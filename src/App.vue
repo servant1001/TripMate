@@ -640,6 +640,7 @@ async function signOutUser() { await logOut(); ElMessage.success('已登出。')
 </el-form-item>
 <el-form-item v-if="itemActivityKind !== 'free'" label="行程圖片網址（選填）">
 <el-input v-model="item.imageUrl" placeholder="貼上圖片網址，例如 https://..." />
+<div v-if="item.imageUrl" class="itinerary-form-image-preview"><img :src="item.imageUrl" alt="行程圖片預覽" /><div><strong>行程圖片預覽</strong><span>從旅遊收藏帶入或使用此網址顯示</span></div></div>
 <small>圖片會以縮圖顯示在每日行程卡片；從旅遊收藏帶入時會自動填入。</small>
 </el-form-item>
 <el-form-item label="備註（選填）">
@@ -820,4 +821,5 @@ async function signOutUser() { await logOut(); ElMessage.success('已登出。')
 .transport-destination-control{border-color:#b9d9ce;background:#f4faf6}.transport-destination-actions{display:flex;flex:0 0 auto;align-items:center;gap:2px}.transport-destination-clear{min-height:36px;color:#7a8a84}.transport-destination-clear:hover,.transport-destination-clear:focus-visible{color:#b94f45;background:#fdf0ed}@media(max-width:600px){.transport-destination-actions{width:100%;justify-content:flex-end}.transport-destination-actions .itinerary-favorite-picker-button{width:auto}}
 .favorite-picker-filter.type-shop.is-active{border-color:#b07a2d;background:#fff4d9;color:#875a15}.favorite-picker-type.type-shop{background:#fff4d9;color:#875a15}
 .itinerary-activity-kind{display:grid!important;width:100%;grid-template-columns:repeat(2,minmax(0,1fr));isolation:isolate}.itinerary-activity-kind .el-radio-button{display:block;width:100%;min-width:0}.itinerary-activity-kind .el-radio-button__inner{display:flex;width:100%;min-height:44px;box-sizing:border-box;align-items:center;justify-content:center;padding:0 12px;border-color:#c7ddd3;color:#315e55;font-weight:700;line-height:1.35;white-space:nowrap}.itinerary-activity-kind .el-radio-button__original-radio:checked + .el-radio-button__inner{border-color:#123f3a;background:#123f3a;box-shadow:-1px 0 0 0 #123f3a;color:#fff}
+.itinerary-form-image-preview{display:flex;align-items:center;gap:11px;margin-top:10px;padding:9px;border:1px solid #dce8e2;border-radius:10px;background:#f8fbf9}.itinerary-form-image-preview img{width:64px;height:48px;flex:0 0 auto;border-radius:7px;object-fit:cover}.itinerary-form-image-preview>div{display:grid;min-width:0;gap:2px}.itinerary-form-image-preview strong{color:#244a43;font-size:13px}.itinerary-form-image-preview span{color:#71827c;font-size:12px;line-height:1.4}@media(max-width:420px){.itinerary-form-image-preview{align-items:flex-start}.itinerary-form-image-preview img{width:58px;height:44px}}
 </style>

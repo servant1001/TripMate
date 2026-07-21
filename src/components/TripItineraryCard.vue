@@ -111,6 +111,9 @@ function personalTimeGroupLabel(group: ItineraryItem) {
   const entries = personalEntries(group)
   return entries.every((entry) => !entry.time) ? "未排時間" : "已安排時間"
 }
+function personalTimeWarning(group: ItineraryItem, index: number) {
+  return props.timeWarning(personalEntries(group), index);
+}
 function shoppingItemsFor(entry: ItineraryItem) {
   return props.shoppingItems.filter(
     (item) => item.itineraryItemId === entry.id,
@@ -301,8 +304,16 @@ function sharedLabel(entry: ItineraryItem) {
           role="group"
           aria-label="展開或收合行程"
         >
-          <el-button text @click="expandAll">展開全部</el-button
-          ><el-button text @click="collapseAll">收合全部</el-button>
+          <el-button
+            class="itinerary-expand-toggle"
+            :aria-label="allEntriesExpanded ? '收合全部行程' : '展開全部行程'"
+            @click="toggleAllEntries"
+            ><span>{{ allEntriesExpanded ? "收合全部" : "展開全部" }}</span
+            ><el-icon
+              ><CaretBottom
+                :class="{ 'itinerary-expand-toggle-icon': allEntriesExpanded }"
+            /></el-icon></el-button
+          >
         </div>
         <template v-if="canEditTrip"
           ><el-button
@@ -626,7 +637,7 @@ function sharedLabel(entry: ItineraryItem) {
                       ><small>{{ personalEntries(entry).length }}</small>
                     </div>
                     <article
-                      v-for="personal in personalEntries(entry)"
+                      v-for="(personal, personalIndex) in personalEntries(entry)"
                       :key="personal.id"
                       class="personal-itinerary-entry"
                       :data-itinerary-id="personal.id"
@@ -695,11 +706,26 @@ function sharedLabel(entry: ItineraryItem) {
                             }}</span>
                           </p>
                           <p
+                            v-if="personalTimeWarning(entry, personalIndex)"
+                            class="itinerary-time-warning personal-itinerary-time-warning"
+                          >
+                            <el-icon><WarningFilled /></el-icon
+                            >{{ personalTimeWarning(entry, personalIndex) }}
+                          </p>
+                          <p
                             v-if="personal.note"
                             class="personal-itinerary-note"
                           >
                             {{ personal.note }}
                           </p>
+                          <el-button
+                            v-if="shoppingItemsFor(personal).length"
+                            class="itinerary-shopping-button personal-itinerary-shopping-button"
+                            text
+                            @click.stop="openShoppingPreview(personal)"
+                            ><el-icon><ShoppingCart /></el-icon>採購清單
+                            {{ shoppingItemsFor(personal).length }} 項</el-button
+                          >
                           <div
                             v-if="
                               personal.type === '交通' &&
@@ -931,20 +957,25 @@ function sharedLabel(entry: ItineraryItem) {
 .itinerary-expand-actions {
   display: flex;
   align-items: center;
-  padding: 2px;
-  border: 1px solid #dce8e2;
-  border-radius: 10px;
-  background: #fafcfb;
 }
-.itinerary-expand-actions :deep(.el-button) {
-  min-height: 36px;
-  padding: 0 9px;
-  color: #527369;
-  font-size: 12px;
+.itinerary-expand-toggle {
+  min-height: 42px;
+  padding: 0 12px;
+  border-color: #d3e3dc;
+  border-radius: 10px;
+  background: #f8fbf9;
+  color: #416d62;
+  font-size: 13px;
   font-weight: 700;
 }
-.itinerary-expand-actions :deep(.el-button + .el-button) {
-  margin-left: 0;
+.itinerary-expand-toggle:hover,
+.itinerary-expand-toggle:focus-visible {
+  border-color: #aacbbf;
+  background: #eef5f0;
+  color: #163b37;
+}
+.itinerary-expand-toggle-icon {
+  transform: rotate(180deg);
 }
 .itinerary-sort-toggle,
 .coral-button {
@@ -1043,11 +1074,12 @@ function sharedLabel(entry: ItineraryItem) {
 .free-activity-marker {
   display: grid;
   width: 26px;
-  height: 26px;
+  height: 18px;
   place-items: center;
-  margin: 8px 0 0;
+  margin: -2px 0 0;
   color: #8d6927;
-  font-size: 16px;
+  font-size: 14px;
+  line-height: 1;
 }
 .itinerary-time {
   display: grid;
@@ -1263,6 +1295,10 @@ function sharedLabel(entry: ItineraryItem) {
   font-size: 12px;
   line-height: 1.4;
 }
+.personal-itinerary-time-warning {
+  color: #a86821 !important;
+  font-weight: 700;
+}
 .itinerary-note {
   margin: 6px 0;
   color: #6b7d78;
@@ -1305,6 +1341,9 @@ function sharedLabel(entry: ItineraryItem) {
   padding: 0 7px;
   color: #26705d;
   font-weight: 700;
+}
+.personal-itinerary-shopping-button {
+  margin-top: 2px;
 }
 .free-activity-note {
   margin-bottom: 12px;
@@ -2070,4 +2109,14 @@ function sharedLabel(entry: ItineraryItem) {
   .itinerary-entry.is-free-activity .free-activity-marker { width:18px; height:18px; margin:0; font-size:14px; line-height:1; }
 }
 .itinerary-add{margin-left:0!important}.itinerary-mobile-toolbar{display:none}@media(max-width:720px){.itinerary-heading-actions>.itinerary-expand-actions,.itinerary-heading-actions>.itinerary-sort-toggle,.itinerary-heading-actions>.itinerary-add{display:none}.itinerary-mobile-toolbar{display:flex;align-items:center;gap:8px;width:100%;min-width:0;box-sizing:border-box}.itinerary-mobile-toolbar :deep(.el-button){min-height:44px;margin-left:0;padding:0 10px;border-radius:10px;font-size:14px;font-weight:700;white-space:nowrap}.itinerary-mobile-expand-toggle{flex:1;min-width:0;border-color:#d3e3dc;background:#f8fbf9;color:#416d62}.itinerary-mobile-expand-toggle span{overflow:hidden;text-overflow:ellipsis}.itinerary-mobile-sort,.itinerary-mobile-add{flex:0 0 auto}.itinerary-mobile-sort{min-width:68px;border-color:#bfd7cd;color:#2f7d70}.itinerary-mobile-add{min-width:66px}.itinerary-mobile-collapse-icon{transform:rotate(180deg)}}
+@media (max-width: 420px) {
+  .itinerary-transport-route {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 5px;
+  }
+  .itinerary-transport-arrow {
+    min-height: 14px;
+    transform: rotate(90deg);
+  }
+}
 </style>
