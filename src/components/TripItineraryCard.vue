@@ -66,6 +66,16 @@ const shoppingPreviewItems = computed(() =>
     ? shoppingItemsFor(shoppingPreviewEntry.value)
     : [],
 );
+const selectedDayFilter = ref("all");
+const filteredDays = computed(() =>
+  selectedDayFilter.value === "all"
+    ? props.days
+    : props.days.filter((day) => day.date === selectedDayFilter.value),
+);
+
+function dayNumber(date: string) {
+  return props.days.findIndex((day) => day.date === date) + 1;
+}
 
 function activityKind(entry: ItineraryItem) {
   return entry.activityKind || "shared";
@@ -241,6 +251,7 @@ watch(
     props.personalItems
       .map((entry) => `${entry.id}:${entry.parentFreeActivityId}`)
       .join("|"),
+    selectedDayFilter.value,
     [...collapsedIds.value].join(","),
   ],
   () => {
@@ -353,15 +364,33 @@ function sharedLabel(entry: ItineraryItem) {
       </div>
     </div>
 
+    <div v-if="days.length > 1" class="itinerary-day-filter">
+      <label for="itinerary-day-filter">查看日期</label>
+      <el-select
+        id="itinerary-day-filter"
+        v-model="selectedDayFilter"
+        class="itinerary-day-filter-select"
+        aria-label="篩選每日行程日期"
+      >
+        <el-option label="全部天數" value="all" />
+        <el-option
+          v-for="(day, index) in days"
+          :key="day.date"
+          :label="`第 ${index + 1} 天・${formatDate(day.date)}`"
+          :value="day.date"
+        />
+      </el-select>
+    </div>
+
     <div v-if="days.length" class="itinerary-timeline">
       <section
-        v-for="(day, dayIndex) in days"
+        v-for="day in filteredDays"
         :key="day.date"
         class="itinerary-day"
         :aria-label="formatDate(day.date)"
       >
         <div class="day-heading">
-          <span>DAY {{ dayIndex + 1 }}</span>
+          <span>DAY {{ dayNumber(day.date) }}</span>
           <h3>{{ formatDate(day.date) }}</h3>
         </div>
         <div
@@ -1017,6 +1046,33 @@ function sharedLabel(entry: ItineraryItem) {
   font-size: 13px;
   font-weight: 700;
 }
+.itinerary-day-filter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 16px;
+}
+.itinerary-day-filter label {
+  color: #6b7d78;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.itinerary-day-filter-select {
+  width: min(100%, 290px);
+}
+.itinerary-day-filter-select :deep(.el-select__wrapper) {
+  min-height: 40px;
+  border: 1px solid #d9e7e1;
+  border-radius: 10px;
+  box-shadow: none;
+}
+.itinerary-day-filter-select :deep(.el-select__wrapper:hover),
+.itinerary-day-filter-select :deep(.el-select__wrapper.is-focused) {
+  border-color: #8ab8a9;
+  box-shadow: 0 0 0 3px rgba(47, 125, 112, 0.1);
+}
 .itinerary-timeline {
   display: grid;
   gap: 26px;
@@ -1626,6 +1682,15 @@ function sharedLabel(entry: ItineraryItem) {
   .itinerary-heading-actions {
     width: 100%;
     justify-content: stretch;
+  }
+  .itinerary-day-filter {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 5px;
+    margin-top: 14px;
+  }
+  .itinerary-day-filter-select {
+    width: 100%;
   }
   .itinerary-expand-actions {
     flex: 1;
