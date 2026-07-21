@@ -54,6 +54,9 @@ const emit = defineEmits<{
       newIndex: number;
     },
   ];
+  createGroup: [payload: { entries: ItineraryItem[] }];
+  editGroup: [group: ItineraryItem];
+  dissolveGroup: [group: ItineraryItem];
 }>();
 
 const collapsedIds = ref(new Set<string>());
@@ -67,6 +70,8 @@ const shoppingPreviewItems = computed(() =>
     : [],
 );
 const selectedDayFilter = ref("all");
+const groupingMode = ref(false);
+const selectedGroupEntryIds = ref<string[]>([]);
 const filteredDays = computed(() =>
   selectedDayFilter.value === "all"
     ? props.days
@@ -83,6 +88,13 @@ function activityKind(entry: ItineraryItem) {
 function isFreeActivity(entry: ItineraryItem) {
   return activityKind(entry) === "free";
 }
+function isItineraryGroup(entry: ItineraryItem) { return activityKind(entry) === "group"; }
+function visibleDayEntries(day: ItineraryDay) { return day.entries.filter((entry) => !entry.itineraryGroupId); }
+function groupMembers(day: ItineraryDay, group: ItineraryItem) { return day.entries.filter((entry) => entry.itineraryGroupId === group.id).sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || (a.time || "").localeCompare(b.time || "")); }
+function groupTypeSummary(day: ItineraryDay, group: ItineraryItem) { const counts = groupMembers(day, group).reduce<Record<string, number>>((all, item) => { all[item.type || "其他"] = (all[item.type || "其他"] || 0) + 1; return all }, {}); return Object.entries(counts).map(([type, count]) => `${type} ${count}`).join("、"); }
+function toggleGroupingMode() { groupingMode.value = !groupingMode.value; if (!groupingMode.value) selectedGroupEntryIds.value = []; }
+function toggleGroupEntry(entry: ItineraryItem, checked: boolean) { const selected = new Set(selectedGroupEntryIds.value); checked ? selected.add(entry.id) : selected.delete(entry.id); selectedGroupEntryIds.value = [...selected]; }
+function createGroupFromSelection() { const selected = props.days.flatMap((day) => day.entries).filter((entry) => selectedGroupEntryIds.value.includes(entry.id)); if (selected.length < 2) return; emit("createGroup", { entries: selected }); groupingMode.value = false; selectedGroupEntryIds.value = []; }
 function isCollapsed(entry: ItineraryItem) {
   return collapsedIds.value.has(entry.id);
 }
@@ -296,9 +308,11 @@ function handleEntryAction(
   if (command === "add-after") emit("addAfter", entry);
   if (command === "edit") emit("edit", entry);
   if (command === "remove") emit("remove", entry);
+  if (command === "edit-group") emit("editGroup", entry);
+  if (command === "dissolve-group") emit("dissolveGroup", entry);
 }
 function sharedLabel(entry: ItineraryItem) {
-  return isFreeActivity(entry) ? "自由活動" : "共用行程";
+  return isItineraryGroup(entry) ? "地點群組" : isFreeActivity(entry) ? "自由活動" : "共用行程";
 }
 </script>
 
@@ -341,6 +355,7 @@ function sharedLabel(entry: ItineraryItem) {
             ><el-icon><Plus /></el-icon
             ><span class="itinerary-add-full">新增行程</span
             ><span class="itinerary-add-short">新增</span></el-button
+          ><el-button class="itinerary-group-toggle" :class="{ 'is-active': groupingMode }" @click="toggleGroupingMode">{{ groupingMode ? '取消分組' : '建立群組' }}</el-button
           ><div class="itinerary-mobile-toolbar" role="group" aria-label="行程操作">
             <el-button
               class="itinerary-mobile-expand-toggle"
@@ -363,6 +378,8 @@ function sharedLabel(entry: ItineraryItem) {
         <span v-else class="readonly-chip">唯讀</span>
       </div>
     </div>
+
+    <div v-if="groupingMode" class="itinerary-grouping-bar"><span>勾選 2 個以上行程後建立地點群組</span><el-button :disabled="selectedGroupEntryIds.length < 2" class="itinerary-group-create" @click="createGroupFromSelection">建立群組（{{ selectedGroupEntryIds.length }}）</el-button></div>
 
     <div v-if="days.length > 1" class="itinerary-day-filter">
       <label for="itinerary-day-filter">查看日期</label>
@@ -402,7 +419,7 @@ function sharedLabel(entry: ItineraryItem) {
           "
         >
           <article
-            v-for="(entry, entryIndex) in day.entries"
+            v-for="(entry, entryIndex) in visibleDayEntries(day)"
             :key="entry.id"
             class="itinerary-entry"
             :data-itinerary-id="entry.id"
@@ -411,16 +428,18 @@ function sharedLabel(entry: ItineraryItem) {
                 'is-completed': entry.completed,
                 'is-sortable-enabled': sortingEnabled && canEditTrip,
                 'is-free-activity': isFreeActivity(entry),
+                'is-itinerary-group': isItineraryGroup(entry),
               },
             ]"
           >
             <div class="itinerary-checkbox">
               <el-checkbox
-                v-if="!isFreeActivity(entry)"
+                v-if="!isFreeActivity(entry) && !isItineraryGroup(entry) && !groupingMode"
                 :model-value="entry.completed"
                 :disabled="!canEditTrip"
                 :aria-label="`將「${entry.title}」標示為${entry.completed ? '未完成' : '已完成'}`"
                 @change="emit('toggle', entry)"
+              /><el-checkbox v-else-if="groupingMode && !isFreeActivity(entry) && !isItineraryGroup(entry)" :model-value="selectedGroupEntryIds.includes(entry.id)" :aria-label="`選取「${entry.title}」建立群組`" @change="toggleGroupEntry(entry, Boolean($event))"
               /><span v-else class="free-activity-marker" aria-hidden="true"
                 >✦</span
               >
@@ -446,6 +465,8 @@ function sharedLabel(entry: ItineraryItem) {
               :class="[
                 isFreeActivity(entry)
                   ? 'is-free-card'
+                  : isItineraryGroup(entry)
+                    ? 'is-itinerary-group-card'
                   : itineraryTypeClass(entry.type),
               ]"
               >
@@ -496,13 +517,13 @@ function sharedLabel(entry: ItineraryItem) {
                       ><el-icon><MoreFilled /></el-icon></el-button
                     ><template #dropdown
                       ><el-dropdown-menu
-                        ><el-dropdown-item command="add-after"
+                        ><el-dropdown-item v-if="isItineraryGroup(entry)" command="edit-group">編輯群組</el-dropdown-item><el-dropdown-item v-if="isItineraryGroup(entry)" command="dissolve-group" divided class="itinerary-delete-menu-item">解散群組</el-dropdown-item><el-dropdown-item v-if="!isItineraryGroup(entry)" command="add-after"
                           >在此後新增行程</el-dropdown-item
-                        ><el-dropdown-item command="edit"
+                        ><el-dropdown-item v-if="!isItineraryGroup(entry)" command="edit"
                           >編輯{{
                             isFreeActivity(entry) ? "自由活動" : "行程"
                           }}</el-dropdown-item
-                        ><el-dropdown-item
+                        ><el-dropdown-item v-if="!isItineraryGroup(entry)"
                           command="remove"
                           divided
                           class="itinerary-delete-menu-item"
@@ -517,7 +538,11 @@ function sharedLabel(entry: ItineraryItem) {
               </div>
 
               <div v-show="!isCollapsed(entry)" class="itinerary-card-body">
-                <template v-if="!isFreeActivity(entry)"
+                <template v-if="isItineraryGroup(entry)">
+                  <div class="itinerary-group-summary"><p><strong>{{ entry.location || '未設定區域' }}</strong><span>共 {{ groupMembers(day, entry).length }} 項</span><span v-if="groupTypeSummary(day, entry)">{{ groupTypeSummary(day, entry) }}</span></p><a v-if="entry.mapUrl || entry.location" :href="mapsUrl(entry.location || entry.title, entry.mapUrl)" target="_blank" rel="noopener"><el-icon><Location /></el-icon>在 Google Maps 開啟 <el-icon><TopRight /></el-icon></a></div>
+                  <div class="itinerary-group-members"><article v-for="(child, childIndex) in groupMembers(day, entry)" :key="child.id" class="itinerary-group-member" :class="[itineraryTypeClass(child.type), { 'is-completed': child.completed }]"><el-checkbox :model-value="child.completed" :disabled="!canEditTrip" :aria-label="`將「${child.title}」標示為${child.completed ? '未完成' : '完成'}`" @change="emit('toggle', child)" /><img v-if="child.imageUrl" :src="child.imageUrl" :alt="`${child.title} 圖片`" /><span v-else class="itinerary-group-member-placeholder">{{ child.type.slice(0, 1) }}</span><span class="itinerary-group-member-copy"><strong>{{ child.title }}</strong><small><time>{{ child.time || '未排時間' }}</time><template v-if="child.endTime">－{{ child.endTime }}</template><em>{{ child.type }}</em><template v-if="duration(child)">· {{ duration(child) }}</template></small></span><el-dropdown v-if="canEditTrip" trigger="click" @command="handleEntryAction($event, child)"><el-button class="itinerary-more-button" text circle aria-label="更多子行程操作"><el-icon><MoreFilled /></el-icon></el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="edit">編輯行程</el-dropdown-item><el-dropdown-item command="add-after">在此後新增行程</el-dropdown-item><el-dropdown-item command="remove" divided class="itinerary-delete-menu-item">刪除行程</el-dropdown-item></el-dropdown-menu></template></el-dropdown><div class="itinerary-group-member-detail"><p v-if="timeWarning(groupMembers(day, entry), childIndex)" class="itinerary-time-warning"><el-icon><WarningFilled /></el-icon>{{ timeWarning(groupMembers(day, entry), childIndex) }}</p><p v-if="child.note" class="itinerary-note">{{ child.note }}</p><el-button v-if="shoppingItemsFor(child).length" class="itinerary-shopping-button" text @click.stop="openShoppingPreview(child)"><el-icon><ShoppingCart /></el-icon>採購清單 {{ shoppingItemsFor(child).length }} 項</el-button><div v-if="child.type === '交通' && child.transportDestinationName" class="itinerary-transport-route" aria-label="交通路線"><a v-if="child.mapUrl || child.location" class="itinerary-transport-stop is-linked" :href="mapsUrl(child.location || child.title, child.mapUrl)" target="_blank" rel="noopener"><span class="itinerary-transport-stop-label">出發</span><strong>{{ child.location || child.title }}</strong><el-icon><TopRight /></el-icon></a><p v-else class="itinerary-transport-stop"><span class="itinerary-transport-stop-label">出發</span><strong>{{ child.title }}</strong></p><span class="itinerary-transport-arrow" aria-hidden="true">→</span><a v-if="child.transportDestinationMapUrl || child.transportDestinationLocation" class="itinerary-transport-stop is-linked" :href="mapsUrl(child.transportDestinationLocation || child.transportDestinationName, child.transportDestinationMapUrl)" target="_blank" rel="noopener"><span class="itinerary-transport-stop-label">抵達</span><strong>{{ child.transportDestinationLocation || child.transportDestinationName }}</strong><el-icon><TopRight /></el-icon></a><p v-else class="itinerary-transport-stop"><span class="itinerary-transport-stop-label">抵達</span><strong>{{ child.transportDestinationName }}</strong></p></div><a v-else-if="child.mapUrl || child.location" class="itinerary-location is-linked" :href="mapsUrl(child.location, child.mapUrl)" target="_blank" rel="noopener"><el-icon><Location /></el-icon><span>{{ child.location || '在 Google Maps 開啟' }}</span><el-icon class="itinerary-external-icon"><TopRight /></el-icon></a><p v-else class="itinerary-location is-empty"><el-icon><Location /></el-icon><span>尚未設定地點</span></p></div></article></div>
+                </template>
+                <template v-if="!isFreeActivity(entry) && !isItineraryGroup(entry)"
                   ><p
                     v-if="entry.type || duration(entry)"
                     class="itinerary-card-meta"
@@ -623,7 +648,7 @@ function sharedLabel(entry: ItineraryItem) {
                     </p></template
                   ></template
                 >
-                <template v-else
+                <template v-else-if="isFreeActivity(entry)"
                   ><p
                     v-if="entry.note"
                     class="itinerary-note free-activity-note"
@@ -2174,6 +2199,7 @@ function sharedLabel(entry: ItineraryItem) {
   .itinerary-entry.is-free-activity .free-activity-marker { width:18px; height:18px; margin:0; font-size:14px; line-height:1; }
 }
 .itinerary-add{margin-left:0!important}.itinerary-mobile-toolbar{display:none}@media(max-width:720px){.itinerary-heading-actions>.itinerary-expand-actions,.itinerary-heading-actions>.itinerary-sort-toggle,.itinerary-heading-actions>.itinerary-add{display:none}.itinerary-mobile-toolbar{display:flex;align-items:center;gap:8px;width:100%;min-width:0;box-sizing:border-box}.itinerary-mobile-toolbar :deep(.el-button){min-height:44px;margin-left:0;padding:0 10px;border-radius:10px;font-size:14px;font-weight:700;white-space:nowrap}.itinerary-mobile-expand-toggle{flex:1;min-width:0;border-color:#d3e3dc;background:#f8fbf9;color:#416d62}.itinerary-mobile-expand-toggle span{overflow:hidden;text-overflow:ellipsis}.itinerary-mobile-sort,.itinerary-mobile-add{flex:0 0 auto}.itinerary-mobile-sort{min-width:68px;border-color:#bfd7cd;color:#2f7d70}.itinerary-mobile-add{min-width:66px}.itinerary-mobile-collapse-icon{transform:rotate(180deg)}}
+.itinerary-group-toggle{min-height:40px;border-color:#c8dcd2;border-radius:10px;color:#2f7d70;font-weight:700}.itinerary-group-toggle.is-active{border-color:#b88125;background:#fff4d9;color:#80540f}.itinerary-grouping-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:14px 0 0;padding:10px 12px;border:1px solid #ead39b;border-radius:12px;background:#fffaf0;color:#775d27;font-size:13px}.itinerary-group-create{min-height:36px;border-color:#bd8730;background:#fff;color:#825b18;font-weight:700}.itinerary-card.is-itinerary-group-card{border-color:#e9c97c;background:#fffaf0}.is-itinerary-group .itinerary-dot{border-color:#d59d35;background:#fff8e8}.itinerary-group-summary{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:2px 0 10px;border-bottom:1px solid #f1dfb3}.itinerary-group-summary p{display:flex;flex-wrap:wrap;gap:4px 8px;margin:0;color:#7e6a42;font-size:12px}.itinerary-group-summary p strong{color:#5d4720;font-size:13px}.itinerary-group-summary a{display:inline-flex;align-items:center;gap:3px;color:#977026;font-size:12px;white-space:nowrap;text-decoration:none}.itinerary-group-members{display:grid;gap:7px;margin-top:10px}.itinerary-group-member{display:grid;grid-template-columns:22px 42px minmax(0,1fr) 36px;align-items:center;gap:9px;padding:8px;border:1px solid #eadfca;border-radius:10px;background:#fff}.itinerary-group-member>img,.itinerary-group-member-placeholder{display:grid;width:42px;height:42px;place-items:center;border-radius:8px;object-fit:cover;background:#f4ead5;color:#a07124;font-weight:800}.itinerary-group-member-copy{display:grid;min-width:0;gap:3px}.itinerary-group-member-copy strong{overflow:hidden;color:#244a43;font-size:14px;text-overflow:ellipsis;white-space:nowrap}.itinerary-group-member-copy small{display:flex;flex-wrap:wrap;gap:5px;color:#75857f;font-size:12px}.itinerary-group-member-copy em{padding:1px 6px;border-radius:999px;background:#eef5f0;color:#47776a;font-size:10px;font-style:normal;font-weight:700}@media(max-width:720px){.itinerary-group-toggle{display:none}.itinerary-grouping-bar{align-items:flex-start;flex-direction:column}.itinerary-group-create{width:100%;min-height:42px}.itinerary-group-summary{align-items:flex-start;flex-direction:column}.itinerary-group-member{grid-template-columns:20px 40px minmax(0,1fr) 34px;gap:7px}.itinerary-group-member>img,.itinerary-group-member-placeholder{width:40px;height:40px}}
 @media (max-width: 420px) {
   .itinerary-transport-route {
     grid-template-columns: minmax(0, 1fr);
@@ -2184,4 +2210,10 @@ function sharedLabel(entry: ItineraryItem) {
     transform: rotate(90deg);
   }
 }
+@media (max-width:720px) { .itinerary-group-toggle { display:inline-flex; min-height:40px; margin:0; padding:0 10px; font-size:13px; white-space:nowrap; } }
+.itinerary-group-member{align-items:start}.itinerary-group-member>:first-child{margin-top:10px}.itinerary-group-member>img,.itinerary-group-member>.itinerary-group-member-placeholder{margin-top:2px}.itinerary-group-member-copy{padding-top:4px}.itinerary-group-member-detail{display:grid;grid-column:2 / -1;min-width:0;gap:7px;padding-top:2px}.itinerary-group-member-detail .itinerary-note{margin:0}.itinerary-group-member-detail .itinerary-location{margin:0}.itinerary-group-member-detail .itinerary-time-warning{margin:0}.itinerary-group-member-detail .itinerary-shopping-button{justify-self:start;margin:0;padding:0;color:#2f7d70}.itinerary-group-member-detail .itinerary-transport-route{margin:0}.itinerary-group-member.is-completed{opacity:.66}.itinerary-group-member.is-completed .itinerary-group-member-copy strong{text-decoration:line-through}@media(max-width:420px){.itinerary-group-member-detail .itinerary-transport-route{grid-template-columns:minmax(0,1fr)}.itinerary-group-member-detail .itinerary-transport-arrow{transform:rotate(90deg)}}
+@media(max-width:720px){.itinerary-group-member{position:relative;grid-template-columns:40px minmax(0,1fr) 34px;padding:8px}.itinerary-group-member>:first-child{position:absolute;z-index:2;top:9px;left:9px;margin:0;padding:0;border-radius:4px;background:rgba(255,255,255,.88)}.itinerary-group-member>img,.itinerary-group-member>.itinerary-group-member-placeholder{grid-column:1;grid-row:1;margin-top:0}.itinerary-group-member-copy{grid-column:2;grid-row:1;padding-top:3px}.itinerary-group-member :deep(.el-dropdown){grid-column:3;grid-row:1}.itinerary-group-member-detail{grid-column:1 / -1;padding-top:1px}}
+@media(max-width:720px){.itinerary-group-member :deep(.el-checkbox){position:absolute!important;z-index:3;top:8px;left:8px;width:18px;height:18px;margin:0!important;padding:0!important;border-radius:4px;background:rgba(255,255,255,.92);line-height:18px}.itinerary-group-member :deep(.el-checkbox__input){display:grid;width:18px;height:18px;place-items:center}.itinerary-group-member :deep(.el-checkbox__inner){width:14px;height:14px}}
+@media(max-width:720px){.itinerary-card.is-itinerary-group-card .itinerary-card-header{grid-template-columns:minmax(0,1fr);gap:0}.itinerary-card.is-itinerary-group-card .itinerary-card-heading{grid-column:1;grid-row:1 / span 2}.itinerary-card.is-itinerary-group-card .itinerary-scope-tag{margin-right:74px}}
+.itinerary-card.is-itinerary-group-card{border-color:#a9cdd2;background:#f1f7f8}.is-itinerary-group .itinerary-dot{border-color:#5e9da7;background:#eff8f8}.itinerary-card.is-itinerary-group-card .itinerary-scope-tag{background:#ddeff1;color:#2f6d78}.itinerary-card.is-itinerary-group-card .itinerary-card-heading strong{color:#244f57}.itinerary-card.is-itinerary-group-card .itinerary-group-summary{border-bottom-color:#cfe2e5}.itinerary-card.is-itinerary-group-card .itinerary-group-summary p{color:#517980}.itinerary-card.is-itinerary-group-card .itinerary-group-summary p strong{color:#2f5f69}.itinerary-card.is-itinerary-group-card .itinerary-group-summary a{color:#347b86}.itinerary-card.is-itinerary-group-card .itinerary-group-member{border-color:#d2e3e5;background:#fff}.itinerary-card.is-itinerary-group-card .itinerary-group-member-placeholder{background:#e5f1f3;color:#2f6d78}
 </style>
