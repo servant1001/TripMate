@@ -15,7 +15,8 @@ const props = defineProps<{
   canSetPersonalBudget: boolean
   canManageCategoryBudgets: boolean
   canEditTrip: boolean
-  payerName: (memberId: string) => string
+  payerLabel: (expense: Expense) => string
+  splitLabel: (expense: Expense) => string
   participantCount: (expense: Expense) => number
   share: (expense: Expense) => number
 }>()
@@ -94,8 +95,8 @@ function handleExpenseAction(command: string | number | object, expense: Expense
     <ul v-if="expenses.length" class="expense-list">
       <li v-for="expense in expenses" :key="expense.id" class="expense-row">
         <span class="expense-category-icon" :aria-label="expense.category"><el-icon><component :is="categoryIcon(expense.category)" /></el-icon></span>
-        <div class="expense-copy"><strong>{{ expense.title }}</strong><p>{{ expense.date || '未設定日期' }}・{{ payerName(expense.payerId) }} 支付・{{ expense.kind === 'shared' ? `${participantCount(expense)} 人${expense.splitMode === 'custom' ? '自訂分攤' : '分攤'}` : '個人支出' }}</p></div>
-        <div class="expense-amount"><b>{{ trip.currency }} {{ expense.amount.toLocaleString() }}</b><small v-if="expense.kind === 'shared' && expense.splitMode !== 'custom'">每人 {{ share(expense).toFixed(0) }}</small></div>
+        <div class="expense-copy"><strong>{{ expense.title }}</strong><p>{{ expense.date || '未設定日期' }}・{{ payerLabel(expense) }}・{{ expense.kind === 'shared' ? `${participantCount(expense)} 人${splitLabel(expense)}` : splitLabel(expense) }}</p></div>
+        <div class="expense-amount"><b>{{ trip.currency }} {{ expense.amount.toLocaleString() }}</b><small v-if="expense.kind === 'shared'">{{ expense.splitMode === 'equal' || !expense.splitMode ? `每人 ${share(expense).toFixed(0)}` : splitLabel(expense) }}</small></div>
         <el-dropdown v-if="canEditTrip" class="expense-actions" trigger="click" @command="handleExpenseAction($event, expense)">
           <el-button class="expense-more-button" text circle aria-label="更多支出操作" title="更多支出操作"><el-icon><MoreFilled /></el-icon></el-button>
           <template #dropdown><el-dropdown-menu><el-dropdown-item command="edit">編輯支出</el-dropdown-item><el-dropdown-item class="expense-delete-menu-item" command="remove">刪除支出</el-dropdown-item></el-dropdown-menu></template>

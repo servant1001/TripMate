@@ -6,8 +6,8 @@
     "emailIndex": { "$email": { ".read": "auth != null", ".write": "auth != null && newData.val() === auth.uid && (!data.exists() || data.val() === auth.uid)" } },
     "tripInvites": { "$code": { ".read": "auth != null", ".write": "auth != null && ((!data.exists() && newData.child('createdBy').val() === auth.uid) || data.child('createdBy').val() === auth.uid)" } },
     "userTrips": { "$uid": { ".read": "auth != null && auth.uid === $uid", "$tripId": { ".write": "auth != null && (auth.uid === $uid || root.child('tripMembers').child($tripId).child(auth.uid).child('role').val() === 'owner')" } } },
-    "trips": { "$tripId": { ".read": "auth != null && root.child('tripMembers').child($tripId).child(auth.uid).exists()", ".write": "auth != null && (!data.exists() || root.child('tripMembers').child($tripId).child(auth.uid).child('role').val() === 'owner')" } },
-    "tripMembers": { "$tripId": { ".read": "auth != null && data.child(auth.uid).exists()", ".write": "auth != null && (data.child(auth.uid).child('role').val() === 'owner' || !data.exists())" } },
+    "trips": { "$tripId": { ".read": "auth != null && root.child('tripMembers').child($tripId).child(auth.uid).exists()", ".write": "auth != null && ((!data.exists() && newData.child('ownerId').val() === auth.uid) || root.child('tripMembers').child($tripId).child(auth.uid).child('role').val() === 'owner')" } },
+    "tripMembers": { "$tripId": { ".read": "auth != null && data.child(auth.uid).exists()", ".write": "auth != null && ((!data.exists() && newData.child(auth.uid).child('role').val() === 'owner') || data.child(auth.uid).child('role').val() === 'owner')" } },
     "tripMemberBudgets": {
       "$tripId": {
         ".write": "auth != null && root.child('tripMembers').child($tripId).child(auth.uid).child('role').val() === 'owner' && newData.val() === null",
