@@ -8,6 +8,8 @@ import type {
   Settlement,
   ShoppingItem,
   TodoItem,
+  TravelInsurance,
+  InsuranceStatusSummary,
   Trip,
 } from "../types";
 import { database, firebaseEnabled } from "./firebase";
@@ -27,6 +29,8 @@ type Data = {
   shoppingItems: ShoppingItem[];
   categoryBudgets: Record<string, Record<string, number>>;
   dailyBudgets: Record<string, number>;
+  insurances: TravelInsurance[];
+  insuranceStatuses: Record<string, Record<string, InsuranceStatusSummary>>;
 };
 const seed: Data = {
   trips: [],
@@ -41,6 +45,8 @@ const seed: Data = {
   shoppingItems: [],
   categoryBudgets: {},
   dailyBudgets: {},
+  insurances: [],
+  insuranceStatuses: {},
 };
 const read = (): Data => ({
   ...seed,
@@ -80,6 +86,8 @@ export const repository = {
           personalBudgetSnapshot,
           categoryBudgetsSnapshot,
           dailyBudgetSnapshot,
+          insuranceSnapshot,
+          insuranceStatusSnapshot,
         ] = await Promise.all([
           get(ref(db, `trips/${tripId}`)),
           get(ref(db, `tripMembers/${tripId}`)),
@@ -95,6 +103,8 @@ export const repository = {
           get(ref(db, `tripMemberBudgets/${tripId}/${userId}`)),
           get(ref(db, `budgets/${tripId}/categories`)),
           get(ref(db, `budgets/${tripId}/daily`)),
+          get(ref(db, `travelInsurances/${tripId}/${userId}`)),
+          get(ref(db, `insuranceStatuses/${tripId}`)),
         ]);
         const trip = tripSnapshot.val() as Omit<Trip, "members"> | null;
         if (!trip) return null;
@@ -190,6 +200,8 @@ export const repository = {
             ),
           },
           dailyBudgets: { [tripId]: Math.max(0, Number(dailyBudgetSnapshot.val()) || 0) },
+          insurances: insuranceSnapshot.val() ? [{ id: userId, userId, ...(insuranceSnapshot.val() as Omit<TravelInsurance, 'id' | 'tripId' | 'userId'>), tripId }] : [],
+          insuranceStatuses: { [tripId]: Object.fromEntries(Object.entries(insuranceStatusSnapshot.val() || {}).map(([statusUserId, value]) => [statusUserId, { userId: statusUserId, ...(value as Omit<InsuranceStatusSummary, 'userId'>) }])) },
         };
       }),
     );
@@ -209,6 +221,8 @@ export const repository = {
           shoppingItems: [...data.shoppingItems, ...row.shoppingItems],
           categoryBudgets: { ...data.categoryBudgets, ...row.categoryBudgets },
           dailyBudgets: { ...data.dailyBudgets, ...row.dailyBudgets },
+          insurances: [...data.insurances, ...row.insurances],
+          insuranceStatuses: { ...data.insuranceStatuses, ...row.insuranceStatuses },
         }),
         seed,
       );
@@ -308,6 +322,8 @@ export const repository = {
         [`favorites/${trip.id}`]: null,
         [`albums/${trip.id}`]: null,
         [`shoppingItems/${trip.id}`]: null,
+        [`travelInsurances/${trip.id}`]: null,
+        [`insuranceStatuses/${trip.id}`]: null,
         [`tripInvites/${trip.inviteCode}`]: null,
       };
       trip.members.forEach((member) => {
@@ -327,6 +343,8 @@ export const repository = {
     d.favorites = d.favorites.filter((x) => x.tripId !== trip.id);
     d.albumPhotos = d.albumPhotos.filter((x) => x.tripId !== trip.id);
     d.shoppingItems = d.shoppingItems.filter((x) => x.tripId !== trip.id);
+    d.insurances = d.insurances.filter((x) => x.tripId !== trip.id);
+    delete d.insuranceStatuses[trip.id];
     delete d.categoryBudgets[trip.id];
     write(d);
   },
@@ -913,5 +931,23 @@ export const repository = {
     const d = read();
     d.settlements = d.settlements.filter((item) => item.id !== settlement.id);
     write(d);
+  },
+  async saveInsurance(input: Omit<TravelInsurance, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<TravelInsurance, 'createdAt'>>, statusSummary?: Pick<InsuranceStatusSummary, 'status' | 'coverageStatus'>) {
+    const now = Date.now();
+    const insurance: TravelInsurance = { ...input, id: input.userId, createdAt: input.createdAt || now, updatedAt: now };
+    const db = database;
+    if (firebaseEnabled && db) {
+      const { id: _id, tripId, userId, ...data } = insurance;
+      const summary = withoutUndefined({ status: statusSummary?.status || (insurance.status === 'active' ? 'covered' : insurance.status === 'cancelled' ? 'cancelled' : insurance.status === 'expired' ? 'expired' : 'draft'), coverageStatus: statusSummary?.coverageStatus, providerName: insurance.visibility === 'private' ? undefined : insurance.providerName, visibility: insurance.visibility, updatedAt: insurance.updatedAt });
+      await update(ref(db), { [`travelInsurances/${tripId}/${userId}`]: withoutUndefined(data), [`insuranceStatuses/${tripId}/${userId}`]: summary });
+      return insurance;
+    }
+    const d = read(); const index = d.insurances.findIndex((entry) => entry.tripId === insurance.tripId && entry.userId === insurance.userId);
+    if (index >= 0) d.insurances.splice(index, 1, insurance); else d.insurances.push(insurance); write(d); return insurance;
+  },
+  async deleteInsurance(insurance: TravelInsurance) {
+    const db = database;
+    if (firebaseEnabled && db) { await update(ref(db), { [`travelInsurances/${insurance.tripId}/${insurance.userId}`]: null, [`insuranceStatuses/${insurance.tripId}/${insurance.userId}`]: null }); return; }
+    const d = read(); d.insurances = d.insurances.filter((entry) => !(entry.tripId === insurance.tripId && entry.userId === insurance.userId)); write(d);
   },
 };

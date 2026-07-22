@@ -10,6 +10,8 @@ import type {
   Settlement,
   ShoppingItem,
   TodoItem,
+  TravelInsurance,
+  InsuranceStatusSummary,
   Trip,
 } from "../types";
 import { repository } from "../services/repository";
@@ -28,6 +30,8 @@ export const useTripStore = defineStore("trips", {
     shoppingItems: [] as ShoppingItem[],
     categoryBudgets: {} as Record<string, Record<string, number>>,
     dailyBudgets: {} as Record<string, number>,
+    insurances: [] as TravelInsurance[],
+    insuranceStatuses: {} as Record<string, Record<string, InsuranceStatusSummary>>,
     loading: false,
   }),
   getters: {
@@ -50,6 +54,8 @@ export const useTripStore = defineStore("trips", {
       s.shoppingItems.filter((x) => x.tripId === id),
     tripCategoryBudgets: (s) => (id: string) => s.categoryBudgets[id] || {},
     tripDailyBudget: (s) => (id: string) => s.dailyBudgets[id] || 0,
+    tripInsurances: (s) => (id: string) => s.insurances.filter((item) => item.tripId === id),
+    tripInsuranceStatuses: (s) => (id: string) => s.insuranceStatuses[id] || {},
   },
   actions: {
     async load(userId?: string) {
@@ -100,6 +106,8 @@ export const useTripStore = defineStore("trips", {
       );
       delete this.categoryBudgets[trip.id];
       delete this.dailyBudgets[trip.id];
+      this.insurances = this.insurances.filter((item) => item.tripId !== trip.id);
+      delete this.insuranceStatuses[trip.id];
     },
     async addMember(trip: Trip, member: Omit<Member, "id">) {
       const added = await repository.addMember(trip, member);
@@ -350,6 +358,19 @@ export const useTripStore = defineStore("trips", {
       this.settlements = this.settlements.filter(
         (item) => item.id !== settlement.id,
       );
+    },
+    async saveInsurance(input: Omit<TravelInsurance, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<TravelInsurance, 'createdAt'>>, statusSummary?: Pick<InsuranceStatusSummary, 'status' | 'coverageStatus'>) {
+      const saved = await repository.saveInsurance(input, statusSummary);
+      const index = this.insurances.findIndex((item) => item.tripId === saved.tripId && item.userId === saved.userId);
+      if (index >= 0) this.insurances.splice(index, 1, saved); else this.insurances.push(saved);
+      const status = statusSummary?.status || (saved.status === 'active' ? 'covered' : saved.status === 'cancelled' ? 'cancelled' : saved.status === 'expired' ? 'expired' : 'draft');
+      this.insuranceStatuses[saved.tripId] = { ...(this.insuranceStatuses[saved.tripId] || {}), [saved.userId]: { userId: saved.userId, status, coverageStatus: statusSummary?.coverageStatus, providerName: saved.visibility === 'private' ? undefined : saved.providerName, visibility: saved.visibility, updatedAt: saved.updatedAt } };
+      return saved;
+    },
+    async deleteInsurance(insurance: TravelInsurance) {
+      await repository.deleteInsurance(insurance);
+      this.insurances = this.insurances.filter((item) => !(item.tripId === insurance.tripId && item.userId === insurance.userId));
+      if (this.insuranceStatuses[insurance.tripId]) delete this.insuranceStatuses[insurance.tripId][insurance.userId];
     },
   },
 });

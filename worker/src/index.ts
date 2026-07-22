@@ -50,6 +50,7 @@ async function sha1(value: string): Promise<string> {
   const hash = await crypto.subtle.digest('SHA-1', enc.encode(value))
   return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
 }
+async function deliverySignature(value: string): Promise<string> { return `s--${b64(new Uint8Array(await crypto.subtle.digest('SHA-1', enc.encode(value)))).slice(0, 8)}--` }
 
 function validTripId(value: unknown): value is string { return typeof value === 'string' && /^[A-Za-z0-9_-]{8,128}$/.test(value) }
 async function assertTripMember(env: Env, tripId: string, uid: string): Promise<Member> {
@@ -58,7 +59,7 @@ async function assertTripMember(env: Env, tripId: string, uid: string): Promise<
   if (!member?.role) throw new Error('You are not a member of this trip.')
   return member
 }
-function uploadFolder(kind: 'cover' | 'album' | 'shopping' | 'expense', uid: string, tripId?: string): string { return tripId ? `tripmate/trips/${tripId}/${kind === 'cover' ? 'covers' : kind}` : `tripmate/users/${uid}/covers` }
+function uploadFolder(kind: 'cover' | 'album' | 'shopping' | 'expense' | 'insurance', uid: string, tripId?: string): string { return tripId ? `tripmate/trips/${tripId}/${kind === 'cover' ? 'covers' : kind}${kind === 'insurance' ? `/${uid}` : ''}` : `tripmate/users/${uid}/covers` }
 function isManagedAsset(publicId: string, folder: string): boolean { return publicId.startsWith(`${folder}/`) && !publicId.includes('..') && /^[A-Za-z0-9_/-]+$/.test(publicId) }
 
 export default {
@@ -73,19 +74,19 @@ export default {
       const path = new URL(request.url).pathname
       if (path === '/v1/cloudinary/signature') {
         const body = await request.json() as { kind?: string; tripId?: string }
-        const kind = body.kind === 'album' || body.kind === 'shopping' || body.kind === 'expense' ? body.kind : 'cover'
+        const kind = body.kind === 'album' || body.kind === 'shopping' || body.kind === 'expense' || body.kind === 'insurance' ? body.kind : 'cover'
         if (body.tripId) await assertTripMember(env, body.tripId, me.localId)
-        if ((kind === 'album' || kind === 'shopping' || kind === 'expense') && !body.tripId) return out({ error: 'Trip identifier is required for this upload.' }, 400, origin)
+        if ((kind === 'album' || kind === 'shopping' || kind === 'expense' || kind === 'insurance') && !body.tripId) return out({ error: 'Trip identifier is required for this upload.' }, 400, origin)
         const folder = uploadFolder(kind, me.localId, body.tripId)
         const timestamp = Math.floor(Date.now() / 1000)
         return out({ timestamp, signature: await sha1(`folder=${folder}&timestamp=${timestamp}${env.CLOUDINARY_API_SECRET}`), apiKey: env.CLOUDINARY_API_KEY, cloudName: env.CLOUDINARY_CLOUD_NAME, folder }, 200, origin)
       }
       if (path === '/v1/cloudinary/delete') {
         const body = await request.json() as { publicId?: string; kind?: string; tripId?: string }
-        const kind = body.kind === 'album' || body.kind === 'shopping' || body.kind === 'expense' ? body.kind : 'cover'
+        const kind = body.kind === 'album' || body.kind === 'shopping' || body.kind === 'expense' || body.kind === 'insurance' ? body.kind : 'cover'
         if (!body.publicId) return out({ error: 'Cloudinary public ID is required.' }, 400, origin)
         if (body.tripId) await assertTripMember(env, body.tripId, me.localId)
-        if ((kind === 'album' || kind === 'shopping' || kind === 'expense') && !body.tripId) return out({ error: 'Trip identifier is required for this asset.' }, 400, origin)
+        if ((kind === 'album' || kind === 'shopping' || kind === 'expense' || kind === 'insurance') && !body.tripId) return out({ error: 'Trip identifier is required for this asset.' }, 400, origin)
         const folder = uploadFolder(kind, me.localId, body.tripId)
         if (!isManagedAsset(body.publicId, folder)) return out({ error: 'This asset is outside your permitted folder.' }, 403, origin)
         const timestamp = Math.floor(Date.now() / 1000)
@@ -94,6 +95,15 @@ export default {
         const result = await response.json() as { result?: string }
         if (!response.ok || (result.result && result.result !== 'ok' && result.result !== 'not found')) throw new Error('Cloudinary asset deletion failed.')
         return out({ result: result.result || 'ok' }, 200, origin)
+      }
+      if (path === '/v1/cloudinary/insurance-delivery') {
+        const body = await request.json() as { tripId?: string; ownerId?: string; publicId?: string; resourceType?: 'image' | 'raw'; format?: string; version?: string }
+        if (!body.tripId || !body.ownerId || !body.publicId || !body.format || !validTripId(body.tripId)) return out({ error: 'Invalid attachment request.' }, 400, origin)
+        await assertTripMember(env, body.tripId, me.localId)
+        const policy = await db<{ visibility?: string } | null>(env, `travelInsurances/${body.tripId}/${body.ownerId}`, 'GET')
+        if (!policy || (me.localId !== body.ownerId && policy.visibility !== 'trip_members')) return out({ error: 'You are not allowed to view this attachment.' }, 403, origin)
+        const resourceType = body.resourceType === 'raw' ? 'raw' : 'image'; const version = /^\d+$/.test(body.version || '') ? `v${body.version}/` : ''; const target = `${version}${body.publicId}.${body.format}`
+        return out({ url: `https://res.cloudinary.com/${env.CLOUDINARY_CLOUD_NAME}/${resourceType}/authenticated/${await deliverySignature(`${target}${env.CLOUDINARY_API_SECRET}`)}/${target}` }, 200, origin)
       }
       if (path === '/v1/trips/join') {
         const body = await request.json() as { code?: string }
