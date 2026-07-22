@@ -18,6 +18,7 @@ const router = createRouter({
     { path: '/trips/create', name: 'trip-create', component: () => import('../App.vue') },
     { path: '/trips/:tripId/dashboard', name: 'trip-dashboard', component: () => import('../App.vue') },
     { path: '/trips/:tripId/insurance', name: 'trip-insurance', component: () => import('../App.vue') },
+    { path: '/trips/:tripId/payment-tools', name: 'trip-payment-tools', component: () => import('../App.vue') },
     { path: '/profile', name: 'profile', component: () => import('../App.vue') },
   ],
 })

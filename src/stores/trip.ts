@@ -12,6 +12,10 @@ import type {
   TodoItem,
   TravelInsurance,
   InsuranceStatusSummary,
+  PaymentTool,
+  PaymentTransaction,
+  RewardRule,
+  StoredValueBalance,
   Trip,
 } from "../types";
 import { repository } from "../services/repository";
@@ -32,6 +36,7 @@ export const useTripStore = defineStore("trips", {
     dailyBudgets: {} as Record<string, number>,
     insurances: [] as TravelInsurance[],
     insuranceStatuses: {} as Record<string, Record<string, InsuranceStatusSummary>>,
+    paymentTools: [] as PaymentTool[], rewardRules: [] as RewardRule[], paymentTransactions: [] as PaymentTransaction[], storedValueBalances: [] as StoredValueBalance[],
     loading: false,
   }),
   getters: {
@@ -56,6 +61,10 @@ export const useTripStore = defineStore("trips", {
     tripDailyBudget: (s) => (id: string) => s.dailyBudgets[id] || 0,
     tripInsurances: (s) => (id: string) => s.insurances.filter((item) => item.tripId === id),
     tripInsuranceStatuses: (s) => (id: string) => s.insuranceStatuses[id] || {},
+    tripPaymentTools: (s) => (id: string) => s.paymentTools.filter((item) => item.tripId === id),
+    tripRewardRules: (s) => (id: string) => s.rewardRules.filter((item) => item.tripId === id),
+    tripPaymentTransactions: (s) => (id: string) => s.paymentTransactions.filter((item) => item.tripId === id),
+    tripStoredValueBalances: (s) => (id: string) => s.storedValueBalances.filter((item) => item.tripId === id),
   },
   actions: {
     async load(userId?: string) {
@@ -108,6 +117,7 @@ export const useTripStore = defineStore("trips", {
       delete this.dailyBudgets[trip.id];
       this.insurances = this.insurances.filter((item) => item.tripId !== trip.id);
       delete this.insuranceStatuses[trip.id];
+      this.paymentTools = this.paymentTools.filter((item) => item.tripId !== trip.id); this.rewardRules = this.rewardRules.filter((item) => item.tripId !== trip.id); this.paymentTransactions = this.paymentTransactions.filter((item) => item.tripId !== trip.id); this.storedValueBalances = this.storedValueBalances.filter((item) => item.tripId !== trip.id);
     },
     async addMember(trip: Trip, member: Omit<Member, "id">) {
       const added = await repository.addMember(trip, member);
@@ -372,5 +382,12 @@ export const useTripStore = defineStore("trips", {
       this.insurances = this.insurances.filter((item) => !(item.tripId === insurance.tripId && item.userId === insurance.userId));
       if (this.insuranceStatuses[insurance.tripId]) delete this.insuranceStatuses[insurance.tripId][insurance.userId];
     },
+    async savePaymentTool(input: Omit<PaymentTool, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<PaymentTool, 'id' | 'createdAt'>>) { const tool = await repository.savePaymentTool(input); const index = this.paymentTools.findIndex((item) => item.id === tool.id); if (index >= 0) this.paymentTools.splice(index, 1, tool); else this.paymentTools.push(tool); return tool },
+    async deletePaymentTool(tool: PaymentTool) { await repository.deletePaymentTool(tool); this.paymentTools = this.paymentTools.filter((item) => item.id !== tool.id); this.rewardRules = this.rewardRules.filter((item) => item.paymentToolId !== tool.id); this.storedValueBalances = this.storedValueBalances.filter((item) => item.paymentToolId !== tool.id) },
+    async saveRewardRule(input: Omit<RewardRule, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<RewardRule, 'id' | 'createdAt'>>) { const rule = await repository.saveRewardRule(input); const index = this.rewardRules.findIndex((item) => item.id === rule.id); if (index >= 0) this.rewardRules.splice(index, 1, rule); else this.rewardRules.push(rule); return rule },
+    async deleteRewardRule(rule: RewardRule) { await repository.deleteRewardRule(rule); this.rewardRules = this.rewardRules.filter((item) => item.id !== rule.id) },
+    async savePaymentTransaction(input: Omit<PaymentTransaction, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<PaymentTransaction, 'id' | 'createdAt'>>) { const transaction = await repository.savePaymentTransaction(input); const index = this.paymentTransactions.findIndex((item) => item.id === transaction.id); if (index >= 0) this.paymentTransactions.splice(index, 1, transaction); else this.paymentTransactions.push(transaction); return transaction },
+    async deletePaymentTransaction(transaction: PaymentTransaction) { await repository.deletePaymentTransaction(transaction); this.paymentTransactions = this.paymentTransactions.filter((item) => item.id !== transaction.id) },
+    async saveStoredValueBalance(balance: StoredValueBalance) { await repository.saveStoredValueBalance(balance); const index = this.storedValueBalances.findIndex((item) => item.tripId === balance.tripId && item.paymentToolId === balance.paymentToolId); if (index >= 0) this.storedValueBalances.splice(index, 1, balance); else this.storedValueBalances.push(balance) },
   },
 });
