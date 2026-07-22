@@ -58,7 +58,7 @@ async function assertTripMember(env: Env, tripId: string, uid: string): Promise<
   if (!member?.role) throw new Error('You are not a member of this trip.')
   return member
 }
-function uploadFolder(kind: 'cover' | 'album' | 'shopping', uid: string, tripId?: string): string { return tripId ? `tripmate/trips/${tripId}/${kind === 'cover' ? 'covers' : kind}` : `tripmate/users/${uid}/covers` }
+function uploadFolder(kind: 'cover' | 'album' | 'shopping' | 'expense', uid: string, tripId?: string): string { return tripId ? `tripmate/trips/${tripId}/${kind === 'cover' ? 'covers' : kind}` : `tripmate/users/${uid}/covers` }
 function isManagedAsset(publicId: string, folder: string): boolean { return publicId.startsWith(`${folder}/`) && !publicId.includes('..') && /^[A-Za-z0-9_/-]+$/.test(publicId) }
 
 export default {
@@ -73,19 +73,19 @@ export default {
       const path = new URL(request.url).pathname
       if (path === '/v1/cloudinary/signature') {
         const body = await request.json() as { kind?: string; tripId?: string }
-        const kind = body.kind === 'album' || body.kind === 'shopping' ? body.kind : 'cover'
+        const kind = body.kind === 'album' || body.kind === 'shopping' || body.kind === 'expense' ? body.kind : 'cover'
         if (body.tripId) await assertTripMember(env, body.tripId, me.localId)
-        if ((kind === 'album' || kind === 'shopping') && !body.tripId) return out({ error: 'Trip identifier is required for this upload.' }, 400, origin)
+        if ((kind === 'album' || kind === 'shopping' || kind === 'expense') && !body.tripId) return out({ error: 'Trip identifier is required for this upload.' }, 400, origin)
         const folder = uploadFolder(kind, me.localId, body.tripId)
         const timestamp = Math.floor(Date.now() / 1000)
         return out({ timestamp, signature: await sha1(`folder=${folder}&timestamp=${timestamp}${env.CLOUDINARY_API_SECRET}`), apiKey: env.CLOUDINARY_API_KEY, cloudName: env.CLOUDINARY_CLOUD_NAME, folder }, 200, origin)
       }
       if (path === '/v1/cloudinary/delete') {
         const body = await request.json() as { publicId?: string; kind?: string; tripId?: string }
-        const kind = body.kind === 'album' || body.kind === 'shopping' ? body.kind : 'cover'
+        const kind = body.kind === 'album' || body.kind === 'shopping' || body.kind === 'expense' ? body.kind : 'cover'
         if (!body.publicId) return out({ error: 'Cloudinary public ID is required.' }, 400, origin)
         if (body.tripId) await assertTripMember(env, body.tripId, me.localId)
-        if ((kind === 'album' || kind === 'shopping') && !body.tripId) return out({ error: 'Trip identifier is required for this asset.' }, 400, origin)
+        if ((kind === 'album' || kind === 'shopping' || kind === 'expense') && !body.tripId) return out({ error: 'Trip identifier is required for this asset.' }, 400, origin)
         const folder = uploadFolder(kind, me.localId, body.tripId)
         if (!isManagedAsset(body.publicId, folder)) return out({ error: 'This asset is outside your permitted folder.' }, 403, origin)
         const timestamp = Math.floor(Date.now() / 1000)

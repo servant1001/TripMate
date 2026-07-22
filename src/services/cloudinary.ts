@@ -1,7 +1,7 @@
 import { auth } from './firebase'
 
 export interface UploadSignature { timestamp: number; signature: string; apiKey: string; cloudName: string; folder: string }
-type AssetKind = 'cover' | 'album' | 'shopping'
+type AssetKind = 'cover' | 'album' | 'shopping' | 'expense'
 const workerUrl = import.meta.env.VITE_WORKER_API_URL as string | undefined
 
 async function api<T>(path: string, body: Record<string, string> = {}): Promise<T> {
