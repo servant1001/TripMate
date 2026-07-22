@@ -139,7 +139,9 @@ function personalTimeWarning(group: ItineraryItem, index: number) {
 }
 function shoppingItemsFor(entry: ItineraryItem) {
   return props.shoppingItems.filter(
-    (item) => item.itineraryItemId === entry.id,
+    (item) =>
+      item.itineraryItemId === entry.id ||
+      item.itineraryItemIds?.includes(entry.id),
   );
 }
 function registerSortableList(key: string, element: Element | null) {
