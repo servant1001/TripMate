@@ -27,6 +27,7 @@ export const useTripStore = defineStore("trips", {
     albumPhotos: [] as AlbumPhoto[],
     shoppingItems: [] as ShoppingItem[],
     categoryBudgets: {} as Record<string, Record<string, number>>,
+    dailyBudgets: {} as Record<string, number>,
     loading: false,
   }),
   getters: {
@@ -48,6 +49,7 @@ export const useTripStore = defineStore("trips", {
     tripShoppingItems: (s) => (id: string) =>
       s.shoppingItems.filter((x) => x.tripId === id),
     tripCategoryBudgets: (s) => (id: string) => s.categoryBudgets[id] || {},
+    tripDailyBudget: (s) => (id: string) => s.dailyBudgets[id] || 0,
   },
   actions: {
     async load(userId?: string) {
@@ -97,6 +99,7 @@ export const useTripStore = defineStore("trips", {
         (item) => item.tripId !== trip.id,
       );
       delete this.categoryBudgets[trip.id];
+      delete this.dailyBudgets[trip.id];
     },
     async addMember(trip: Trip, member: Omit<Member, "id">) {
       const added = await repository.addMember(trip, member);
@@ -134,6 +137,13 @@ export const useTripStore = defineStore("trips", {
           ])
           .filter(([, amount]) => Number(amount) > 0),
       );
+    },
+    async updateDailyBudget(tripId: string, dailyBudget: number) {
+      const trip = this.trip(tripId);
+      if (!trip) return;
+      const budget = Math.max(0, Number(dailyBudget) || 0);
+      await repository.updateDailyBudget(trip, budget);
+      this.dailyBudgets[tripId] = budget;
     },
     async addTodo(input: Omit<TodoItem, "id" | "completed" | "createdAt">) {
       const todo = await repository.addTodo(input);

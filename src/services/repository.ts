@@ -26,6 +26,7 @@ type Data = {
   albumPhotos: AlbumPhoto[];
   shoppingItems: ShoppingItem[];
   categoryBudgets: Record<string, Record<string, number>>;
+  dailyBudgets: Record<string, number>;
 };
 const seed: Data = {
   trips: [],
@@ -39,6 +40,7 @@ const seed: Data = {
   albumPhotos: [],
   shoppingItems: [],
   categoryBudgets: {},
+  dailyBudgets: {},
 };
 const read = (): Data => ({
   ...seed,
@@ -77,6 +79,7 @@ export const repository = {
           shoppingSnapshot,
           personalBudgetSnapshot,
           categoryBudgetsSnapshot,
+          dailyBudgetSnapshot,
         ] = await Promise.all([
           get(ref(db, `trips/${tripId}`)),
           get(ref(db, `tripMembers/${tripId}`)),
@@ -91,6 +94,7 @@ export const repository = {
           get(ref(db, `shoppingItems/${tripId}`)),
           get(ref(db, `tripMemberBudgets/${tripId}/${userId}`)),
           get(ref(db, `budgets/${tripId}/categories`)),
+          get(ref(db, `budgets/${tripId}/daily`)),
         ]);
         const trip = tripSnapshot.val() as Omit<Trip, "members"> | null;
         if (!trip) return null;
@@ -185,6 +189,7 @@ export const repository = {
               ),
             ),
           },
+          dailyBudgets: { [tripId]: Math.max(0, Number(dailyBudgetSnapshot.val()) || 0) },
         };
       }),
     );
@@ -203,6 +208,7 @@ export const repository = {
           albumPhotos: [...data.albumPhotos, ...row.albumPhotos],
           shoppingItems: [...data.shoppingItems, ...row.shoppingItems],
           categoryBudgets: { ...data.categoryBudgets, ...row.categoryBudgets },
+          dailyBudgets: { ...data.dailyBudgets, ...row.dailyBudgets },
         }),
         seed,
       );
@@ -402,6 +408,17 @@ export const repository = {
     }
     const d = read();
     d.categoryBudgets[trip.id] = budgets;
+    write(d);
+  },
+  async updateDailyBudget(trip: Trip, dailyBudget: number) {
+    const budget = Math.max(0, Number(dailyBudget) || 0);
+    const db = database;
+    if (firebaseEnabled && db) {
+      await set(ref(db, `budgets/${trip.id}/daily`), budget || null);
+      return;
+    }
+    const d = read();
+    d.dailyBudgets[trip.id] = budget;
     write(d);
   },
   async addTodo(input: Omit<TodoItem, "id" | "completed" | "createdAt">) {
