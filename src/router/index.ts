@@ -16,9 +16,10 @@ const router = createRouter({
     { path: '/forgot-password', name: 'forgot-password', component: () => import('../App.vue'), meta: { public: true } },
     { path: '/trips', name: 'trips', component: () => import('../App.vue') },
     { path: '/trips/create', name: 'trip-create', component: () => import('../App.vue') },
-    { path: '/trips/:tripId/dashboard', name: 'trip-dashboard', component: () => import('../App.vue') },
-    { path: '/trips/:tripId/insurance', name: 'trip-insurance', component: () => import('../App.vue') },
-    { path: '/trips/:tripId/payment-tools', name: 'trip-payment-tools', component: () => import('../App.vue') },
+    { path: '/trips/:tripId/dashboard', redirect: (to) => ({ name: 'trip-tab', params: { tripId: to.params.tripId, tab: 'overview' }, query: to.query }) },
+    { path: '/trips/:tripId/insurance', redirect: (to) => ({ name: 'trip-tab', params: { tripId: to.params.tripId, tab: 'insurance' }, query: to.query }) },
+    { path: '/trips/:tripId/payment-tools', redirect: (to) => ({ name: 'trip-tab', params: { tripId: to.params.tripId, tab: 'payments' }, query: to.query }) },
+    { path: '/trips/:tripId/:tab(overview|itinerary|expenses|todos|favorites|shopping|payments|packing|bookings|insurance|album|map|members)', name: 'trip-tab', component: () => import('../App.vue') },
     { path: '/profile', name: 'profile', component: () => import('../App.vue') },
   ],
 })
