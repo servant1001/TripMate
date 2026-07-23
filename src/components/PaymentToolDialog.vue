@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { PaymentToolType, PaymentToolVisibility } from '../types'
 
-type PaymentToolDraft = {
+export type PaymentToolDraft = {
   name: string
   type: PaymentToolType
   issuer: string
