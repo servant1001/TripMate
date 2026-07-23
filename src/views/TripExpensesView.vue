@@ -1,0 +1,8 @@
+<script setup lang="ts">
+import TripExpenseCard from '../components/TripExpenseCard.vue'
+import type { Expense, Trip } from '../types'
+defineProps<{ trip: Trip; expenses: Expense[]; total: number; myPaid: number; myBalance: number; personalBudget: number; personalSpent: number; categoryBudgets: { category: string; budget: number; spent: number }[]; dailyBudget: number; dailyExpenses: { date: string; spent: number }[]; canSetPersonalBudget: boolean; canManageCategoryBudgets: boolean; canEdit: boolean; payerLabel: (expense: Expense) => string; splitLabel: (expense: Expense) => string; participantCount: (expense: Expense) => number; share: (expense: Expense) => number }>()
+const emit = defineEmits<{ add: []; setPersonalBudget: []; manageCategoryBudgets: []; manageDailyBudget: []; edit: [expense: Expense]; remove: [expense: Expense] }>()
+</script>
+<template><section class="trip-expenses-view" aria-label="旅行開銷"><TripExpenseCard :trip="trip" :expenses="expenses" :total="total" :my-paid="myPaid" :my-balance="myBalance" :personal-budget="personalBudget" :personal-spent="personalSpent" :category-budgets="categoryBudgets" :daily-budget="dailyBudget" :daily-expenses="dailyExpenses" :can-set-personal-budget="canSetPersonalBudget" :can-manage-category-budgets="canManageCategoryBudgets" :can-edit-trip="canEdit" :payer-label="payerLabel" :split-label="splitLabel" :participant-count="participantCount" :share="share" @add="emit('add')" @set-personal-budget="emit('setPersonalBudget')" @manage-category-budgets="emit('manageCategoryBudgets')" @manage-daily-budget="emit('manageDailyBudget')" @edit="emit('edit',$event)" @remove="emit('remove',$event)" /></section></template>
+<style scoped>.trip-expenses-view{display:grid;min-width:0}</style>
