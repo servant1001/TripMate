@@ -16,13 +16,13 @@ const emit = defineEmits<{
   remove: [item: ShoppingItem]
   status: [item: ShoppingItem, status: ShoppingStatus]
   convert: [item: ShoppingItem]
-  batchLink: []
+  batchLink: [items: ShoppingItem[]]
 }>()
 </script>
 
 <template>
   <section class="trip-shopping-view" aria-label="購物清單">
-    <TripShoppingCard :trip="trip" :items="items" :can-edit-trip="canEdit" :member-name="memberName" @add="emit('add')" @edit="emit('edit', $event)" @duplicate="emit('duplicate', $event)" @remove="emit('remove', $event)" @status="(item, status) => emit('status', item, status)" @convert="emit('convert', $event)" @batch-link="emit('batchLink')" />
+    <TripShoppingCard :trip="trip" :items="items" :can-edit-trip="canEdit" :member-name="memberName" @add="emit('add')" @edit="emit('edit', $event)" @duplicate="emit('duplicate', $event)" @remove="emit('remove', $event)" @status="(item, status) => emit('status', item, status)" @convert="emit('convert', $event)" @batch-link="emit('batchLink', $event)" />
   </section>
 </template>
 
