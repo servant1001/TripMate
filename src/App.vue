@@ -16,8 +16,8 @@ import TripShoppingCard from './components/TripShoppingCard.vue'
 import TripMembersSettlementCard from './components/TripMembersSettlementCard.vue'
 import TripPackingCard from './components/TripPackingCard.vue'
 import TripTodoCard from './components/TripTodoCard.vue'
-import TripInsuranceCard from './components/TripInsuranceCard.vue'
 import TripPaymentsView from './views/TripPaymentsView.vue'
+import TripInsuranceView from './views/TripInsuranceView.vue'
 import PaymentToolDialog from './components/PaymentToolDialog.vue'
 import { repository } from './services/repository'
 import { useTripStore } from './stores/trip'
@@ -538,7 +538,7 @@ async function signOutUser() { await logOut(); ElMessage.success('已登出。')
         <TripAlbumCard v-if="activeTripTab === 'album'" :trip="current" :photos="currentAlbumPhotos" :can-edit-trip="canEditTrip" :member-name="memberName" :format-date="formatTripDate" @add="openAlbumForm()" @edit="openAlbumForm" @remove="removeAlbumPhoto" />
         <TripShoppingCard v-if="activeTripTab === 'shopping'" :trip="current" :items="currentShoppingItems" :can-edit-trip="canEditTrip" :member-name="memberName" @add="openShoppingForm()" @edit="openShoppingForm" @duplicate="duplicateShoppingItem" @remove="removeShoppingItem" @status="updateShoppingStatus" @convert="convertShoppingToExpense" @batch-link="openBatchShoppingItineraryPicker" />
         <TripPaymentsView v-if="activeTripTab === 'payments'" :trip="current" :tools="currentPaymentTools" :rules="currentRewardRules" :transactions="currentPaymentTransactions" :balances="currentStoredBalances" :summaries="currentPaymentToolSummaries" :user-id="user?.uid || current.ownerId" :can-edit="canEditTrip" :member-name="memberName" @add-tool="openPaymentToolForm()" @edit-tool="openPaymentToolForm" @remove-tool="removePaymentTool" @toggle-tool="togglePaymentTool" @add-rule="openRewardRuleForm" @edit-rule="openRewardRuleForm(undefined, $event)" @remove-rule="removeRewardRule" @add-transaction="openPaymentTransactionForm" @edit-transaction="openPaymentTransactionForm(undefined, $event)" @remove-transaction="removePaymentTransaction" @manage-balance="openStoredBalanceForm" />
-        <TripInsuranceCard v-if="activeTripTab === 'insurance'" :trip="current" :insurance="currentInsurance" :statuses="currentInsuranceStatuses" :user-id="user?.uid || current.ownerId" :member-name="memberName" :can-edit="canEditTrip" :saving="savingInsurance" @save="saveInsurance" @remove="removeInsurance" @open-attachment="openInsuranceAttachment" />
+        <TripInsuranceView v-if="activeTripTab === 'insurance'" :trip="current" :insurance="currentInsurance" :statuses="currentInsuranceStatuses" :user-id="user?.uid || current.ownerId" :member-name="memberName" :can-edit="canEditTrip" :saving="savingInsurance" @save="saveInsurance" @remove="removeInsurance" @open-attachment="openInsuranceAttachment" />
         <TripMembersSettlementCard v-if="activeTripTab === 'overview' || activeTripTab === 'members'" :trip="current" :balances="balances" :suggestions="settlementSuggestions" :settlements="currentSettlements" :can-manage-members="canManageMembers" :can-edit-trip="canEditTrip" :open-member-manager="openMemberManager" :member-paid="memberPaid" :member-name="memberName" @copy-invite="copyInvite" @settle="confirmSettlement" @undo-settlement="removeSettlement" />
       </div>
     </section>
