@@ -11,6 +11,7 @@ import type {
   TravelInsurance,
   InsuranceStatusSummary,
   PaymentTool,
+  PaymentToolSummary,
   PaymentTransaction,
   RewardRule,
   StoredValueBalance,
@@ -36,6 +37,7 @@ type Data = {
   insurances: TravelInsurance[];
   insuranceStatuses: Record<string, Record<string, InsuranceStatusSummary>>;
   paymentTools: PaymentTool[];
+  paymentToolSummaries: PaymentToolSummary[];
   rewardRules: RewardRule[];
   paymentTransactions: PaymentTransaction[];
   storedValueBalances: StoredValueBalance[];
@@ -55,7 +57,7 @@ const seed: Data = {
   dailyBudgets: {},
   insurances: [],
   insuranceStatuses: {},
-  paymentTools: [], rewardRules: [], paymentTransactions: [], storedValueBalances: [],
+  paymentTools: [], paymentToolSummaries: [], rewardRules: [], paymentTransactions: [], storedValueBalances: [],
 };
 const read = (): Data => ({
   ...seed,
@@ -97,7 +99,7 @@ export const repository = {
           dailyBudgetSnapshot,
           insuranceSnapshot,
           insuranceStatusSnapshot,
-          paymentToolsSnapshot, rewardRulesSnapshot, paymentTransactionsSnapshot, storedValueSnapshot,
+          paymentToolsSnapshot, paymentSummariesSnapshot, rewardRulesSnapshot, paymentTransactionsSnapshot, storedValueSnapshot,
         ] = await Promise.all([
           get(ref(db, `trips/${tripId}`)),
           get(ref(db, `tripMembers/${tripId}`)),
@@ -115,7 +117,7 @@ export const repository = {
           get(ref(db, `budgets/${tripId}/daily`)),
           get(ref(db, `travelInsurances/${tripId}/${userId}`)),
           get(ref(db, `insuranceStatuses/${tripId}`)),
-          get(ref(db, `paymentTools/${tripId}/${userId}`)), get(ref(db, `rewardRules/${tripId}/${userId}`)), get(ref(db, `paymentTransactions/${tripId}/${userId}`)), get(ref(db, `storedValueBalances/${tripId}/${userId}`)),
+          get(ref(db, `paymentTools/${tripId}/${userId}`)), get(ref(db, `paymentToolSummaries/${tripId}`)), get(ref(db, `rewardRules/${tripId}/${userId}`)), get(ref(db, `paymentTransactions/${tripId}/${userId}`)), get(ref(db, `storedValueBalances/${tripId}/${userId}`)),
         ]);
         const trip = tripSnapshot.val() as Omit<Trip, "members"> | null;
         if (!trip) return null;
@@ -214,6 +216,7 @@ export const repository = {
           insurances: insuranceSnapshot.val() ? [{ id: userId, userId, ...(insuranceSnapshot.val() as Omit<TravelInsurance, 'id' | 'tripId' | 'userId'>), tripId }] : [],
           insuranceStatuses: { [tripId]: Object.fromEntries(Object.entries(insuranceStatusSnapshot.val() || {}).map(([statusUserId, value]) => [statusUserId, { userId: statusUserId, ...(value as Omit<InsuranceStatusSummary, 'userId'>) }])) },
           paymentTools: Object.entries(paymentToolsSnapshot.val() || {}).map(([id, value]) => ({ id, ...(value as Omit<PaymentTool, 'id' | 'tripId'>), tripId })),
+          paymentToolSummaries: Object.entries(paymentSummariesSnapshot.val() || {}).map(([id, value]) => ({ id, ...(value as Omit<PaymentToolSummary, 'id' | 'tripId'>), tripId })),
           rewardRules: Object.entries(rewardRulesSnapshot.val() || {}).map(([id, value]) => ({ id, ...(value as Omit<RewardRule, 'id' | 'tripId'>), tripId })),
           paymentTransactions: Object.entries(paymentTransactionsSnapshot.val() || {}).map(([id, value]) => ({ id, ...(value as Omit<PaymentTransaction, 'id' | 'tripId'>), tripId })),
           storedValueBalances: Object.entries(storedValueSnapshot.val() || {}).map(([paymentToolId, value]) => ({ paymentToolId, ...(value as Omit<StoredValueBalance, 'tripId' | 'paymentToolId'>), tripId })),
@@ -238,7 +241,7 @@ export const repository = {
           dailyBudgets: { ...data.dailyBudgets, ...row.dailyBudgets },
           insurances: [...data.insurances, ...row.insurances],
           insuranceStatuses: { ...data.insuranceStatuses, ...row.insuranceStatuses },
-          paymentTools: [...data.paymentTools, ...row.paymentTools], rewardRules: [...data.rewardRules, ...row.rewardRules], paymentTransactions: [...data.paymentTransactions, ...row.paymentTransactions], storedValueBalances: [...data.storedValueBalances, ...row.storedValueBalances],
+          paymentTools: [...data.paymentTools, ...row.paymentTools], paymentToolSummaries: [...data.paymentToolSummaries, ...row.paymentToolSummaries], rewardRules: [...data.rewardRules, ...row.rewardRules], paymentTransactions: [...data.paymentTransactions, ...row.paymentTransactions], storedValueBalances: [...data.storedValueBalances, ...row.storedValueBalances],
         }),
         seed,
       );
@@ -968,8 +971,8 @@ export const repository = {
     if (firebaseEnabled && db) { await update(ref(db), { [`travelInsurances/${insurance.tripId}/${insurance.userId}`]: null, [`insuranceStatuses/${insurance.tripId}/${insurance.userId}`]: null }); return; }
     const d = read(); d.insurances = d.insurances.filter((entry) => !(entry.tripId === insurance.tripId && entry.userId === insurance.userId)); write(d);
   },
-  async savePaymentTool(input: Omit<PaymentTool, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<PaymentTool, 'id' | 'createdAt'>>) { const now = Date.now(); const tool: PaymentTool = { ...input, id: input.id || id(), createdAt: input.createdAt || now, updatedAt: now }; const db = database; if (firebaseEnabled && db) { const { id: toolId, tripId, ownerUserId, ...data } = tool; await set(ref(db, `paymentTools/${tripId}/${ownerUserId}/${toolId}`), withoutUndefined({ ...data, ownerUserId })); return tool } const d = read(); const index = d.paymentTools.findIndex((item) => item.id === tool.id); if (index >= 0) d.paymentTools.splice(index, 1, tool); else d.paymentTools.push(tool); write(d); return tool },
-  async deletePaymentTool(tool: PaymentTool) { const db = database; if (firebaseEnabled && db) { await update(ref(db), { [`paymentTools/${tool.tripId}/${tool.ownerUserId}/${tool.id}`]: null, [`rewardRules/${tool.tripId}/${tool.ownerUserId}/${tool.id}`]: null, [`storedValueBalances/${tool.tripId}/${tool.ownerUserId}/${tool.id}`]: null }); return } const d = read(); d.paymentTools = d.paymentTools.filter((item) => item.id !== tool.id); d.rewardRules = d.rewardRules.filter((item) => item.paymentToolId !== tool.id); d.storedValueBalances = d.storedValueBalances.filter((item) => item.paymentToolId !== tool.id); write(d) },
+  async savePaymentTool(input: Omit<PaymentTool, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<PaymentTool, 'id' | 'createdAt'>>) { const now = Date.now(); const tool: PaymentTool = { ...input, id: input.id || id(), createdAt: input.createdAt || now, updatedAt: now }; const db = database; const summary = tool.visibility === 'private' ? null : { ownerUserId: tool.ownerUserId, type: tool.type, name: tool.name, issuer: tool.issuer, visibility: tool.visibility, isActive: tool.isActive, updatedAt: tool.updatedAt }; if (firebaseEnabled && db) { const { id: toolId, tripId, ownerUserId, ...data } = tool; await update(ref(db), { [`paymentTools/${tripId}/${ownerUserId}/${toolId}`]: withoutUndefined({ ...data, ownerUserId }), [`paymentToolSummaries/${tripId}/${toolId}`]: summary ? withoutUndefined(summary) : null }); return tool } const d = read(); const index = d.paymentTools.findIndex((item) => item.id === tool.id); if (index >= 0) d.paymentTools.splice(index, 1, tool); else d.paymentTools.push(tool); d.paymentToolSummaries = d.paymentToolSummaries.filter((item) => item.id !== tool.id); if (summary) d.paymentToolSummaries.push({ id: tool.id, tripId: tool.tripId, ...summary }); write(d); return tool },
+  async deletePaymentTool(tool: PaymentTool) { const db = database; if (firebaseEnabled && db) { await update(ref(db), { [`paymentTools/${tool.tripId}/${tool.ownerUserId}/${tool.id}`]: null, [`paymentToolSummaries/${tool.tripId}/${tool.id}`]: null, [`rewardRules/${tool.tripId}/${tool.ownerUserId}/${tool.id}`]: null, [`storedValueBalances/${tool.tripId}/${tool.ownerUserId}/${tool.id}`]: null }); return } const d = read(); d.paymentTools = d.paymentTools.filter((item) => item.id !== tool.id); d.paymentToolSummaries = d.paymentToolSummaries.filter((item) => item.id !== tool.id); d.rewardRules = d.rewardRules.filter((item) => item.paymentToolId !== tool.id); d.storedValueBalances = d.storedValueBalances.filter((item) => item.paymentToolId !== tool.id); write(d) },
   async saveRewardRule(input: Omit<RewardRule, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<RewardRule, 'id' | 'createdAt'>>) { const now = Date.now(); const rule: RewardRule = { ...input, id: input.id || id(), createdAt: input.createdAt || now, updatedAt: now }; const db = database; if (firebaseEnabled && db) { const { id: ruleId, tripId, paymentToolId, createdBy, ...data } = rule; await set(ref(db, `rewardRules/${tripId}/${createdBy}/${ruleId}`), withoutUndefined({ ...data, paymentToolId, createdBy })); return rule } const d = read(); const index = d.rewardRules.findIndex((item) => item.id === rule.id); if (index >= 0) d.rewardRules.splice(index, 1, rule); else d.rewardRules.push(rule); write(d); return rule },
   async deleteRewardRule(rule: RewardRule) { const db = database; if (firebaseEnabled && db) { await set(ref(db, `rewardRules/${rule.tripId}/${rule.createdBy}/${rule.id}`), null); return } const d = read(); d.rewardRules = d.rewardRules.filter((item) => item.id !== rule.id); write(d) },
   async savePaymentTransaction(input: Omit<PaymentTransaction, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<PaymentTransaction, 'id' | 'createdAt'>>) { const now = Date.now(); const transaction: PaymentTransaction = { ...input, id: input.id || id(), createdAt: input.createdAt || now, updatedAt: now }; const db = database; if (firebaseEnabled && db) { const { id: transactionId, tripId, ownerUserId, ...data } = transaction; await set(ref(db, `paymentTransactions/${tripId}/${ownerUserId}/${transactionId}`), withoutUndefined({ ...data, ownerUserId })); return transaction } const d = read(); const index = d.paymentTransactions.findIndex((item) => item.id === transaction.id); if (index >= 0) d.paymentTransactions.splice(index, 1, transaction); else d.paymentTransactions.push(transaction); write(d); return transaction },
