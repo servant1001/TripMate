@@ -7,20 +7,22 @@ declare module 'vue-router' {
   }
 }
 
+const AppRouteView = () => import('../views/AppRouteView.vue')
+
 const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', redirect: '/trips' },
-    { path: '/login', name: 'login', component: () => import('../App.vue'), meta: { public: true } },
-    { path: '/register', name: 'register', component: () => import('../App.vue'), meta: { public: true } },
-    { path: '/forgot-password', name: 'forgot-password', component: () => import('../App.vue'), meta: { public: true } },
-    { path: '/trips', name: 'trips', component: () => import('../App.vue') },
-    { path: '/trips/create', name: 'trip-create', component: () => import('../App.vue') },
+    { path: '/login', name: 'login', component: AppRouteView, meta: { public: true } },
+    { path: '/register', name: 'register', component: AppRouteView, meta: { public: true } },
+    { path: '/forgot-password', name: 'forgot-password', component: AppRouteView, meta: { public: true } },
+    { path: '/trips', name: 'trips', component: AppRouteView },
+    { path: '/trips/create', name: 'trip-create', component: AppRouteView },
     { path: '/trips/:tripId/dashboard', redirect: (to) => ({ name: 'trip-tab', params: { tripId: to.params.tripId, tab: 'overview' }, query: to.query }) },
     { path: '/trips/:tripId/insurance', redirect: (to) => ({ name: 'trip-tab', params: { tripId: to.params.tripId, tab: 'insurance' }, query: to.query }) },
     { path: '/trips/:tripId/payment-tools', redirect: (to) => ({ name: 'trip-tab', params: { tripId: to.params.tripId, tab: 'payments' }, query: to.query }) },
-    { path: '/trips/:tripId/:tab(overview|itinerary|expenses|todos|favorites|shopping|payments|packing|bookings|insurance|album|map|members)', name: 'trip-tab', component: () => import('../App.vue') },
-    { path: '/profile', name: 'profile', component: () => import('../App.vue') },
+    { path: '/trips/:tripId/:tab(overview|itinerary|expenses|todos|favorites|shopping|payments|packing|bookings|insurance|album|map|members)', name: 'trip-tab', component: AppRouteView },
+    { path: '/profile', name: 'profile', component: AppRouteView },
   ],
 })
 
