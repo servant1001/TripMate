@@ -63,7 +63,7 @@ function goProfile() {
 }
 
 function goTrip(tripId: string) {
-  void router.push({ name: 'trip-tab', params: { tripId, tab: 'overview' } })
+  void router.push({ name: 'trip-overview', params: { tripId } })
 }
 
 function openTrip(trip: Trip) {

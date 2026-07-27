@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { useRoute, useRouter } from 'vue-router'
+import { RouterView, useRoute, useRouter } from 'vue-router'
 import { useTripStore } from '../stores/trip'
 import { firebaseEnabled } from '../services/firebase'
 import { useTripmateSession } from '../composables/useTripmateSession'
@@ -9,6 +9,10 @@ import { useTripWorkspaceShell } from '../composables/useTripWorkspaceShell'
 import { useTripWorkspaceItinerary } from '../composables/useTripWorkspaceItinerary'
 import { useTripWorkspaceExpenses } from '../composables/useTripWorkspaceExpenses'
 import { useTripWorkspaceTripEditor } from '../composables/useTripWorkspaceTripEditor'
+import {
+  provideTripWorkspaceContext,
+  type TripWorkspaceContext,
+} from '../composables/useTripWorkspaceContext'
 
 const TripWorkspaceShell = defineAsyncComponent(
   () => import('../components/TripWorkspaceShell.vue'),
@@ -16,18 +20,6 @@ const TripWorkspaceShell = defineAsyncComponent(
 const TripManagementDialogs = defineAsyncComponent(
   () => import('../components/TripManagementDialogs.vue'),
 )
-const TripExpensesView = defineAsyncComponent(() => import('./TripExpensesView.vue'))
-const TripItineraryView = defineAsyncComponent(() => import('./TripItineraryView.vue'))
-const TripBookingsView = defineAsyncComponent(() => import('./TripBookingsView.vue'))
-const TripFavoritesView = defineAsyncComponent(() => import('./TripFavoritesView.vue'))
-const TripMapView = defineAsyncComponent(() => import('./TripMapView.vue'))
-const TripAlbumView = defineAsyncComponent(() => import('./TripAlbumView.vue'))
-const TripMembersView = defineAsyncComponent(() => import('./TripMembersView.vue'))
-const TripPaymentsView = defineAsyncComponent(() => import('./TripPaymentsView.vue'))
-const TripInsuranceView = defineAsyncComponent(() => import('./TripInsuranceView.vue'))
-const TripShoppingView = defineAsyncComponent(() => import('./TripShoppingView.vue'))
-const TripTodosView = defineAsyncComponent(() => import('./TripTodosView.vue'))
-const TripPackingView = defineAsyncComponent(() => import('./TripPackingView.vue'))
 
 const route = useRoute()
 const router = useRouter()
@@ -54,9 +46,7 @@ const currentAlbumPhotos = computed(() => store.tripAlbumPhotos(activeId.value))
 const currentShoppingItems = computed(() => store.tripShoppingItems(activeId.value))
 const currentSettlements = computed(() => store.tripSettlements(activeId.value))
 const currentInsurance = computed(() =>
-  store
-    .tripInsurances(activeId.value)
-    .find((entry) => entry.userId === user.value?.uid),
+  store.tripInsurances(activeId.value).find((entry) => entry.userId === user.value?.uid),
 )
 const currentInsuranceStatuses = computed(() =>
   store.tripInsuranceStatuses(activeId.value),
@@ -261,7 +251,11 @@ function toggleItinerarySorting() {
   )
 }
 
-async function sortItineraryItems(payload: { date: string; oldIndex: number; newIndex: number }) {
+async function sortItineraryItems(payload: {
+  date: string
+  oldIndex: number
+  newIndex: number
+}) {
   if (
     !shell.canEditTrip.value ||
     !shell.itinerarySortingEnabled.value ||
@@ -321,7 +315,11 @@ async function moveItineraryItem(payload: {
   oldIndex: number
   newIndex: number
 }) {
-  if (!shell.canEditTrip.value || !shell.itinerarySortingEnabled.value || payload.from === payload.to) {
+  if (
+    !shell.canEditTrip.value ||
+    !shell.itinerarySortingEnabled.value ||
+    payload.from === payload.to
+  ) {
     return
   }
   try {
@@ -342,6 +340,72 @@ async function moveItineraryItem(payload: {
     ElMessage.error(error instanceof Error ? error.message : '無法移動行程。')
   }
 }
+
+const workspaceContext: TripWorkspaceContext = {
+  current,
+  currentItems,
+  currentExpenses,
+  currentTodos,
+  currentPackingItems,
+  currentBookings,
+  currentFavorites,
+  currentAlbumPhotos,
+  currentShoppingItems,
+  currentSettlements,
+  currentInsurance,
+  currentInsuranceStatuses,
+  currentPaymentTools,
+  currentRewardRules,
+  currentPaymentTransactions,
+  currentStoredBalances,
+  currentPaymentToolSummaries,
+  currentMember,
+  currentPersonalItems,
+  favoritesWithItineraryStatus,
+  itineraryDays,
+  activeMemberId,
+  categoryBudgets,
+  budgetCategoryNames,
+  categoryBudgetSummary,
+  dailyBudget,
+  dailyExpenseSummary,
+  personalBudget,
+  balances,
+  settlementSuggestions,
+  total,
+  myPaid,
+  myBalance,
+  myExpense,
+  canEditTrip,
+  canManageMembers,
+  canEditTripSettings,
+  favoriteItineraryRequestId,
+  itinerarySortingEnabled,
+  userId: computed(() => user.value?.uid || current.value?.ownerId || ''),
+  actorName: computed(() => userDisplayName.value),
+  memberManagerRequested,
+  memberName,
+  formatTripDate,
+  mapsUrl: itinerary.mapsUrl,
+  formatItineraryDate: itinerary.formatItineraryDate,
+  itineraryDuration: itinerary.itineraryDuration,
+  itineraryTimeWarning: itinerary.itineraryTimeWarning,
+  expensePayerLabel: expenseState.expensePayerLabel,
+  expenseSplitLabel: expenseState.expenseSplitLabel,
+  expenseParticipantCount: expenseState.expenseParticipantCount,
+  expenseShare: expenseState.expenseShare,
+  toggleItinerary: itinerary.toggleItinerary,
+  removeItem: itinerary.removeItem,
+  addFavoriteToItinerary: itinerary.addFavoriteToItinerary,
+  clearFavoriteRequest: itinerary.clearFavoriteRequest,
+  toggleItinerarySorting,
+  sortItineraryItems,
+  sortGroupItineraryItems,
+  sortPersonalItineraryItems,
+  moveItineraryItem,
+}
+
+provideTripWorkspaceContext(workspaceContext)
 
 watch(
   [authResolving, user, () => route.fullPath],
@@ -397,160 +461,7 @@ onUnmounted(() => {
     @remove-trip="tripEditor.removeTrip"
     @open-member-manager="openMemberManager"
   >
-    <TripItineraryView
-      v-if="activeTripTab === 'overview' || activeTripTab === 'itinerary'"
-      :trip="current"
-      :items="currentItems"
-      :favorites="currentFavorites"
-      :user-id="user?.uid || current.ownerId"
-      :favorite-request-id="favoriteItineraryRequestId"
-      :days="itineraryDays"
-      :personal-items="currentPersonalItems"
-      :shopping-items="currentShoppingItems"
-      :can-edit="canEditTrip"
-      :sorting-enabled="itinerarySortingEnabled"
-      :format-date="itinerary.formatItineraryDate"
-      :duration="itinerary.itineraryDuration"
-      :time-warning="itinerary.itineraryTimeWarning"
-      :maps-url="itinerary.mapsUrl"
-      @favorite-request-consumed="itinerary.clearFavoriteRequest()"
-      @toggle="itinerary.toggleItinerary"
-      @remove="itinerary.removeItem"
-      @toggle-sorting="toggleItinerarySorting"
-      @sort="sortItineraryItems"
-      @sort-group="sortGroupItineraryItems"
-      @sort-personal="sortPersonalItineraryItems"
-      @move="moveItineraryItem"
-    />
-
-    <TripMapView
-      v-if="activeTripTab === 'map'"
-      :days="itineraryDays"
-      :format-date="itinerary.formatItineraryDate"
-      :maps-url="itinerary.mapsUrl"
-    />
-
-    <TripExpensesView
-      v-if="activeTripTab === 'overview' || activeTripTab === 'expenses'"
-      :trip="current"
-      :expenses="currentExpenses"
-      :total="total"
-      :my-paid="myPaid"
-      :my-balance="myBalance"
-      :personal-budget-member-id="activeMemberId"
-      :personal-budget="personalBudget"
-      :personal-spent="myExpense"
-      :category-budget-values="categoryBudgets"
-      :category-budget-options="budgetCategoryNames"
-      :category-budgets="categoryBudgetSummary"
-      :daily-budget="dailyBudget"
-      :daily-expenses="dailyExpenseSummary"
-      :can-set-personal-budget="Boolean(activeMemberId)"
-      :can-manage-category-budgets="canEditTripSettings"
-      :can-edit="canEditTrip"
-      :user-id="user?.uid || current.ownerId"
-      :payer-label="expenseState.expensePayerLabel"
-      :split-label="expenseState.expenseSplitLabel"
-      :participant-count="expenseState.expenseParticipantCount"
-      :share="expenseState.expenseShare"
-    />
-
-    <TripTodosView
-      v-if="activeTripTab === 'todos'"
-      :trip="current"
-      :todos="currentTodos"
-      :can-edit="canEditTrip"
-      :user-id="user?.uid || current.ownerId"
-      :member-name="memberName"
-    />
-
-    <TripPackingView
-      v-if="activeTripTab === 'packing'"
-      :trip="current"
-      :items="currentPackingItems"
-      :can-edit="canEditTrip"
-      :user-id="user?.uid || current.ownerId"
-      :member-name="memberName"
-    />
-
-    <TripBookingsView
-      v-if="activeTripTab === 'bookings'"
-      :trip="current"
-      :bookings="currentBookings"
-      :can-edit="canEditTrip"
-      :user-id="user?.uid || current.ownerId"
-      :member-name="memberName"
-    />
-
-    <TripFavoritesView
-      v-if="activeTripTab === 'favorites'"
-      :trip="current"
-      :favorites="favoritesWithItineraryStatus"
-      :currency="current.currency"
-      :can-edit="canEditTrip"
-      :user-id="user?.uid || current.ownerId"
-      :actor-name="currentMember?.name || userDisplayName"
-      :member-name="memberName"
-      @add-to-itinerary="itinerary.addFavoriteToItinerary"
-    />
-
-    <TripAlbumView
-      v-if="activeTripTab === 'album'"
-      :trip="current"
-      :photos="currentAlbumPhotos"
-      :items="currentItems"
-      :can-edit="canEditTrip"
-      :user-id="user?.uid || current.ownerId"
-      :member-name="memberName"
-      :format-date="formatTripDate"
-    />
-
-    <TripShoppingView
-      v-if="activeTripTab === 'shopping'"
-      :trip="current"
-      :items="currentShoppingItems"
-      :itineraries="currentItems"
-      :can-edit="canEditTrip"
-      :user-id="user?.uid || current.ownerId"
-      :member-name="memberName"
-      :format-date="itinerary.formatItineraryDate"
-    />
-
-    <TripPaymentsView
-      v-if="activeTripTab === 'payments'"
-      :trip="current"
-      :tools="currentPaymentTools"
-      :rules="currentRewardRules"
-      :transactions="currentPaymentTransactions"
-      :balances="currentStoredBalances"
-      :summaries="currentPaymentToolSummaries"
-      :user-id="user?.uid || current.ownerId"
-      :can-edit="canEditTrip"
-      :member-name="memberName"
-    />
-
-    <TripInsuranceView
-      v-if="activeTripTab === 'insurance'"
-      :trip="current"
-      :insurance="currentInsurance"
-      :statuses="currentInsuranceStatuses"
-      :user-id="user?.uid || current.ownerId"
-      :member-name="memberName"
-      :can-edit="canEditTrip"
-    />
-
-    <TripMembersView
-      v-if="activeTripTab === 'overview' || activeTripTab === 'members'"
-      v-model:open-manager="memberManagerRequested"
-      :trip="current"
-      :balances="balances"
-      :suggestions="settlementSuggestions"
-      :settlements="currentSettlements"
-      :expenses="currentExpenses"
-      :can-manage="canManageMembers"
-      :can-edit="canEditTrip"
-      :member-name="memberName"
-    />
+    <RouterView />
   </TripWorkspaceShell>
 
   <TripManagementDialogs

@@ -3,7 +3,7 @@ import { Close } from '@element-plus/icons-vue'
 import AppHeader from './AppHeader.vue'
 import TripHeroHeader from './TripHeroHeader.vue'
 import type { Trip } from '../types'
-import type { TripTab } from '../composables/useTripWorkspaceShell'
+import type { TripTab } from '../router/tripWorkspaceTabs'
 
 defineProps<{
   signedIn: boolean

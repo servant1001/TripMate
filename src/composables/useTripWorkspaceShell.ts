@@ -3,21 +3,13 @@ import type { User } from 'firebase/auth'
 import type { RouteLocationNormalizedLoaded, Router } from 'vue-router'
 import type { Role, Trip } from '../types'
 import { firebaseEnabled } from '../services/firebase'
-
-export type TripTab =
-  | 'overview'
-  | 'itinerary'
-  | 'map'
-  | 'expenses'
-  | 'todos'
-  | 'packing'
-  | 'bookings'
-  | 'favorites'
-  | 'album'
-  | 'shopping'
-  | 'insurance'
-  | 'payments'
-  | 'members'
+import {
+  tripTabFromRouteName,
+  tripTabLabels,
+  tripTabOptions,
+  tripTabRouteNames,
+  type TripTab,
+} from '../router/tripWorkspaceTabs'
 
 export function useTripWorkspaceShell({
   route,
@@ -36,56 +28,7 @@ export function useTripWorkspaceShell({
   const memberManagerRequested = ref(false)
   const itinerarySortingEnabled = ref(false)
 
-  const activeTripTab = computed<TripTab>(() => {
-    const tab = String(route.params.tab || '')
-    return tab === 'overview' ||
-      tab === 'itinerary' ||
-      tab === 'map' ||
-      tab === 'expenses' ||
-      tab === 'todos' ||
-      tab === 'packing' ||
-      tab === 'bookings' ||
-      tab === 'favorites' ||
-      tab === 'album' ||
-      tab === 'shopping' ||
-      tab === 'insurance' ||
-      tab === 'payments' ||
-      tab === 'members'
-      ? tab
-      : 'overview'
-  })
-
-  const tripTabLabels: Record<TripTab, string> = {
-    overview: '總覽',
-    itinerary: '行程',
-    map: '地圖',
-    expenses: '開銷',
-    todos: '待辦',
-    packing: '行李',
-    bookings: '預訂',
-    favorites: '收藏',
-    album: '相簿',
-    shopping: '購物',
-    insurance: '保險',
-    payments: '支付與回饋',
-    members: '旅伴與結算',
-  }
-
-  const tripTabOptions: TripTab[] = [
-    'overview',
-    'itinerary',
-    'expenses',
-    'todos',
-    'favorites',
-    'shopping',
-    'payments',
-    'packing',
-    'bookings',
-    'insurance',
-    'album',
-    'map',
-    'members',
-  ]
+  const activeTripTab = computed<TripTab>(() => tripTabFromRouteName(String(route.name || '')))
 
   const currentRole = computed<Role | undefined>(
     () =>
@@ -113,8 +56,8 @@ export function useTripWorkspaceShell({
     if (tab !== 'itinerary') itinerarySortingEnabled.value = false
     if (tab === activeTripTab.value) return
     void router.push({
-      name: 'trip-tab',
-      params: { tripId: activeId, tab },
+      name: tripTabRouteNames[tab],
+      params: { tripId: activeId },
       query: route.query,
     })
   }
