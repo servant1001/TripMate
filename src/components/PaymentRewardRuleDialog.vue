@@ -48,7 +48,7 @@ const emit = defineEmits<{
     @update:model-value="emit('update:open', $event)"
   >
     <el-form label-position="top">
-      <div class="two-col">
+      <div class="two-col payment-rule-core-grid">
         <el-form-item label="回饋規則名稱" required>
           <el-input v-model="props.form.name" placeholder="例如：日本餐廳加碼回饋" />
         </el-form-item>
@@ -79,20 +79,28 @@ const emit = defineEmits<{
           <el-input-number v-model="props.form.minimumSpend" :min="0" controls-position="right" />
         </el-form-item>
         <el-form-item label="基礎回饋上限">
-          <el-input-number v-model="props.form.baseRewardCap" :min="0" controls-position="right" />
-          <small class="payment-rule-hint">留空或 0 代表基礎回饋無上限。</small>
+          <div class="payment-rule-field">
+            <el-input-number v-model="props.form.baseRewardCap" :min="0" controls-position="right" />
+            <small class="payment-rule-hint">留空或 0 代表基礎回饋無上限。</small>
+          </div>
         </el-form-item>
         <el-form-item label="加碼回饋上限">
-          <el-input-number v-model="props.form.bonusRewardCap" :min="0" controls-position="right" />
-          <small class="payment-rule-hint">留空或 0 代表加碼回饋無上限。</small>
+          <div class="payment-rule-field">
+            <el-input-number v-model="props.form.bonusRewardCap" :min="0" controls-position="right" />
+            <small class="payment-rule-hint">留空或 0 代表加碼回饋無上限。</small>
+          </div>
         </el-form-item>
         <el-form-item label="總回饋上限（選填）">
-          <el-input-number v-model="props.form.rewardCap" :min="0" controls-position="right" />
-          <small class="payment-rule-hint">留空或 0 代表不另外限制總回饋。</small>
+          <div class="payment-rule-field">
+            <el-input-number v-model="props.form.rewardCap" :min="0" controls-position="right" />
+            <small class="payment-rule-hint">留空或 0 代表不另外限制總回饋。</small>
+          </div>
         </el-form-item>
         <el-form-item label="符合回饋消費上限">
-          <el-input-number v-model="props.form.maximumEligibleSpend" :min="0" controls-position="right" />
-          <small class="payment-rule-hint">留空或 0 代表可計算回饋的消費金額無上限。</small>
+          <div class="payment-rule-field">
+            <el-input-number v-model="props.form.maximumEligibleSpend" :min="0" controls-position="right" />
+            <small class="payment-rule-hint">留空或 0 代表可計算回饋的消費金額無上限。</small>
+          </div>
         </el-form-item>
         <el-form-item label="上限計算期間">
           <el-select v-model="props.form.capPeriod">
@@ -112,7 +120,7 @@ const emit = defineEmits<{
 
       <el-divider content-position="left">適用條件（留空代表不限）</el-divider>
 
-      <div class="two-col">
+      <div class="two-col payment-rule-condition-grid">
         <el-form-item label="適用幣別">
           <el-input v-model="props.form.applicableCurrencies" placeholder="例如：JPY、TWD" />
         </el-form-item>
@@ -160,11 +168,51 @@ const emit = defineEmits<{
 </template>
 
 <style scoped>
+.two-col{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  column-gap:18px;
+}
+.payment-rule-core-grid,
+.payment-rule-condition-grid{
+  row-gap:2px;
+}
+.payment-rule-field{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  width:100%;
+}
+.payment-rule-core-grid :deep(.el-form-item),
+.payment-rule-condition-grid :deep(.el-form-item){
+  margin-bottom:18px;
+}
+.payment-rule-core-grid :deep(.el-form-item__content),
+.payment-rule-condition-grid :deep(.el-form-item__content){
+  align-items:flex-start;
+}
+.payment-rule-field :deep(.el-input-number){
+  width:100%;
+}
+.payment-rule-core-grid :deep(.el-input-number),
+.payment-rule-core-grid :deep(.el-select),
+.payment-rule-core-grid :deep(.el-date-editor.el-input),
+.payment-rule-core-grid :deep(.el-date-editor.el-input__wrapper),
+.payment-rule-condition-grid :deep(.el-input),
+.payment-rule-condition-grid :deep(.el-select){
+  width:100%;
+}
 .payment-rule-hint{
   display:block;
   margin-top:6px;
   color:#6b7d78;
   font-size:12px;
   line-height:1.5;
+}
+@media (max-width: 720px){
+  .two-col{
+    grid-template-columns:1fr;
+    column-gap:0;
+  }
 }
 </style>

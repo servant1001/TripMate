@@ -78,6 +78,7 @@ const transactionToolFilter = ref('')
 const transactionStatusFilter = ref('')
 const transactionCategoryFilter = ref('')
 const transactionDateRange = ref<string[]>([])
+const transactionSort = ref<'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc' | 'reward_desc'>('date_desc')
 const transactionCategories = computed(
   () =>
     [
@@ -100,6 +101,51 @@ const filteredTransactions = computed(() =>
           item.transactionDate <= transactionDateRange.value[1])),
   ),
 )
+const sortedFilteredTransactions = computed(() => {
+  const items = [...filteredTransactions.value]
+  const amountOf = (item: PaymentTransaction) => item.convertedAmount || item.originalAmount
+  switch (transactionSort.value) {
+    case 'date_asc':
+      return items.sort((a, b) => a.transactionDate.localeCompare(b.transactionDate))
+    case 'amount_desc':
+      return items.sort((a, b) => amountOf(b) - amountOf(a))
+    case 'amount_asc':
+      return items.sort((a, b) => amountOf(a) - amountOf(b))
+    case 'reward_desc':
+      return items.sort((a, b) => (b.estimatedRewardAmount || 0) - (a.estimatedRewardAmount || 0))
+    case 'date_desc':
+    default:
+      return items.sort((a, b) => b.transactionDate.localeCompare(a.transactionDate))
+  }
+})
+const activeFilterSummary = computed(() => {
+  const items: Array<{ key: string; label: string }> = []
+  if (transactionToolFilter.value) {
+    const tool = ownTools.value.find((item) => item.id === transactionToolFilter.value)
+    items.push({ key: 'tool', label: `工具：${tool?.name || '未知工具'}` })
+  }
+  if (transactionStatusFilter.value) {
+    items.push({ key: 'status', label: `狀態：${transactionStatusLabel(transactionStatusFilter.value as PaymentTransaction['status'])}` })
+  }
+  if (transactionCategoryFilter.value) {
+    items.push({ key: 'category', label: `分類：${transactionCategoryFilter.value}` })
+  }
+  if (transactionDateRange.value.length === 2) {
+    items.push({ key: 'date', label: `${transactionDateRange.value[0]} 至 ${transactionDateRange.value[1]}` })
+  }
+  items.push({
+    key: 'sort',
+    label:
+      {
+        date_desc: '排序：最新優先',
+        date_asc: '排序：最早優先',
+        amount_desc: '排序：金額高到低',
+        amount_asc: '排序：金額低到高',
+        reward_desc: '排序：回饋高到低',
+      }[transactionSort.value],
+  })
+  return items
+})
 const totals = computed(() =>
   activeTransactions.value.reduce(
     (sum, item) => ({
@@ -204,19 +250,33 @@ function formatPeriod(rule: RewardRule) {
 }
 
 function formatRuleSummary(rule: RewardRule) {
-  const parts = [`基本 ${(rule.baseRate * 100).toFixed(1)}%`]
-  if (rule.bonusRate) parts.push(`加碼 ${(rule.bonusRate * 100).toFixed(1)}%`)
-  if (rule.minimumSpend) parts.push(`門檻 ${props.trip.currency} ${rule.minimumSpend.toLocaleString()}`)
-  return parts.join('・')
+  const parts = [
+    {
+      key: 'base',
+      label: '基礎',
+      rate: `${(rule.baseRate * 100).toFixed(1)}%`,
+      cap: rule.baseRewardCap
+        ? `上限 ${props.trip.currency} ${rule.baseRewardCap.toLocaleString()}`
+        : '無上限',
+    },
+  ]
+  if (rule.bonusRate) {
+    parts.push({
+      key: 'bonus',
+      label: '加碼',
+      rate: `${(rule.bonusRate * 100).toFixed(1)}%`,
+      cap: rule.bonusRewardCap
+        ? `上限 ${props.trip.currency} ${rule.bonusRewardCap.toLocaleString()}`
+        : '無上限',
+    })
+  }
+  return parts
 }
 
 function formatRuleCaps(rule: RewardRule) {
   const parts: string[] = []
-  if (rule.baseRewardCap) {
-    parts.push(`基礎上限 ${props.trip.currency} ${rule.baseRewardCap.toLocaleString()}`)
-  }
-  if (rule.bonusRewardCap) {
-    parts.push(`加碼上限 ${props.trip.currency} ${rule.bonusRewardCap.toLocaleString()}`)
+  if (rule.minimumSpend) {
+    parts.push(`門檻 ${props.trip.currency} ${rule.minimumSpend.toLocaleString()}`)
   }
   if (rule.rewardCap) {
     parts.push(`總上限 ${props.trip.currency} ${rule.rewardCap.toLocaleString()}`)
@@ -229,17 +289,32 @@ function formatRuleCaps(rule: RewardRule) {
 
 function formatRuleUsage(rule: RewardRule, tool: PaymentTool) {
   const usage = rewardUsage(rule, toolTransactions(tool))
-  const parts: string[] = []
+  const parts: Array<{ key: string; label: string; used: string; cap: string }> = []
   if (rule.baseRewardCap) {
-    parts.push(`基礎已用 ${usage.usedBaseRewardAmount.toLocaleString()}／${rule.baseRewardCap.toLocaleString()}`)
+    parts.push({
+      key: 'base',
+      label: '基礎已用',
+      used: usage.usedBaseRewardAmount.toLocaleString(),
+      cap: rule.baseRewardCap.toLocaleString(),
+    })
   }
   if (rule.bonusRewardCap) {
-    parts.push(`加碼已用 ${usage.usedBonusRewardAmount.toLocaleString()}／${rule.bonusRewardCap.toLocaleString()}`)
+    parts.push({
+      key: 'bonus',
+      label: '加碼已用',
+      used: usage.usedBonusRewardAmount.toLocaleString(),
+      cap: rule.bonusRewardCap.toLocaleString(),
+    })
   }
   if (rule.rewardCap) {
-    parts.push(`總額已用 ${usage.usedRewardAmount.toLocaleString()}／${rule.rewardCap.toLocaleString()}`)
+    parts.push({
+      key: 'total',
+      label: '總回饋已用',
+      used: usage.usedRewardAmount.toLocaleString(),
+      cap: rule.rewardCap.toLocaleString(),
+    })
   }
-  return parts.join('・')
+  return parts
 }
 
 function formatRuleConditions(rule: RewardRule) {
@@ -288,6 +363,14 @@ function transactionRewardLabel(transaction: PaymentTransaction) {
     return `海外手續費 ${props.trip.currency} ${transaction.foreignTransactionFee.toLocaleString()}`
   }
   return '尚無回饋試算'
+}
+
+function clearTransactionFilters() {
+  transactionToolFilter.value = ''
+  transactionStatusFilter.value = ''
+  transactionCategoryFilter.value = ''
+  transactionDateRange.value = []
+  transactionSort.value = 'date_desc'
 }
 </script>
 
@@ -448,7 +531,16 @@ function transactionRewardLabel(transaction: PaymentTransaction) {
               <span v-if="rule.priority > 1" class="rule-pill">優先序 {{ rule.priority }}</span>
             </div>
 
-            <p class="rule-summary">{{ formatRuleSummary(rule) }}</p>
+            <div class="rule-summary-list">
+              <div
+                v-for="summary in formatRuleSummary(rule)"
+                :key="summary.key"
+                class="rule-summary-item"
+              >
+                <span class="rule-summary-main">{{ summary.label }} {{ summary.rate }}</span>
+                <span class="rule-summary-cap">（{{ summary.cap }}）</span>
+              </div>
+            </div>
 
             <p v-if="formatRuleCaps(rule)" class="rule-meta">
               {{ formatRuleCaps(rule) }}
@@ -464,9 +556,16 @@ function transactionRewardLabel(transaction: PaymentTransaction) {
               </span>
             </div>
 
-            <small v-if="formatRuleUsage(rule, tool)" class="rule-usage">
-              {{ formatRuleUsage(rule, tool) }}
-            </small>
+            <div v-if="formatRuleUsage(rule, tool).length" class="rule-usage-list">
+              <small
+                v-for="usage in formatRuleUsage(rule, tool)"
+                :key="usage.key"
+                class="rule-usage"
+              >
+                <span class="rule-usage-label">{{ usage.label }}</span>
+                <span class="rule-usage-value">{{ usage.used }} / {{ usage.cap }}</span>
+              </small>
+            </div>
           </div>
 
           <div v-if="stored(tool)" class="balance">
@@ -492,7 +591,7 @@ function transactionRewardLabel(transaction: PaymentTransaction) {
     <section>
       <div class="payment-section-title">
         <h3>付款明細</h3>
-        <span>{{ filteredTransactions.length }}／{{ activeTransactions.length }} 筆</span>
+        <span>{{ sortedFilteredTransactions.length }}／{{ activeTransactions.length }} 筆</span>
       </div>
 
       <div v-if="activeTransactions.length" class="transaction-filters">
@@ -518,6 +617,13 @@ function transactionRewardLabel(transaction: PaymentTransaction) {
             :value="category"
           />
         </el-select>
+        <el-select v-model="transactionSort" placeholder="排序方式">
+          <el-option label="最新優先" value="date_desc" />
+          <el-option label="最早優先" value="date_asc" />
+          <el-option label="金額高到低" value="amount_desc" />
+          <el-option label="金額低到高" value="amount_asc" />
+          <el-option label="回饋高到低" value="reward_desc" />
+        </el-select>
         <el-date-picker
           v-model="transactionDateRange"
           type="daterange"
@@ -528,9 +634,29 @@ function transactionRewardLabel(transaction: PaymentTransaction) {
         />
       </div>
 
-      <div v-if="filteredTransactions.length" class="transaction-list">
+      <div v-if="activeTransactions.length" class="transaction-filter-summary">
+        <div class="filter-chip-list">
+          <span
+            v-for="item in activeFilterSummary"
+            :key="item.key"
+            class="filter-chip"
+          >
+            {{ item.label }}
+          </span>
+        </div>
+        <el-button
+          v-if="transactionToolFilter || transactionStatusFilter || transactionCategoryFilter || transactionDateRange.length || transactionSort !== 'date_desc'"
+          text
+          class="filter-reset"
+          @click="clearTransactionFilters"
+        >
+          重設
+        </el-button>
+      </div>
+
+      <div v-if="sortedFilteredTransactions.length" class="transaction-list">
         <article
-          v-for="transaction in filteredTransactions"
+          v-for="transaction in sortedFilteredTransactions"
           :key="transaction.id"
           class="transaction-row"
         >
@@ -589,12 +715,12 @@ function transactionRewardLabel(transaction: PaymentTransaction) {
 .payment-heading{gap:16px;padding-bottom:18px;border-bottom:1px solid #e1e8e3}
 .payment-heading p{margin:0;color:#df765f;font-size:11px;font-weight:800;letter-spacing:1px}
 .payment-heading h2{margin:3px 0;color:#163b37}
-.payment-heading>div:last-child{gap:8px}
+.payment-heading>div:last-child{gap:8px;flex-wrap:wrap}
 .payment-summary,.tool-grid{display:grid;gap:10px}
 .payment-summary{grid-template-columns:repeat(4,1fr);margin:18px 0}
 .payment-summary article,.tool-card,.transaction-list,.payment-empty{border:1px solid #e1e8e3;border-radius:12px;background:#fff}
 .payment-summary article{padding:12px}
-.payment-summary span,.tool-card p,.tool-card small,.transaction-row p,.rule-meta,.rule-summary{color:#6b7d78;font-size:12px}
+.payment-summary span,.tool-card p,.tool-card small,.transaction-row p,.rule-meta,.rule-summary-list{color:#6b7d78;font-size:12px}
 .payment-section-title{margin:20px 0 10px}
 .payment-section-title h3{margin:0}
 .tool-grid{grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
@@ -605,7 +731,7 @@ function transactionRewardLabel(transaction: PaymentTransaction) {
 .tool-name{gap:9px;min-width:0}
 .tool-name img{width:40px;height:40px;border-radius:9px;object-fit:cover;flex:0 0 auto}
 .tool-name h4{margin:0;color:#163b37;font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tool-card p,.rule-meta,.rule-summary{margin:0}
+.tool-card p,.rule-meta,.rule-summary-list{margin:0}
 .tool-meta-row{justify-content:space-between;gap:8px;flex-wrap:wrap}
 .tool-status-pill{display:inline-flex;padding:4px 8px;border-radius:999px;background:#e8f4ec;color:#2f7d70;font-size:11px;font-weight:700;line-height:1.2}
 .tool-status-pill.is-inactive{background:#f3f6f4;color:#7b8d87}
@@ -622,10 +748,16 @@ function transactionRewardLabel(transaction: PaymentTransaction) {
 .rule-pill{background:#eef5f0;color:#2f7d70}
 .rule-pill.is-warning{background:#fff4d9;color:#9b6a17}
 .rule-pill.is-good{background:#e8f4ec;color:#2f7d70}
-.rule-summary{color:#44635c;font-weight:600}
+.rule-summary-list{display:grid;gap:4px}
+.rule-summary-item{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:baseline}
+.rule-summary-main{color:#2d5e54;font-weight:700}
+.rule-summary-cap{color:#6b7d78}
 .rule-meta{line-height:1.5}
 .rule-tag{background:#f3f6f4;color:#58736b}
-.rule-usage{color:#6b7d78;line-height:1.5}
+.rule-usage-list{display:grid;gap:4px}
+.rule-usage{display:flex;flex-wrap:wrap;gap:4px 8px;color:#6b7d78;line-height:1.5}
+.rule-usage-label{color:#58736b}
+.rule-usage-value{color:#163b37;font-weight:600}
 .balance{background:#eef6f1}
 .payment-empty{padding:24px;text-align:center;color:#6b7d78}
 .transaction-list{overflow:hidden}
@@ -645,13 +777,22 @@ function transactionRewardLabel(transaction: PaymentTransaction) {
 .transaction-amount{display:grid;justify-items:end;gap:3px;min-width:110px}
 .transaction-amount b{color:#163b37;font-size:15px}
 .transaction-amount small{color:#6b7d78;font-size:11px}
-.transaction-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0 0 10px}
+.transaction-filters{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0 0 10px}
+.transaction-filter-summary{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin:0 0 12px}
+.filter-chip-list{display:flex;flex-wrap:wrap;gap:6px}
+.filter-chip{display:inline-flex;align-items:center;padding:5px 9px;border-radius:999px;background:#eef5f0;color:#2f7d70;font-size:12px;line-height:1.2}
+.filter-reset{padding:0 2px;flex:0 0 auto}
 @media(max-width:600px){
   .payment-page{padding:16px}
   .payment-heading{align-items:stretch;flex-direction:column}
+  .payment-heading>div:last-child>*{flex:1 1 calc(50% - 4px)}
   .payment-summary{grid-template-columns:repeat(2,1fr)}
   .tool-grid,.transaction-filters{grid-template-columns:1fr}
+  .payment-section-title{align-items:flex-start;gap:8px;flex-direction:column}
+  .transaction-filter-summary{flex-direction:column}
   .transaction-row{grid-template-columns:minmax(0,1fr) 36px;align-items:start}
   .transaction-amount{justify-items:start;min-width:0}
+  .transaction-title-row{align-items:flex-start;flex-direction:column}
+  .transaction-status-pill{align-self:flex-start}
 }
 </style>
