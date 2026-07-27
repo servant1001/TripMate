@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import TripMembersSettlementCard from '../components/TripMembersSettlementCard.vue'
 import { useTripStore } from '../stores/trip'
@@ -17,8 +17,11 @@ const props = defineProps<{
   expenses: Expense[]
   canManage: boolean
   canEdit: boolean
+  openManager: boolean
   memberName: (id: string) => string
 }>()
+
+const emit = defineEmits<{ 'update:openManager': [value: boolean] }>()
 
 const store = useTripStore()
 const managerOpen = ref(false)
@@ -35,6 +38,15 @@ function openMemberManager() {
   }
   managerOpen.value = true
 }
+
+watch(
+  () => props.openManager,
+  (shouldOpen) => {
+    if (!shouldOpen) return
+    openMemberManager()
+    emit('update:openManager', false)
+  },
+)
 
 async function addMember() {
   if (!props.canManage) {
