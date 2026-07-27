@@ -10,7 +10,6 @@ import TripPaymentRecommendationCard from '../components/TripPaymentRecommendati
 import TripPaymentSharedToolsCard from '../components/TripPaymentSharedToolsCard.vue'
 import { useTripStore } from '../stores/trip'
 import type {
-  PaymentMethod,
   PaymentTool,
   PaymentToolSummary,
   PaymentTransaction,
