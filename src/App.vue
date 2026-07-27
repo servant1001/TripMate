@@ -20,13 +20,13 @@ import TripTodosView from './views/TripTodosView.vue'
 import TripPackingView from './views/TripPackingView.vue'
 import { repository } from './services/repository'
 import { useTripStore } from './stores/trip'
-import type { Expense, Favorite, FavoriteType, ItineraryActivityKind, ItineraryItem, Member, Role, Settlement, Trip } from './types'
+import type { Expense, Favorite, FavoriteType, ItineraryActivityKind, ItineraryItem, Role, Trip } from './types'
 import { uploadTripCover } from './services/cloudinary'
 import { auth, ensureUserProfile, firebaseEnabled, logOut, registerWithEmail, requestPasswordReset, signInWithEmail, signInWithGoogle, updateUserSettings } from './services/firebase'
 import { joinTripByInviteCode } from './services/cloudinary'
 import { participantsForExpense, payerSharesForExpense, splitModeLabel, splitShareForMember } from './utils/expenseSplit'
 
-const router = useRouter(); const route = useRoute(); const store = useTripStore(); const activeId = ref(''); const screen = ref<'trips'|'trip'|'login'|'profile'>('trips'); const authResolving = ref(firebaseEnabled && Boolean(auth)); const showCreate = ref(false); const showEdit = ref(false); const showJoin = ref(false); const showMember = ref(false); const showItem = ref(false); const showPersonalBudget = ref(false); const savingPersonalBudget = ref(false); const showCategoryBudgets = ref(false); const savingCategoryBudgets = ref(false); const mobileTripMenuOpen = ref(false)
+const router = useRouter(); const route = useRoute(); const store = useTripStore(); const activeId = ref(''); const screen = ref<'trips'|'trip'|'login'|'profile'>('trips'); const authResolving = ref(firebaseEnabled && Boolean(auth)); const showCreate = ref(false); const showEdit = ref(false); const showJoin = ref(false); const showItem = ref(false); const showPersonalBudget = ref(false); const savingPersonalBudget = ref(false); const showCategoryBudgets = ref(false); const savingCategoryBudgets = ref(false); const mobileTripMenuOpen = ref(false)
 type TripTab = 'overview' | 'itinerary' | 'map' | 'expenses' | 'todos' | 'packing' | 'bookings' | 'favorites' | 'album' | 'shopping' | 'insurance' | 'payments' | 'members'
 const showItineraryGroup = ref(false); const editingItineraryGroupId = ref<string | null>(null); const itineraryGroupMemberIds = ref<string[]>([]); const itemItineraryGroupId = ref(''); const itineraryGroup = reactive({ date: '', time: '', endTime: '', title: '', location: '', mapUrl: '', note: '' })
 const current = computed(() => store.trip(activeId.value)); const currentItems = computed(() => store.items(activeId.value)); const currentPersonalItems = computed(() => currentItems.value.filter((entry) => entry.activityKind === 'personal' && (!firebaseEnabled || entry.ownerId === user.value?.uid))); const currentExpenses = computed(() => store.tripExpenses(activeId.value)); const currentTodos = computed(() => store.tripTodos(activeId.value)); const currentPackingItems = computed(() => store.tripPackingItems(activeId.value)); const currentBookings = computed(() => store.tripBookings(activeId.value)); const currentFavorites = computed(() => store.tripFavorites(activeId.value)); const currentAlbumPhotos = computed(() => store.tripAlbumPhotos(activeId.value)); const currentShoppingItems = computed(() => store.tripShoppingItems(activeId.value)); const currentSettlements = computed(() => store.tripSettlements(activeId.value)); const currentInsurance = computed(() => store.tripInsurances(activeId.value).find((entry) => entry.userId === user.value?.uid)); const currentInsuranceStatuses = computed(() => store.tripInsuranceStatuses(activeId.value)); const currentPaymentTools = computed(() => store.tripPaymentTools(activeId.value)); const currentRewardRules = computed(() => store.tripRewardRules(activeId.value)); const currentPaymentTransactions = computed(() => store.tripPaymentTransactions(activeId.value)); const currentStoredBalances = computed(() => store.tripStoredValueBalances(activeId.value));
@@ -35,7 +35,7 @@ const currentPaymentToolSummaries = computed(() => store.tripPaymentToolSummarie
 const insertAfterItemId = ref<string | null>(null)
 const itemActivityKind = ref<ItineraryActivityKind>('shared'); const personalActivityParentId = ref('')
 const create = reactive({ name: '', country: '日本', city: '東京', startDate: '', endDate: '', currency: 'JPY', budget: 0, coverUrl: '' }); const coverFile = ref<File>(); const edit = reactive({ name: '', country: '', city: '', startDate: '', endDate: '', currency: 'JPY', budget: 0, coverUrl: '' }); const editCoverFile = ref<File>(); const editCoverPreview = ref(''); const savingTrip = ref(false)
-const member = reactive({ name: '', email: '', role: 'editor' as Role }); const item = reactive({ date: '', time: '', endTime: '', title: '', location: '', mapUrl: '', imageUrl: '', note: '', type: '景點', transportDestinationFavoriteId: '', transportDestinationName: '', transportDestinationLocation: '', transportDestinationMapUrl: '' }); const editingItemId = ref<string | null>(null); const pendingFavoriteId = ref<string | null>(null); const itemFavoriteId = ref(''); const showFavoritePicker = ref(false); const favoritePickerTarget = ref<'source' | 'destination'>('source'); const favoritePickerSearch = ref(''); const favoritePickerType = ref<FavoriteType | 'all'>('all'); const itinerarySortingEnabled = ref(false); const categoryBudgetDraft = reactive<Record<string, number>>({})
+const item = reactive({ date: '', time: '', endTime: '', title: '', location: '', mapUrl: '', imageUrl: '', note: '', type: '景點', transportDestinationFavoriteId: '', transportDestinationName: '', transportDestinationLocation: '', transportDestinationMapUrl: '' }); const editingItemId = ref<string | null>(null); const pendingFavoriteId = ref<string | null>(null); const itemFavoriteId = ref(''); const showFavoritePicker = ref(false); const favoritePickerTarget = ref<'source' | 'destination'>('source'); const favoritePickerSearch = ref(''); const favoritePickerType = ref<FavoriteType | 'all'>('all'); const itinerarySortingEnabled = ref(false); const categoryBudgetDraft = reactive<Record<string, number>>({})
 const invite = reactive({ code: '' })
 const user = ref<User | null>(null); const login = reactive({ email: '', password: '' }); const authMode = ref<'login' | 'register'>('login'); const authSubmitting = ref(false); const authFormError = ref(''); const personalBudgetInput = ref(0); let removeAuthListener: (() => void) | undefined
 const profile = reactive({ displayName: '', defaultCurrency: 'JPY', timezone: 'Asia/Taipei' })
@@ -82,16 +82,6 @@ function removeEditCover() { clearEditCoverPreview(); editCoverFile.value = unde
 function startEditTrip() { if (!current.value) return; if (current.value.ownerId !== user.value?.uid) return ElMessage.warning('只有旅行建立者可以編輯旅行設定。'); clearEditCoverPreview(); editCoverFile.value = undefined; Object.assign(edit, { name: current.value.name, country: current.value.country, city: current.value.city, startDate: current.value.startDate, endDate: current.value.endDate, currency: current.value.currency, budget: current.value.budget, coverUrl: current.value.coverUrl || '' }); showEdit.value = true }
 async function saveTrip() { if (!current.value || !edit.name || !edit.startDate || !edit.endDate) return ElMessage.warning('請填寫旅行名稱與日期。'); savingTrip.value = true; try { if (editCoverFile.value) edit.coverUrl = await uploadTripCover(editCoverFile.value, current.value.id); await store.updateTrip({ ...current.value, ...edit }); clearEditCoverPreview(); editCoverFile.value = undefined; showEdit.value = false; ElMessage.success('旅行設定已更新。') } catch (error) { ElMessage.error(error instanceof Error ? error.message : '無法更新旅行。') } finally { savingTrip.value = false } }
 async function removeTrip() { if (!current.value || current.value.ownerId !== user.value?.uid) return ElMessage.warning('只有旅行建立者可以刪除旅行。'); try { await ElMessageBox.confirm(`確定要刪除「${current.value.name}」嗎？行程與開銷資料也會一併移除。`, '刪除旅行', { confirmButtonText: '刪除', cancelButtonText: '取消', type: 'warning' }); await store.deleteTrip(current.value); goTrips(); ElMessage.success('旅行已刪除。') } catch (error) { if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '無法刪除旅行。') } }
-function openMemberManager() { if (!canManageMembers.value) return ElMessage.warning('只有旅行建立者可以管理成員。'); showMember.value = true }
-async function addMember() { if (!canManageMembers.value) return ElMessage.warning('只有旅行建立者可以管理成員。'); if (!current.value || !member.name || !member.email) return ElMessage.warning('請填寫成員名稱與 Email。'); try { await store.addMember(current.value, member); Object.assign(member, { name: '', email: '', role: 'editor' }); ElMessage.success('已新增旅行成員。') } catch (error) { ElMessage.error(error instanceof Error ? error.message : '無法新增成員。') } }
-async function removeMember(memberToRemove: Member) {
-  if (!current.value || !canManageMembers.value) return ElMessage.warning('只有旅行建立者可以管理成員。')
-  if (memberToRemove.id === current.value.ownerId) return ElMessage.warning('旅行建立者無法被移除。')
-  const hasExpense = currentExpenses.value.some((expense) => expense.payerId === memberToRemove.id || expenseParticipants(expense).includes(memberToRemove.id))
-  const hasSettlement = currentSettlements.value.some((settlement) => settlement.fromId === memberToRemove.id || settlement.toId === memberToRemove.id)
-  if (hasExpense || hasSettlement) return ElMessage.warning('此成員已有支出或結算紀錄，請先完成帳務處理後再移除。')
-  try { await ElMessageBox.confirm(`確定要將「${memberToRemove.name}」移出這趟旅行嗎？對方將無法再存取此旅行。`, '移除旅行成員', { confirmButtonText: '移除成員', cancelButtonText: '取消', type: 'warning' }); await store.removeMember(current.value, memberToRemove.id); ElMessage.success('已移除旅行成員。') } catch (error) { if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '無法移除旅行成員。') }
-}
 function normalizeFavoriteType(favoriteType: FavoriteType): FavoriteType { return favoriteType === 'cafe' ? 'restaurant' : favoriteType === 'alternative' || favoriteType === 'other' ? 'attraction' : favoriteType }
 function favoriteToItineraryType(favoriteType: FavoriteType) { return ({ attraction: '景點', restaurant: '餐廳', transport: '交通', stay: '住宿', shop: '商店', cafe: '餐廳', alternative: '景點', other: '景點' } as Record<FavoriteType, string>)[favoriteType] }
 function favoriteTypeLabel(favoriteType: FavoriteType) { return ({ attraction: '景點', restaurant: '餐廳', transport: '交通', stay: '住宿', shop: '商店', cafe: '餐廳', alternative: '景點', other: '景點' } as Record<FavoriteType, string>)[favoriteType] }
@@ -210,16 +200,11 @@ const personalBudget = computed(() => activeMember.value?.personalBudget || 0)
 const myPaid = computed(() => activeMemberId.value ? currentExpenses.value.reduce((sum, expense) => sum + (payerSharesForExpense(expense)[activeMemberId.value!] || 0), 0) : 0)
 const myBalance = computed(() => activeMemberId.value ? balances.value.find((member) => member.id === activeMemberId.value)?.balance || 0 : 0)
 const myExpense = computed(() => activeMemberId.value ? currentExpenses.value.reduce((sum, expense) => sum + expenseShareForMember(expense, activeMemberId.value!), 0) : 0)
-function memberPaid(memberId: string) { return currentExpenses.value.reduce((sum, expense) => sum + (payerSharesForExpense(expense)[memberId] || 0), 0) }
 function memberName(memberId: string) { return current.value?.members.find((member) => member.id === memberId)?.name || '未知成員' }
 function formatTripDate(date: string) { const value = new Date(`${date}T00:00:00`); return Number.isNaN(value.getTime()) ? date : `${value.getFullYear()} 年 ${value.getMonth() + 1} 月 ${value.getDate()} 日` }
 const tripDateRange = computed(() => current.value ? `${formatTripDate(current.value.startDate)}－${formatTripDate(current.value.endDate)}` : '')
 const tripDuration = computed(() => { if (!current.value) return ''; const start = new Date(`${current.value.startDate}T00:00:00`).getTime(); const end = new Date(`${current.value.endDate}T00:00:00`).getTime(); const days = Math.round((end - start) / 86400000) + 1; return Number.isFinite(days) && days > 0 ? `共 ${days} 天` : '' })
-function localDate() { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` }
-async function confirmSettlement(suggestion: { fromId: string; toId: string; from: string; to: string; amount: number }) { if (!canEditTrip.value || !current.value) return ElMessage.warning('Viewer 僅能查看結算資料。'); try { await ElMessageBox.confirm(`確認「${suggestion.from}」已支付 ${current.value.currency} ${suggestion.amount.toFixed(0)} 給「${suggestion.to}」？`, '標記為已結算', { confirmButtonText: '確認結算', cancelButtonText: '取消', type: 'success' }); await store.addSettlement({ tripId: current.value.id, fromId: suggestion.fromId, toId: suggestion.toId, amount: suggestion.amount, date: localDate(), createdAt: Date.now() }); ElMessage.success('已記錄結算。') } catch (error) { if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '無法記錄結算。') } }
-async function removeSettlement(settlement: Settlement) { if (!canEditTrip.value) return ElMessage.warning('Viewer 僅能查看結算資料。'); try { await ElMessageBox.confirm('確定要復原這筆結算嗎？', '復原結算', { confirmButtonText: '復原', cancelButtonText: '取消', type: 'warning' }); await store.deleteSettlement(settlement); ElMessage.success('結算已復原。') } catch (error) { if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '無法復原結算。') } }
 function openTrip(t: Trip) { goTrip(t.id) }
-async function copyInvite() { await navigator.clipboard.writeText(current.value?.inviteCode || ''); ElMessage.success('邀請碼已複製。') }
 async function signOutUser() { await logOut(); ElMessage.success('已登出。') }
 </script>
 
@@ -404,7 +389,7 @@ async function signOutUser() { await logOut(); ElMessage.success('已登出。')
         <TripShoppingView v-if="activeTripTab === 'shopping'" :trip="current" :items="currentShoppingItems" :itineraries="currentItems" :can-edit="canEditTrip" :user-id="user?.uid || current.ownerId" :member-name="memberName" :format-date="formatItineraryDate" />
         <TripPaymentsView v-if="activeTripTab === 'payments'" :trip="current" :tools="currentPaymentTools" :rules="currentRewardRules" :transactions="currentPaymentTransactions" :balances="currentStoredBalances" :summaries="currentPaymentToolSummaries" :user-id="user?.uid || current.ownerId" :can-edit="canEditTrip" :member-name="memberName" />
         <TripInsuranceView v-if="activeTripTab === 'insurance'" :trip="current" :insurance="currentInsurance" :statuses="currentInsuranceStatuses" :user-id="user?.uid || current.ownerId" :member-name="memberName" :can-edit="canEditTrip" />
-        <TripMembersView v-if="activeTripTab === 'overview' || activeTripTab === 'members'" :trip="current" :balances="balances" :suggestions="settlementSuggestions" :settlements="currentSettlements" :can-manage="canManageMembers" :can-edit="canEditTrip" :open-member-manager="openMemberManager" :member-paid="memberPaid" :member-name="memberName" @copy-invite="copyInvite" @settle="confirmSettlement" @undo-settlement="removeSettlement" />
+        <TripMembersView v-if="activeTripTab === 'overview' || activeTripTab === 'members'" :trip="current" :balances="balances" :suggestions="settlementSuggestions" :settlements="currentSettlements" :expenses="currentExpenses" :can-manage="canManageMembers" :can-edit="canEditTrip" :member-name="memberName" />
       </div>
     </section>
   </main>
@@ -505,29 +490,6 @@ async function signOutUser() { await logOut(); ElMessage.success('已登出。')
 <el-button :disabled="savingTrip" @click="showEdit=false">取消</el-button>
 <el-button type="primary" :loading="savingTrip" :disabled="savingTrip" @click="saveTrip">儲存變更</el-button>
 </template>
-</el-dialog>
-  <el-dialog v-model="showMember" title="成員管理" class="member-manager-dialog" width="min(92vw, 560px)">
-<section class="member-manager-current" aria-labelledby="current-members-title">
-<div class="member-manager-section-heading"><div><p>目前成員</p><h3 id="current-members-title">{{ current?.members.length || 0 }} 位旅伴</h3></div><span>旅行建立者可邀請或移除成員</span></div>
-<div class="member-manager-list">
-<article v-for="currentMemberEntry in current?.members" :key="currentMemberEntry.id" class="member-manager-row">
-<span class="member-manager-avatar" aria-hidden="true">{{ currentMemberEntry.name.slice(0, 1) }}</span>
-<div class="member-manager-copy"><strong>{{ currentMemberEntry.name }}</strong><span>{{ currentMemberEntry.email }}</span></div>
-<span class="member-manager-role" :class="`is-${currentMemberEntry.role}`">{{ currentMemberEntry.role === 'owner' ? '建立者' : currentMemberEntry.role === 'editor' ? '可編輯' : '唯讀' }}</span>
-<el-tooltip v-if="currentMemberEntry.id !== current?.ownerId" content="移除成員" placement="top"><el-button class="member-remove-button" text circle :aria-label="`移除 ${currentMemberEntry.name}`" @click="removeMember(currentMemberEntry)">×</el-button></el-tooltip>
-</article>
-</div>
-</section>
-<el-divider />
-<section class="member-manager-invite" aria-labelledby="invite-member-title">
-<div><p>邀請旅伴</p><h3 id="invite-member-title">新增旅行成員</h3><span>對方需先使用此 Email 登入 TripMate。</span></div>
-<el-form label-position="top">
-<div class="member-manager-form-grid"><el-form-item label="名稱"><el-input v-model="member.name" autocomplete="name" /></el-form-item><el-form-item label="Email"><el-input v-model="member.email" autocomplete="email" /></el-form-item></div>
-<el-form-item label="權限"><el-select v-model="member.role"><el-option label="Editor — 可共同編輯" value="editor" /><el-option label="Viewer — 僅能查看" value="viewer" /></el-select></el-form-item>
-<el-button class="member-invite-button" type="primary" @click="addMember">邀請加入</el-button>
-</el-form>
-</section>
-<template #footer><el-button @click="showMember=false">完成</el-button></template>
 </el-dialog>
 <el-dialog v-model="showItem" :title="editingItemId ? `編輯${itemActivityKind === 'free' ? '自由活動' : itemActivityKind === 'personal' ? '我的行程' : '行程'}` : itemActivityKind === 'personal' ? '新增我的行程' : '新增行程'" class="itinerary-dialog" width="min(92vw, 520px)">
 <el-form class="itinerary-form" label-position="top">
