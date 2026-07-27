@@ -201,6 +201,54 @@ async function dissolveGroup(group: ItineraryItem) {
     }
   }
 }
+
+async function deleteGroup(group: ItineraryItem) {
+  if (!props.canEdit) return
+  const members = props.items.filter((item) => item.itineraryGroupId === group.id)
+  try {
+    await ElMessageBox.confirm(
+      `確定刪除地點群組「${group.title}」嗎？群組內 ${members.length} 筆行程也會一併刪除。`,
+      '刪除地點群組',
+      {
+        confirmButtonText: '刪除群組',
+        cancelButtonText: '取消',
+        type: 'warning',
+      },
+    )
+    await Promise.all(members.map((item) => store.deleteItem(item)))
+    await store.deleteItem(group)
+    ElMessage.success('地點群組與群組內行程已刪除。')
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(error instanceof Error ? error.message : '無法刪除地點群組。')
+    }
+  }
+}
+
+async function bulkRemoveEntries(entries: ItineraryItem[]) {
+  if (!props.canEdit) return
+  const uniqueEntries = entries.filter(
+    (entry, index, source) => source.findIndex((item) => item.id === entry.id) === index,
+  )
+  if (!uniqueEntries.length) return
+  try {
+    await ElMessageBox.confirm(
+      `確定刪除已選取的 ${uniqueEntries.length} 筆行程嗎？此操作無法復原。`,
+      '批次刪除行程',
+      {
+        confirmButtonText: '刪除所選行程',
+        cancelButtonText: '取消',
+        type: 'warning',
+      },
+    )
+    await Promise.all(uniqueEntries.map((entry) => store.deleteItem(entry)))
+    ElMessage.success(`已刪除 ${uniqueEntries.length} 筆行程。`)
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(error instanceof Error ? error.message : '無法批次刪除行程。')
+    }
+  }
+}
 </script>
 
 <template>
@@ -224,6 +272,8 @@ async function dissolveGroup(group: ItineraryItem) {
       @create-group="openGroupForm($event.entries)"
       @edit-group="openGroupForm([], $event)"
       @dissolve-group="dissolveGroup"
+      @delete-group="deleteGroup"
+      @bulk-remove="bulkRemoveEntries"
       @toggle-sorting="emit('toggleSorting')"
       @sort="emit('sort', $event)"
       @sort-group="emit('sortGroup', $event)"
