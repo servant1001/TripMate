@@ -1,0 +1,25 @@
+## TripMate 專案指引
+
+- 除非使用者明確要求修改，否則請保留既有的 Firebase Authentication、Realtime Database 結構、路由名稱、權限檢查與商業流程。
+- 在發明新做法之前，優先更新或延伸既有的 TripMate 模式。請重用 Element Plus、現有 icon、目前的 composables，以及現有 dialog / toast 模式。
+- 頁面層級的 state、資料載入與 store mutation 應留在 route view 或 composable；展示用 rendering 應留在 component。
+- 當某個頁面變得過大時，應拆成 route view、區塊 component 與 composable，而不是把更多邏輯塞進單一 `.vue` 檔。
+- 旅行工作台的頁籤應持續透過 router lazy-load。新的頁籤級 UI 原則上應放在自己的 route view 與 component tree 中。
+- 對於行程、購物、行李、收藏與支付清單，項目層級操作請放進 `更多操作` 選單，畫面上保留清楚可見的主要按鈕給頁面層級操作。
+- 破壞性操作請保留確認 dialog 與成功 / 失敗 toast。
+- 手機版排版在 375px 以下應避免橫向捲動；空間緊湊時優先使用堆疊式卡片、可換行的 metadata 與全寬操作按鈕。
+- 針對每日行程相關工作：
+  - 保留 timeline 模型、shared / free / personal / group activity kinds，以及既有拖曳排序行為。
+  - `景點 / 餐廳 / 交通 / 住宿 / 商店` 的類型顏色系統應在所有行程相關介面中一致重用。
+  - 多選操作應集中在上方的選取操作列，而不是把額外刪除按鈕分散塞進各張卡片。
+- 針對支付與回饋相關工作：
+  - 保留 payment tools、reward rules、payment transactions 三者的分層。
+  - 回饋資訊應以容易閱讀的層級顯示：基礎回饋、加碼回饋、上限、已用額度、條件。
+  - 手機版支付篩選區要保持精簡且可讀，並在適合時顯示目前生效中的篩選摘要。
+- 專案驗證：
+  - 有實質程式修改後請執行 `pnpm type-check`。
+  - UI 變更在部署前請執行 `pnpm build` 或 `node .\\node_modules\\vite\\bin\\vite.js build`。
+  - 這個專案目前沒有 lint script；請直接明確說明，不要自行虛構一個。
+- 部署：
+  - Firebase Hosting 部署指令：`firebase deploy --only hosting --project tripmate-b3f9d --non-interactive`
+  - Worker secrets 與 Cloudinary secrets 不可進入前端程式碼。

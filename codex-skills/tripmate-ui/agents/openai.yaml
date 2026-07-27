@@ -1,0 +1,5 @@
+interface:
+  display_name: "TripMate UI 設計系統"
+  short_description: "TripMate 旅行規劃產品的統一 UI 設計系統"
+  brand_color: "#FF735C"
+  default_prompt: "使用 $tripmate-ui 重新設計 TripMate 的旅行詳情頁，同時保留 Firebase 資料與既有使用流程。"
