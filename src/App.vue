@@ -18,6 +18,7 @@ import TripInsuranceView from './views/TripInsuranceView.vue'
 import TripShoppingView from './views/TripShoppingView.vue'
 import TripTodosView from './views/TripTodosView.vue'
 import TripPackingView from './views/TripPackingView.vue'
+import TripManagementDialogs from './components/TripManagementDialogs.vue'
 import { useTripStore } from './stores/trip'
 import type { Expense, Favorite, FavoriteType, ItineraryItem, Role, Trip } from './types'
 import { uploadTripCover } from './services/cloudinary'
@@ -72,6 +73,7 @@ async function saveProfile() { if (!user.value) return; try { await updateUserSe
 async function useDemo() { await store.load(); goTrips() }
 async function joinTrip() { if (!user.value) return ElMessage.warning('請先登入後加入旅行。'); if (!invite.code.trim()) return ElMessage.warning('請輸入邀請碼。'); try { const { tripId } = await joinTripByInviteCode(invite.code); await store.load(user.value.uid); showJoin.value = false; invite.code = ''; goTrip(tripId); ElMessage.success('已加入旅行。') } catch (error) { ElMessage.error(error instanceof Error ? error.message : '無法加入旅行。') } }
 async function createTrip() { if (!create.name || !create.startDate || !create.endDate) return ElMessage.warning('請填寫旅行名稱與日期。'); if (firebaseEnabled && !user.value) return ElMessage.warning('請先登入後建立旅行。'); try { if (coverFile.value) create.coverUrl = await uploadTripCover(coverFile.value); const ownerId = user.value?.uid || 'me'; const trip = await store.createTrip({ ...create, ownerId, members: [{ id: ownerId, name: user.value?.displayName || '我', email: user.value?.email || 'me@tripmate.app', role: 'owner' }] }, user.value?.uid); showCreate.value = false; Object.assign(create, { name: '', country: '日本', city: '東京', startDate: '', endDate: '', currency: 'JPY', budget: 0, coverUrl: '' }); goTrip(trip.id); ElMessage.success('旅行已建立。') } catch (e) { ElMessage.error(e instanceof Error ? e.message : '建立旅行失敗。') } }
+function selectCreateCover(event: Event) { coverFile.value = (event.target as HTMLInputElement).files?.[0] }
 function clearEditCoverPreview() { if (editCoverPreview.value.startsWith('blob:')) URL.revokeObjectURL(editCoverPreview.value); editCoverPreview.value = '' }
 function selectEditCover(event: Event) { const file = (event.target as HTMLInputElement).files?.[0]; if (!file) return; clearEditCoverPreview(); editCoverFile.value = file; editCoverPreview.value = URL.createObjectURL(file) }
 function removeEditCover() { clearEditCoverPreview(); editCoverFile.value = undefined; edit.coverUrl = '' }
@@ -364,108 +366,27 @@ async function signOutUser() { await logOut(); ElMessage.success('已登出。')
       </div>
     </section>
   </main>
-  <el-dialog v-model="showJoin" title="使用邀請碼加入旅行" width="min(92vw, 430px)">
-<p class="muted">請向旅行建立者索取邀請碼。加入前需先完成登入。</p>
-<el-input v-model="invite.code" placeholder="例如：AB12CD" maxlength="12" />
-<template #footer>
-<el-button @click="showJoin=false">取消</el-button>
-<el-button type="primary" @click="joinTrip">加入旅行</el-button>
-</template>
-</el-dialog>
-  <el-dialog v-model="showCreate" title="建立旅行" width="min(92vw, 560px)">
-<el-form label-position="top">
-<el-form-item label="旅行名稱">
-<el-input v-model="create.name" placeholder="例如：東京楓葉散策" />
-</el-form-item>
-<div class="two-col">
-<el-form-item label="國家">
-<el-input v-model="create.country" />
-</el-form-item>
-<el-form-item label="城市">
-<el-input v-model="create.city" />
-</el-form-item>
-</div>
-<div class="two-col">
-<el-form-item label="開始日期">
-<el-date-picker v-model="create.startDate" type="date" value-format="YYYY-MM-DD" />
-</el-form-item>
-<el-form-item label="結束日期">
-<el-date-picker v-model="create.endDate" type="date" value-format="YYYY-MM-DD" />
-</el-form-item>
-</div>
-<div class="two-col">
-<el-form-item label="幣別">
-<el-select v-model="create.currency">
-<el-option label="JPY" value="JPY" />
-<el-option label="TWD" value="TWD" />
-<el-option label="USD" value="USD" />
-</el-select>
-</el-form-item>
-<el-form-item label="總預算">
-<el-input-number v-model="create.budget" :min="0" />
-</el-form-item>
-</div>
-<el-form-item label="旅行封面（Cloudinary 簽名上傳）">
-<input type="file" accept="image/*" @change="coverFile = ($event.target as HTMLInputElement).files?.[0]" />
-<small>未設定簽名服務時可先略過；Cloudinary API Secret 永不會出現在前端。</small>
-</el-form-item>
-</el-form>
-<template #footer>
-<el-button @click="showCreate=false">取消</el-button>
-<el-button type="primary" @click="createTrip">建立旅行</el-button>
-</template>
-</el-dialog>
-  <el-dialog v-model="showEdit" title="編輯旅行" width="min(92vw, 560px)">
-<el-form label-position="top">
-<el-form-item label="旅行名稱">
-<el-input v-model="edit.name" />
-</el-form-item>
-<div class="two-col">
-<el-form-item label="國家">
-<el-input v-model="edit.country" />
-</el-form-item>
-<el-form-item label="城市">
-<el-input v-model="edit.city" />
-</el-form-item>
-</div>
-<div class="two-col">
-<el-form-item label="開始日期">
-<el-date-picker v-model="edit.startDate" type="date" value-format="YYYY-MM-DD" />
-</el-form-item>
-<el-form-item label="結束日期">
-<el-date-picker v-model="edit.endDate" type="date" value-format="YYYY-MM-DD" />
-</el-form-item>
-</div>
-<div class="two-col">
-<el-form-item label="幣別">
-<el-select v-model="edit.currency">
-<el-option label="JPY" value="JPY" />
-<el-option label="TWD" value="TWD" />
-<el-option label="USD" value="USD" />
-</el-select>
-</el-form-item>
-<el-form-item label="總預算">
-<el-input-number v-model="edit.budget" :min="0" />
-</el-form-item>
-</div>
-<el-form-item label="旅行封面">
-<div class="edit-cover-control">
-<img v-if="editCoverPreview || edit.coverUrl" :src="editCoverPreview || edit.coverUrl" alt="旅行封面預覽" />
-<div v-else class="edit-cover-placeholder" aria-hidden="true">✦</div>
-<div class="edit-cover-actions"><label class="edit-cover-file-button" for="edit-cover-file">{{ editCoverPreview || edit.coverUrl ? '更換照片' : '上傳照片' }}</label><input id="edit-cover-file" type="file" accept="image/*" @change="selectEditCover" /><el-button v-if="editCoverPreview || edit.coverUrl" class="edit-cover-remove-button" text @click="removeEditCover">移除封面</el-button><small>支援圖片檔；儲存變更時才會上傳。</small></div>
-</div>
-</el-form-item>
-</el-form>
-<template #footer>
-<el-button type="danger" plain :disabled="savingTrip" @click="removeTrip">刪除旅行</el-button>
-<el-button :disabled="savingTrip" @click="showEdit=false">取消</el-button>
-<el-button type="primary" :loading="savingTrip" :disabled="savingTrip" @click="saveTrip">儲存變更</el-button>
-</template>
-</el-dialog>
+  <TripManagementDialogs
+    v-model:show-join="showJoin"
+    v-model:show-create="showCreate"
+    v-model:show-edit="showEdit"
+    v-model:invite-code="invite.code"
+    :create-form="create"
+    :edit-form="edit"
+    :edit-cover-preview="editCoverPreview"
+    :saving-trip="savingTrip"
+    @select-create-cover="selectCreateCover"
+    @select-edit-cover="selectEditCover"
+    @remove-edit-cover="removeEditCover"
+    @join-trip="joinTrip"
+    @create-trip="createTrip"
+    @save-trip="saveTrip"
+    @remove-trip="removeTrip"
+  />
 </template>
 
 <style>
-.member-manager-dialog .el-dialog__body{padding-top:18px}.member-manager-current,.member-manager-invite{display:grid;gap:16px}.member-manager-section-heading{display:flex;align-items:end;justify-content:space-between;gap:16px}.member-manager-section-heading>div,.member-manager-invite>div{display:grid;gap:2px}.member-manager-section-heading p,.member-manager-invite p{margin:0;color:#d1826e;font-size:11px;font-weight:800;letter-spacing:1.1px;text-transform:uppercase}.member-manager-section-heading h3,.member-manager-invite h3{margin:0;color:#173d37;font-size:17px;line-height:1.4}.member-manager-section-heading>span,.member-manager-invite>div>span{color:#71827c;font-size:12px;line-height:1.5}.member-manager-list{display:grid;overflow:hidden;border:1px solid #e1e9e4;border-radius:12px}.member-manager-row{display:grid;grid-template-columns:38px minmax(0,1fr) auto 40px;align-items:center;gap:11px;padding:11px 12px;border-bottom:1px solid #edf1ee}.member-manager-row:last-child{border-bottom:0}.member-manager-avatar{display:grid;width:36px;height:36px;place-items:center;border-radius:50%;background:#dceee6;color:#216a5b;font-size:14px;font-weight:800}.member-manager-copy{display:grid;min-width:0;gap:2px}.member-manager-copy strong{overflow:hidden;color:#244a43;font-size:14px;text-overflow:ellipsis;white-space:nowrap}.member-manager-copy span{overflow:hidden;color:#71827c;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.member-manager-role{padding:4px 8px;border-radius:999px;background:#f1f4f2;color:#687b74;font-size:12px;font-weight:700;white-space:nowrap}.member-manager-role.is-owner{background:#edf5ef;color:#2f7d70}.member-manager-role.is-editor{background:#eef5f5;color:#357072}.member-remove-button{width:40px!important;min-width:40px!important;height:40px!important;color:#c36358;font-size:22px}.member-remove-button:hover,.member-remove-button:focus-visible{background:#fdf0ed;color:#b64237}.member-manager-dialog .el-divider{margin:22px 0}.member-manager-form-grid{display:grid;grid-template-columns:1fr 1.25fr;gap:12px}.member-manager-invite .el-form-item{margin-bottom:14px}.member-manager-invite .el-input,.member-manager-invite .el-select{width:100%}.member-invite-button{min-height:42px;border:0;border-radius:10px;background:#123f3a;color:#fff;font-weight:700}.member-invite-button:hover,.member-invite-button:focus-visible{background:#1d5a52;color:#fff}.edit-cover-control,.album-upload-control,.shopping-upload-control{display:flex;align-items:center;gap:14px}.edit-cover-control>img,.edit-cover-placeholder,.album-upload-control>img,.album-upload-placeholder,.shopping-upload-control>img,.shopping-upload-placeholder{width:112px;height:72px;flex:0 0 auto;border:1px solid #dbe6e0;border-radius:10px;object-fit:cover}.edit-cover-placeholder,.album-upload-placeholder,.shopping-upload-placeholder{display:grid;place-items:center;background:#eef5f0;color:#5d9385;font-size:25px}.edit-cover-actions,.album-upload-actions,.shopping-upload-actions{display:flex;min-width:0;flex-wrap:wrap;align-items:center;gap:6px 10px}.edit-cover-actions input,.album-upload-actions input,.shopping-upload-actions input{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}.edit-cover-file-button,.album-upload-file-button,.shopping-upload-file-button{display:inline-flex;min-height:36px;padding:0 11px;align-items:center;border:1px solid #bad5c9;border-radius:8px;background:#fff;color:#2f7d70;font-size:13px;font-weight:700;cursor:pointer}.edit-cover-file-button:hover,.edit-cover-file-button:focus-within,.album-upload-file-button:hover,.album-upload-file-button:focus-within,.shopping-upload-file-button:hover,.shopping-upload-file-button:focus-within{border-color:#7eb4a1;background:#eef5f0;color:#123f3a}.edit-cover-remove-button{min-height:36px;color:#b7574d}.edit-cover-actions small,.album-upload-actions small,.shopping-upload-actions small{flex-basis:100%;color:#71827c;font-size:12px;line-height:1.45}.three-col{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.three-col .el-input-number,.shopping-dialog .el-select,.shopping-dialog .el-date-editor{width:100%}.shopping-participants{display:flex;flex-wrap:wrap;gap:7px 12px}.shopping-participants .el-checkbox{margin-right:0}@media(max-width:600px){.member-manager-section-heading{align-items:start;flex-direction:column;gap:5px}.member-manager-row{grid-template-columns:38px minmax(0,1fr) auto}.member-manager-role{grid-column:2;justify-self:start}.member-remove-button{grid-column:3;grid-row:1/3}.member-manager-form-grid,.three-col{grid-template-columns:1fr}.member-manager-dialog .el-dialog__body,.album-dialog .el-dialog__body,.shopping-dialog .el-dialog__body{padding:16px}.member-manager-dialog .el-dialog__footer,.album-dialog .el-dialog__footer,.shopping-dialog .el-dialog__footer{padding:12px 16px 18px}.edit-cover-control,.album-upload-control,.shopping-upload-control{align-items:flex-start;flex-direction:column}.edit-cover-control>img,.edit-cover-placeholder,.album-upload-control>img,.album-upload-placeholder,.shopping-upload-control>img,.shopping-upload-placeholder{width:100%;height:150px}}
+.member-manager-dialog .el-dialog__body{padding-top:18px}.member-manager-current,.member-manager-invite{display:grid;gap:16px}.member-manager-section-heading{display:flex;align-items:end;justify-content:space-between;gap:16px}.member-manager-section-heading>div,.member-manager-invite>div{display:grid;gap:2px}.member-manager-section-heading p,.member-manager-invite p{margin:0;color:#d1826e;font-size:11px;font-weight:800;letter-spacing:1.1px;text-transform:uppercase}.member-manager-section-heading h3,.member-manager-invite h3{margin:0;color:#173d37;font-size:17px;line-height:1.4}.member-manager-section-heading>span,.member-manager-invite>div>span{color:#71827c;font-size:12px;line-height:1.5}.member-manager-list{display:grid;overflow:hidden;border:1px solid #e1e9e4;border-radius:12px}.member-manager-row{display:grid;grid-template-columns:38px minmax(0,1fr) auto 40px;align-items:center;gap:11px;padding:11px 12px;border-bottom:1px solid #edf1ee}.member-manager-row:last-child{border-bottom:0}.member-manager-avatar{display:grid;width:36px;height:36px;place-items:center;border-radius:50%;background:#dceee6;color:#216a5b;font-size:14px;font-weight:800}.member-manager-copy{display:grid;min-width:0;gap:2px}.member-manager-copy strong{overflow:hidden;color:#244a43;font-size:14px;text-overflow:ellipsis;white-space:nowrap}.member-manager-copy span{overflow:hidden;color:#71827c;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.member-manager-role{padding:4px 8px;border-radius:999px;background:#f1f4f2;color:#687b74;font-size:12px;font-weight:700;white-space:nowrap}.member-manager-role.is-owner{background:#edf5ef;color:#2f7d70}.member-manager-role.is-editor{background:#eef5f5;color:#357072}.member-remove-button{width:40px!important;min-width:40px!important;height:40px!important;color:#c36358;font-size:22px}.member-remove-button:hover,.member-remove-button:focus-visible{background:#fdf0ed;color:#b64237}.member-manager-dialog .el-divider{margin:22px 0}.member-manager-form-grid{display:grid;grid-template-columns:1fr 1.25fr;gap:12px}.member-manager-invite .el-form-item{margin-bottom:14px}.member-manager-invite .el-input,.member-manager-invite .el-select{width:100%}.member-invite-button{min-height:42px;border:0;border-radius:10px;background:#123f3a;color:#fff;font-weight:700}.member-invite-button:hover,.member-invite-button:focus-visible{background:#1d5a52;color:#fff}@media(max-width:600px){.member-manager-section-heading{align-items:start;flex-direction:column;gap:5px}.member-manager-row{grid-template-columns:38px minmax(0,1fr) auto}.member-manager-role{grid-column:2;justify-self:start}.member-remove-button{grid-column:3;grid-row:1/3}.member-manager-form-grid{grid-template-columns:1fr}.member-manager-dialog .el-dialog__body{padding:16px}.member-manager-dialog .el-dialog__footer{padding:12px 16px 18px}}
 .shopping-itinerary-picker-control{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 12px;border:1px solid #dbe8e1;border-radius:10px;background:#f8fbf9}.shopping-itinerary-picker-copy{display:grid;min-width:0;gap:2px}.shopping-itinerary-picker-copy strong{overflow:hidden;color:#244a43;font-size:14px;text-overflow:ellipsis;white-space:nowrap}.shopping-itinerary-picker-copy span{overflow:hidden;color:#71827c;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.shopping-itinerary-picker-actions{display:flex;flex:0 0 auto;align-items:center;gap:2px}.shopping-itinerary-picker-button{min-height:38px;border-color:#b7d3c6;border-radius:9px;color:#236c59;font-weight:700}.shopping-itinerary-picker-button:hover,.shopping-itinerary-picker-button:focus-visible{border-color:#6da790;background:#eef6f1;color:#123f3a}.shopping-itinerary-clear{min-height:36px;color:#7a8a84}.shopping-itinerary-clear:hover,.shopping-itinerary-clear:focus-visible{color:#b94f45;background:#fdf0ed}.shopping-itinerary-picker{display:grid;gap:14px}.shopping-itinerary-day-select{display:grid;gap:6px}.shopping-itinerary-day-select label{color:#52736a;font-size:12px;font-weight:700}.shopping-itinerary-day-select .el-select{width:100%}.shopping-itinerary-day-select .el-select__wrapper{min-height:44px;border-radius:10px}.shopping-itinerary-picker-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 2px;color:#315e55}.shopping-itinerary-picker-heading strong{font-size:14px}.shopping-itinerary-picker-heading span{color:#71827c;font-size:12px}.shopping-itinerary-picker-list{display:grid;gap:9px;max-height:min(48vh,400px);overflow:auto;padding:2px}.shopping-itinerary-picker-row{display:grid;grid-template-columns:48px minmax(0,1fr) auto;align-items:center;gap:11px;width:100%;padding:9px;border:1px solid #e0e9e4;border-radius:12px;background:#fff;text-align:left;cursor:pointer}.shopping-itinerary-picker-row:hover,.shopping-itinerary-picker-row:focus-visible{border-color:#8ab9a8;background:#f8fcf9;outline:none}.shopping-itinerary-picker-row.is-selected{border-color:#2f7d70;background:#eef7f2}.shopping-itinerary-picker-row>img,.shopping-itinerary-picker-placeholder{display:grid;width:48px;height:48px;place-items:center;border-radius:9px;object-fit:cover}.shopping-itinerary-picker-placeholder{background:#eaf4ef;color:#2f7d70;font-size:17px;font-weight:800}.shopping-itinerary-picker-row-copy{display:grid;min-width:0;gap:3px}.shopping-itinerary-picker-row-copy strong{overflow:hidden;color:#244a43;font-size:14px;line-height:1.4;text-overflow:ellipsis;white-space:nowrap}.shopping-itinerary-picker-row-copy>span{display:flex;align-items:center;gap:4px;color:#5f7770;font-size:12px}.shopping-itinerary-picker-row-copy em{padding:2px 6px;border-radius:999px;background:#eef5f0;color:#47776a;font-size:10px;font-style:normal;font-weight:700}.shopping-itinerary-picker-row-copy small{overflow:hidden;color:#7a8b85;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.shopping-itinerary-picker-select{padding:6px 9px;border-radius:8px;background:#eef5f0;color:#2f7d70;font-size:12px;font-weight:800}.shopping-itinerary-picker-row.is-selected .shopping-itinerary-picker-select{background:#2f7d70;color:#fff}.shopping-itinerary-picker-empty{display:grid;justify-items:center;gap:4px;padding:38px 16px;border:1px dashed #cbded5;border-radius:12px;color:#6b7d78;text-align:center}.shopping-itinerary-picker-empty strong{color:#315c52;font-size:15px}.shopping-itinerary-picker-empty p{margin:0;font-size:13px}@media(max-width:600px){.shopping-itinerary-picker-control{align-items:flex-start;flex-direction:column}.shopping-itinerary-picker-actions{width:100%;justify-content:flex-end}.shopping-itinerary-picker-row{grid-template-columns:44px minmax(0,1fr);gap:9px}.shopping-itinerary-picker-row>img,.shopping-itinerary-picker-placeholder{width:44px;height:44px}.shopping-itinerary-picker-select{grid-column:2;justify-self:start;padding:4px 8px}}
 .favorite-audit-fields .el-input__wrapper{background:#f7faf8;box-shadow:0 0 0 1px #dce8e1 inset}.favorite-audit-fields .el-input__inner{color:#52736a;font-weight:600}
 .itinerary-group-member-selector{display:grid;gap:7px;max-height:220px;overflow:auto;padding:10px;border:1px solid #e4e9e4;border-radius:10px;background:#fafcfb}.itinerary-group-member-selector .el-checkbox{display:flex;height:auto;margin:0;align-items:flex-start}.itinerary-group-member-selector .el-checkbox__label{display:grid;gap:2px;color:#315c52}.itinerary-group-member-selector small{color:#71827c;font-size:12px}
