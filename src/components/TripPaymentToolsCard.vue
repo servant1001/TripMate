@@ -1,40 +1,549 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { PaymentTool, PaymentTransaction, RewardRule, StoredValueBalance, Trip } from '../types'
+import type {
+  PaymentMethod,
+  PaymentTool,
+  PaymentTransaction,
+  RewardCapPeriod,
+  RewardRule,
+  StoredValueBalance,
+  Trip,
+} from '../types'
 import { rewardUsage, storedValueBalance } from '../utils/paymentRewards'
 
-const props = defineProps<{ trip: Trip; tools: PaymentTool[]; rules: RewardRule[]; transactions: PaymentTransaction[]; balances: StoredValueBalance[]; userId: string; canEdit: boolean; memberName: (id: string) => string }>()
-const emit = defineEmits<{ addTool: []; editTool: [tool: PaymentTool]; removeTool: [tool: PaymentTool]; toggleTool: [tool: PaymentTool]; addRule: [tool: PaymentTool]; editRule: [rule: RewardRule]; removeRule: [rule: RewardRule]; addTransaction: [tool?: PaymentTool]; editTransaction: [transaction: PaymentTransaction]; removeTransaction: [transaction: PaymentTransaction]; manageBalance: [tool: PaymentTool] }>()
-const labels: Record<PaymentTool['type'], string> = { credit_card: '信用卡', debit_card: '簽帳金融卡', electronic_payment: '電子支付', transport_card: '交通卡', cash: '現金', other: '其他' }
-const ownTools = computed(() => props.tools.filter((tool) => tool.ownerUserId === props.userId))
-const activeTransactions = computed(() => props.transactions.filter((item) => item.ownerUserId === props.userId && item.status !== 'cancelled'))
+const props = defineProps<{
+  trip: Trip
+  tools: PaymentTool[]
+  rules: RewardRule[]
+  transactions: PaymentTransaction[]
+  balances: StoredValueBalance[]
+  userId: string
+  canEdit: boolean
+  memberName: (id: string) => string
+}>()
+
+const emit = defineEmits<{
+  addTool: []
+  editTool: [tool: PaymentTool]
+  removeTool: [tool: PaymentTool]
+  toggleTool: [tool: PaymentTool]
+  addRule: [tool: PaymentTool]
+  editRule: [rule: RewardRule]
+  removeRule: [rule: RewardRule]
+  addTransaction: [tool?: PaymentTool]
+  editTransaction: [transaction: PaymentTransaction]
+  removeTransaction: [transaction: PaymentTransaction]
+  manageBalance: [tool: PaymentTool]
+}>()
+
+const labels: Record<PaymentTool['type'], string> = {
+  credit_card: '信用卡',
+  debit_card: '簽帳金融卡',
+  electronic_payment: '電子支付',
+  transport_card: '交通卡',
+  cash: '現金',
+  other: '其他',
+}
+
+const capPeriodLabels: Record<RewardCapPeriod, string> = {
+  per_transaction: '每筆',
+  daily: '每日',
+  monthly: '每月',
+  billing_cycle: '帳單週期',
+  campaign: '活動期間',
+  trip: '本趟旅行',
+  none: '無上限',
+}
+
+const paymentMethodLabels: Record<PaymentMethod, string> = {
+  physical_card: '實體卡',
+  apple_pay: 'Apple Pay',
+  google_pay: 'Google Pay',
+  online: '網路付款',
+  qr_payment: '掃碼付款',
+  transport_card_topup: '交通卡儲值',
+  stored_value: '儲值支付',
+  other: '其他',
+}
+
+const ownTools = computed(() =>
+  props.tools.filter((tool) => tool.ownerUserId === props.userId),
+)
+const activeTransactions = computed(() =>
+  props.transactions.filter(
+    (item) => item.ownerUserId === props.userId && item.status !== 'cancelled',
+  ),
+)
 const transactionToolFilter = ref('')
 const transactionStatusFilter = ref('')
 const transactionCategoryFilter = ref('')
 const transactionDateRange = ref<string[]>([])
-const transactionCategories = computed(() => [...new Set(activeTransactions.value.map((item) => item.category).filter(Boolean))] as string[])
-const filteredTransactions = computed(() => activeTransactions.value.filter((item) => (!transactionToolFilter.value || item.paymentToolId === transactionToolFilter.value) && (!transactionStatusFilter.value || item.status === transactionStatusFilter.value) && (!transactionCategoryFilter.value || item.category === transactionCategoryFilter.value) && (!transactionDateRange.value.length || (item.transactionDate >= transactionDateRange.value[0] && item.transactionDate <= transactionDateRange.value[1]))))
-const totals = computed(() => activeTransactions.value.reduce((sum, item) => ({ amount: sum.amount + (item.transactionType === 'purchase' ? item.convertedAmount || item.originalAmount : 0), reward: sum.reward + (item.estimatedRewardAmount || 0), fee: sum.fee + (item.foreignTransactionFee || 0), net: sum.net + (item.estimatedNetRewardAmount || 0) }), { amount: 0, reward: 0, fee: 0, net: 0 }))
-const toolRules = (tool: PaymentTool) => props.rules.filter((rule) => rule.paymentToolId === tool.id)
-const toolTransactions = (tool: PaymentTool) => activeTransactions.value.filter((item) => item.paymentToolId === tool.id)
-const balance = (tool: PaymentTool) => props.balances.find((item) => item.paymentToolId === tool.id) || storedValueBalance(tool, toolTransactions(tool), 0)
-const stored = (tool: PaymentTool) => tool.type === 'electronic_payment' || tool.type === 'transport_card'
-const reminders = computed(() => { const now = Date.now(); const sevenDays = now + 7 * 86400000; const rows: string[] = []; ownTools.value.forEach((tool) => { toolRules(tool).filter((rule) => rule.isActive).forEach((rule) => { const usage = rewardUsage(rule, toolTransactions(tool), now); if (rule.requiresRegistration && !rule.registrationCompleted) rows.push(`${tool.name}：${rule.name} 尚未完成活動登錄`); if (rule.rewardCap && usage.usedRewardAmount / rule.rewardCap >= .8) rows.push(`${tool.name}：${rule.name} 回饋額度已使用 ${Math.round(usage.usedRewardAmount / rule.rewardCap * 100)}%`); if (rule.periodEndAt && rule.periodEndAt >= now && rule.periodEndAt <= sevenDays) rows.push(`${tool.name}：${rule.name} 即將於 7 天內結束`); }); if (stored(tool) && balance(tool).currentBalance < 0) rows.push(`${tool.name}：目前餘額不足`); }); return rows })
-function action(command: string, tool: PaymentTool) { if (command === 'transaction') emit('addTransaction', tool); if (command === 'rule') emit('addRule', tool); if (command === 'edit') emit('editTool', tool); if (command === 'toggle') emit('toggleTool', tool); if (command === 'remove') emit('removeTool', tool); if (command === 'balance') emit('manageBalance', tool) }
-function transactionAction(command: string, transaction: PaymentTransaction) { if (command === 'edit') emit('editTransaction', transaction); if (command === 'remove') emit('removeTransaction', transaction) }
+const transactionCategories = computed(
+  () =>
+    [
+      ...new Set(
+        activeTransactions.value.map((item) => item.category).filter(Boolean),
+      ),
+    ] as string[],
+)
+const filteredTransactions = computed(() =>
+  activeTransactions.value.filter(
+    (item) =>
+      (!transactionToolFilter.value ||
+        item.paymentToolId === transactionToolFilter.value) &&
+      (!transactionStatusFilter.value ||
+        item.status === transactionStatusFilter.value) &&
+      (!transactionCategoryFilter.value ||
+        item.category === transactionCategoryFilter.value) &&
+      (!transactionDateRange.value.length ||
+        (item.transactionDate >= transactionDateRange.value[0] &&
+          item.transactionDate <= transactionDateRange.value[1])),
+  ),
+)
+const totals = computed(() =>
+  activeTransactions.value.reduce(
+    (sum, item) => ({
+      amount:
+        sum.amount +
+        (item.transactionType === 'purchase'
+          ? item.convertedAmount || item.originalAmount
+          : 0),
+      reward: sum.reward + (item.estimatedRewardAmount || 0),
+      fee: sum.fee + (item.foreignTransactionFee || 0),
+      net: sum.net + (item.estimatedNetRewardAmount || 0),
+    }),
+    { amount: 0, reward: 0, fee: 0, net: 0 },
+  ),
+)
+
+const toolRules = (tool: PaymentTool) =>
+  props.rules.filter((rule) => rule.paymentToolId === tool.id)
+const toolTransactions = (tool: PaymentTool) =>
+  activeTransactions.value.filter((item) => item.paymentToolId === tool.id)
+const balance = (tool: PaymentTool) =>
+  props.balances.find((item) => item.paymentToolId === tool.id) ||
+  storedValueBalance(tool, toolTransactions(tool), 0)
+const stored = (tool: PaymentTool) =>
+  tool.type === 'electronic_payment' || tool.type === 'transport_card'
+
+const reminders = computed(() => {
+  const now = Date.now()
+  const sevenDays = now + 7 * 86400000
+  const rows: string[] = []
+  ownTools.value.forEach((tool) => {
+    toolRules(tool)
+      .filter((rule) => rule.isActive)
+      .forEach((rule) => {
+        const usage = rewardUsage(rule, toolTransactions(tool), now)
+        if (rule.requiresRegistration && !rule.registrationCompleted) {
+          rows.push(`${tool.name}：${rule.name} 尚未完成活動登錄`)
+        }
+        if (rule.rewardCap && usage.usedRewardAmount / rule.rewardCap >= 0.8) {
+          rows.push(
+            `${tool.name}：${rule.name} 回饋額度已使用 ${Math.round((usage.usedRewardAmount / rule.rewardCap) * 100)}%`,
+          )
+        }
+        if (rule.periodEndAt && rule.periodEndAt >= now && rule.periodEndAt <= sevenDays) {
+          rows.push(`${tool.name}：${rule.name} 即將於 7 天內結束`)
+        }
+      })
+    if (stored(tool) && balance(tool).currentBalance < 0) {
+      rows.push(`${tool.name}：目前餘額不足`)
+    }
+  })
+  return rows
+})
+
+function action(command: string, tool: PaymentTool) {
+  if (command === 'transaction') emit('addTransaction', tool)
+  if (command === 'rule') emit('addRule', tool)
+  if (command === 'edit') emit('editTool', tool)
+  if (command === 'toggle') emit('toggleTool', tool)
+  if (command === 'remove') emit('removeTool', tool)
+  if (command === 'balance') emit('manageBalance', tool)
+}
+
+function ruleAction(command: string, rule: RewardRule) {
+  if (command === 'edit') emit('editRule', rule)
+  if (command === 'remove') emit('removeRule', rule)
+}
+
+function transactionAction(command: string, transaction: PaymentTransaction) {
+  if (command === 'edit') emit('editTransaction', transaction)
+  if (command === 'remove') emit('removeTransaction', transaction)
+}
+
+function formatPeriod(rule: RewardRule) {
+  if (!rule.periodStartAt && !rule.periodEndAt) return capPeriodLabels[rule.capPeriod]
+  const start = rule.periodStartAt
+    ? new Date(rule.periodStartAt).toISOString().slice(0, 10)
+    : '不限'
+  const end = rule.periodEndAt
+    ? new Date(rule.periodEndAt).toISOString().slice(0, 10)
+    : '不限'
+  return `${start}－${end}`
+}
+
+function formatRuleSummary(rule: RewardRule) {
+  const parts = [`基本 ${(rule.baseRate * 100).toFixed(1)}%`]
+  if (rule.bonusRate) parts.push(`加碼 ${(rule.bonusRate * 100).toFixed(1)}%`)
+  if (rule.minimumSpend) parts.push(`門檻 ${props.trip.currency} ${rule.minimumSpend.toLocaleString()}`)
+  return parts.join('・')
+}
+
+function formatRuleCaps(rule: RewardRule) {
+  const parts: string[] = []
+  if (rule.rewardCap) {
+    parts.push(`${capPeriodLabels[rule.capPeriod]}上限 ${props.trip.currency} ${rule.rewardCap.toLocaleString()}`)
+  }
+  if (rule.maximumEligibleSpend) {
+    parts.push(`可回饋消費上限 ${props.trip.currency} ${rule.maximumEligibleSpend.toLocaleString()}`)
+  }
+  return parts.join('・')
+}
+
+function formatRuleConditions(rule: RewardRule) {
+  const parts: string[] = []
+  if (rule.applicableCategories?.length) {
+    parts.push(`分類：${rule.applicableCategories.slice(0, 2).join('、')}${rule.applicableCategories.length > 2 ? '…' : ''}`)
+  }
+  if (rule.applicableCurrencies?.length) {
+    parts.push(`幣別：${rule.applicableCurrencies.join('、')}`)
+  }
+  if (rule.applicablePaymentMethods?.length) {
+    parts.push(
+      `付款：${rule.applicablePaymentMethods
+        .slice(0, 2)
+        .map((method) => paymentMethodLabels[method] || method)
+        .join('、')}${rule.applicablePaymentMethods.length > 2 ? '…' : ''}`,
+    )
+  }
+  if (rule.applicableMerchants?.length) {
+    parts.push(`商店：${rule.applicableMerchants.slice(0, 2).join('、')}${rule.applicableMerchants.length > 2 ? '…' : ''}`)
+  }
+  return parts
+}
 </script>
 
 <template>
   <section class="payment-page panel">
-    <header class="payment-heading"><div><p>PAYMENTS</p><h2>支付與回饋</h2><span>追蹤旅行付款、海外手續費與回饋額度。</span></div><div><el-button v-if="canEdit" @click="emit('addTransaction')">＋ 新增消費</el-button><el-button v-if="canEdit" type="primary" @click="emit('addTool')">＋ 新增支付工具</el-button></div></header>
-    <div class="payment-summary"><article v-for="row in [{label:'本趟付款總額',value:totals.amount},{label:'預估回饋',value:totals.reward},{label:'海外手續費',value:totals.fee},{label:'預估淨回饋',value:totals.net}]" :key="row.label"><span>{{ row.label }}</span><strong>{{ trip.currency }} {{ row.value.toLocaleString() }}</strong></article></div>
-    <section><div class="payment-section-title"><h3>我的支付工具</h3><span>{{ ownTools.length }} 項</span></div><div v-if="ownTools.length" class="tool-grid"><article v-for="tool in ownTools" :key="tool.id" class="tool-card" :class="{ 'is-inactive': !tool.isActive }"><div class="tool-card-top"><span class="tool-type">{{ labels[tool.type] }}</span><el-dropdown v-if="canEdit" trigger="click" @command="action($event, tool)"><button type="button" class="tool-more" :aria-label="`${tool.name} 更多操作`" title="更多操作">⋯</button><template #dropdown><el-dropdown-menu><el-dropdown-item command="transaction">新增消費</el-dropdown-item><el-dropdown-item command="rule">新增回饋規則</el-dropdown-item><el-dropdown-item v-if="stored(tool)" command="balance">設定初始餘額</el-dropdown-item><el-dropdown-item command="edit">編輯工具</el-dropdown-item><el-dropdown-item command="toggle">{{ tool.isActive ? '停用工具' : '啟用工具' }}</el-dropdown-item><el-dropdown-item divided command="remove">刪除工具</el-dropdown-item></el-dropdown-menu></template></el-dropdown></div><div class="tool-name"><img v-if="tool.imageUrl" :src="tool.imageUrl" :alt="`${tool.name} 圖片`" @error="($event.target as HTMLImageElement).style.display='none'"><h4>{{ tool.name }}</h4></div><p>{{ tool.issuer || labels[tool.type] }}<template v-if="tool.lastFourDigits">・末四碼 {{ tool.lastFourDigits }}</template></p><small>持有人：{{ memberName(tool.ownerUserId) }}</small><div class="tool-metrics"><span>已刷 <b>{{ trip.currency }} {{ toolTransactions(tool).filter(x=>x.transactionType==='purchase').reduce((n,x)=>n+(x.convertedAmount||x.originalAmount),0).toLocaleString() }}</b></span><span>回饋 <b>{{ trip.currency }} {{ toolTransactions(tool).reduce((n,x)=>n+(x.estimatedRewardAmount||0),0).toLocaleString() }}</b></span></div><div v-for="rule in toolRules(tool).filter(x=>x.isActive)" :key="rule.id" class="rule"><strong>{{ rule.name }} {{ (rule.totalRate * 100).toFixed(1) }}%</strong><small v-if="rule.rewardCap">回饋已使用 {{ rewardUsage(rule, toolTransactions(tool)).usedRewardAmount.toLocaleString() }}／{{ rule.rewardCap.toLocaleString() }}</small></div><div v-if="stored(tool)" class="balance">目前餘額 <strong>{{ balance(tool).currency }} {{ balance(tool).currentBalance.toLocaleString() }}</strong></div></article></div><div v-else class="payment-empty">尚未建立支付工具</div></section>
-    <section v-if="reminders.length" class="payment-reminders"><div class="payment-section-title"><h3>提醒</h3><span>{{ reminders.length }} 項</span></div><ul><li v-for="reminder in reminders" :key="reminder">{{ reminder }}</li></ul></section>
-    <section><div class="payment-section-title"><h3>付款明細</h3><span>{{ filteredTransactions.length }}／{{ activeTransactions.length }} 筆</span></div><div v-if="activeTransactions.length" class="transaction-filters"><el-select v-model="transactionToolFilter" clearable placeholder="全部工具"><el-option v-for="tool in ownTools" :key="tool.id" :label="tool.name" :value="tool.id" /></el-select><el-select v-model="transactionStatusFilter" clearable placeholder="全部狀態"><el-option label="已入帳" value="posted"/><el-option label="待入帳" value="pending"/><el-option label="部分退款" value="partially_refunded"/><el-option label="已退款" value="refunded"/></el-select><el-select v-model="transactionCategoryFilter" clearable placeholder="全部分類"><el-option v-for="category in transactionCategories" :key="category" :label="category" :value="category" /></el-select><el-date-picker v-model="transactionDateRange" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="開始日期" end-placeholder="結束日期" /></div><div v-if="filteredTransactions.length" class="transaction-list"><article v-for="transaction in filteredTransactions" :key="transaction.id" class="transaction-row"><div><strong>{{ transaction.title }}</strong><p>{{ transaction.transactionDate }}・{{ tools.find(x=>x.id===transaction.paymentToolId)?.name || '已移除工具' }}</p></div><b>{{ transaction.originalCurrency }} {{ transaction.originalAmount.toLocaleString() }}</b><el-dropdown v-if="canEdit" trigger="click" @command="transactionAction($event, transaction)"><button class="tool-more" type="button">⋯</button><template #dropdown><el-dropdown-menu><el-dropdown-item command="edit">編輯交易／退款</el-dropdown-item><el-dropdown-item divided command="remove">刪除交易</el-dropdown-item></el-dropdown-menu></template></el-dropdown></article></div><div v-else class="payment-empty">找不到符合篩選條件的付款紀錄</div></section>
+    <header class="payment-heading">
+      <div>
+        <p>PAYMENTS</p>
+        <h2>支付與回饋</h2>
+        <span>追蹤旅行付款、海外手續費與回饋額度。</span>
+      </div>
+      <div>
+        <el-button v-if="canEdit" @click="emit('addTransaction')">＋ 新增消費</el-button>
+        <el-button v-if="canEdit" type="primary" @click="emit('addTool')">＋ 新增支付工具</el-button>
+      </div>
+    </header>
+
+    <div class="payment-summary">
+      <article
+        v-for="row in [
+          { label: '本趟付款總額', value: totals.amount },
+          { label: '預估回饋', value: totals.reward },
+          { label: '海外手續費', value: totals.fee },
+          { label: '預估淨回饋', value: totals.net },
+        ]"
+        :key="row.label"
+      >
+        <span>{{ row.label }}</span>
+        <strong>{{ trip.currency }} {{ row.value.toLocaleString() }}</strong>
+      </article>
+    </div>
+
+    <section>
+      <div class="payment-section-title">
+        <h3>我的支付工具</h3>
+        <span>{{ ownTools.length }} 項</span>
+      </div>
+
+      <div v-if="ownTools.length" class="tool-grid">
+        <article
+          v-for="tool in ownTools"
+          :key="tool.id"
+          class="tool-card"
+          :class="{ 'is-inactive': !tool.isActive }"
+        >
+          <div class="tool-card-top">
+            <span class="tool-type">{{ labels[tool.type] }}</span>
+            <el-dropdown v-if="canEdit" trigger="click" @command="action($event, tool)">
+              <button
+                type="button"
+                class="tool-more"
+                :aria-label="`${tool.name} 更多操作`"
+                title="更多操作"
+              >
+                ⋯
+              </button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="transaction">新增消費</el-dropdown-item>
+                  <el-dropdown-item command="rule">新增回饋規則</el-dropdown-item>
+                  <el-dropdown-item v-if="stored(tool)" command="balance">設定初始餘額</el-dropdown-item>
+                  <el-dropdown-item command="edit">編輯工具</el-dropdown-item>
+                  <el-dropdown-item command="toggle">{{ tool.isActive ? '停用工具' : '啟用工具' }}</el-dropdown-item>
+                  <el-dropdown-item divided command="remove">刪除工具</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
+
+          <div class="tool-name">
+            <img
+              v-if="tool.imageUrl"
+              :src="tool.imageUrl"
+              :alt="`${tool.name} 圖片`"
+              @error="($event.target as HTMLImageElement).style.display = 'none'"
+            >
+            <h4>{{ tool.name }}</h4>
+          </div>
+
+          <p>
+            {{ tool.issuer || labels[tool.type] }}
+            <template v-if="tool.lastFourDigits">・末四碼 {{ tool.lastFourDigits }}</template>
+          </p>
+          <small>持有人：{{ memberName(tool.ownerUserId) }}</small>
+
+          <div class="tool-metrics">
+            <span>
+              已刷
+              <b>
+                {{ trip.currency }}
+                {{
+                  toolTransactions(tool)
+                    .filter((item) => item.transactionType === 'purchase')
+                    .reduce((sum, item) => sum + (item.convertedAmount || item.originalAmount), 0)
+                    .toLocaleString()
+                }}
+              </b>
+            </span>
+            <span>
+              回饋
+              <b>
+                {{ trip.currency }}
+                {{
+                  toolTransactions(tool)
+                    .reduce((sum, item) => sum + (item.estimatedRewardAmount || 0), 0)
+                    .toLocaleString()
+                }}
+              </b>
+            </span>
+          </div>
+
+          <div
+            v-for="rule in toolRules(tool).filter((item) => item.isActive)"
+            :key="rule.id"
+            class="rule"
+          >
+            <div class="rule-top">
+              <div class="rule-heading">
+                <strong>{{ rule.name }}</strong>
+                <span class="rule-rate">{{ (rule.totalRate * 100).toFixed(1) }}%</span>
+              </div>
+              <el-dropdown v-if="canEdit" trigger="click" @command="ruleAction($event, rule)">
+                <button
+                  type="button"
+                  class="tool-more rule-more"
+                  :aria-label="`${rule.name} 更多操作`"
+                  title="更多操作"
+                >
+                  ⋯
+                </button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="edit">編輯規則</el-dropdown-item>
+                    <el-dropdown-item divided command="remove">刪除規則</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
+
+            <div class="rule-statuses">
+              <span class="rule-pill">{{ formatPeriod(rule) }}</span>
+              <span
+                v-if="rule.requiresRegistration"
+                class="rule-pill"
+                :class="rule.registrationCompleted ? 'is-good' : 'is-warning'"
+              >
+                {{ rule.registrationCompleted ? '已完成登錄' : '需活動登錄' }}
+              </span>
+              <span v-if="rule.priority > 1" class="rule-pill">優先序 {{ rule.priority }}</span>
+            </div>
+
+            <p class="rule-summary">{{ formatRuleSummary(rule) }}</p>
+
+            <p v-if="formatRuleCaps(rule)" class="rule-meta">
+              {{ formatRuleCaps(rule) }}
+            </p>
+
+            <div v-if="formatRuleConditions(rule).length" class="rule-tags">
+              <span
+                v-for="condition in formatRuleConditions(rule)"
+                :key="condition"
+                class="rule-tag"
+              >
+                {{ condition }}
+              </span>
+            </div>
+
+            <small v-if="rule.rewardCap" class="rule-usage">
+              回饋已使用
+              {{ rewardUsage(rule, toolTransactions(tool)).usedRewardAmount.toLocaleString() }}
+              ／
+              {{ rule.rewardCap.toLocaleString() }}
+            </small>
+          </div>
+
+          <div v-if="stored(tool)" class="balance">
+            目前餘額
+            <strong>{{ balance(tool).currency }} {{ balance(tool).currentBalance.toLocaleString() }}</strong>
+          </div>
+        </article>
+      </div>
+
+      <div v-else class="payment-empty">尚未建立支付工具</div>
+    </section>
+
+    <section v-if="reminders.length" class="payment-reminders">
+      <div class="payment-section-title">
+        <h3>提醒</h3>
+        <span>{{ reminders.length }} 項</span>
+      </div>
+      <ul>
+        <li v-for="reminder in reminders" :key="reminder">{{ reminder }}</li>
+      </ul>
+    </section>
+
+    <section>
+      <div class="payment-section-title">
+        <h3>付款明細</h3>
+        <span>{{ filteredTransactions.length }}／{{ activeTransactions.length }} 筆</span>
+      </div>
+
+      <div v-if="activeTransactions.length" class="transaction-filters">
+        <el-select v-model="transactionToolFilter" clearable placeholder="全部工具">
+          <el-option
+            v-for="tool in ownTools"
+            :key="tool.id"
+            :label="tool.name"
+            :value="tool.id"
+          />
+        </el-select>
+        <el-select v-model="transactionStatusFilter" clearable placeholder="全部狀態">
+          <el-option label="已入帳" value="posted" />
+          <el-option label="待入帳" value="pending" />
+          <el-option label="部分退款" value="partially_refunded" />
+          <el-option label="已退款" value="refunded" />
+        </el-select>
+        <el-select v-model="transactionCategoryFilter" clearable placeholder="全部分類">
+          <el-option
+            v-for="category in transactionCategories"
+            :key="category"
+            :label="category"
+            :value="category"
+          />
+        </el-select>
+        <el-date-picker
+          v-model="transactionDateRange"
+          type="daterange"
+          value-format="YYYY-MM-DD"
+          range-separator="至"
+          start-placeholder="開始日期"
+          end-placeholder="結束日期"
+        />
+      </div>
+
+      <div v-if="filteredTransactions.length" class="transaction-list">
+        <article
+          v-for="transaction in filteredTransactions"
+          :key="transaction.id"
+          class="transaction-row"
+        >
+          <div>
+            <strong>{{ transaction.title }}</strong>
+            <p>
+              {{ transaction.transactionDate }}・{{
+                tools.find((item) => item.id === transaction.paymentToolId)?.name ||
+                '已移除工具'
+              }}
+            </p>
+          </div>
+          <b>{{ transaction.originalCurrency }} {{ transaction.originalAmount.toLocaleString() }}</b>
+          <el-dropdown
+            v-if="canEdit"
+            trigger="click"
+            @command="transactionAction($event, transaction)"
+          >
+            <button class="tool-more" type="button">⋯</button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="edit">編輯交易／退款</el-dropdown-item>
+                <el-dropdown-item divided command="remove">刪除交易</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </article>
+      </div>
+      <div v-else class="payment-empty">找不到符合篩選條件的付款紀錄</div>
+    </section>
   </section>
 </template>
 
 <style scoped>
-.payment-page{grid-column:1/-1;padding:24px}.payment-heading,.payment-heading>div:last-child,.payment-section-title,.tool-card-top,.tool-name,.balance{display:flex;align-items:center}.payment-heading,.payment-section-title,.tool-card-top{justify-content:space-between}.payment-heading{gap:16px;padding-bottom:18px;border-bottom:1px solid #e1e8e3}.payment-heading p{margin:0;color:#df765f;font-size:11px;font-weight:800;letter-spacing:1px}.payment-heading h2{margin:3px 0;color:#163b37}.payment-heading>div:last-child{gap:8px}.payment-summary,.tool-grid{display:grid;gap:10px}.payment-summary{grid-template-columns:repeat(4,1fr);margin:18px 0}.payment-summary article,.tool-card,.transaction-list,.payment-empty{border:1px solid #e1e8e3;border-radius:12px;background:#fff}.payment-summary article{padding:12px}.payment-summary span,.tool-card p,.tool-card small,.transaction-row p{color:#6b7d78;font-size:12px}.payment-section-title{margin:20px 0 10px}.payment-section-title h3{margin:0}.tool-grid{grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}.tool-card{display:grid;gap:8px;padding:15px}.tool-card.is-inactive{opacity:.6}.tool-type{padding:3px 7px;border-radius:99px;background:#eaf4ef;color:#35725f;font-size:11px}.tool-more{width:36px;height:36px;border:0;border-radius:9px;background:transparent;font-size:20px;cursor:pointer}.tool-name{gap:9px;min-width:0}.tool-name img{width:40px;height:40px;border-radius:9px;object-fit:cover;flex:0 0 auto}.tool-name h4{margin:0;color:#163b37;font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tool-card p{margin:0}.tool-metrics{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px;background:#f4f8f5;border-radius:9px;font-size:12px}.rule,.balance{padding:8px;border-radius:8px;background:#f9fbfa;font-size:12px}.rule{display:grid;gap:3px}.balance{justify-content:space-between;background:#eef6f1}.payment-empty{padding:24px;text-align:center;color:#6b7d78}.transaction-list{overflow:hidden}.transaction-row{display:grid;grid-template-columns:1fr auto 36px;align-items:center;gap:10px;padding:12px;border-radius:0;border-width:0 0 1px}.transaction-row:last-child{border:0}.transaction-row p{margin:3px 0 0}@media(max-width:600px){.payment-page{padding:16px}.payment-heading{align-items:stretch;flex-direction:column}.payment-summary{grid-template-columns:repeat(2,1fr)}.tool-grid{grid-template-columns:1fr}}
-.transaction-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0 0 10px}@media(max-width:600px){.transaction-filters{grid-template-columns:1fr}}
+.payment-page{grid-column:1/-1;padding:24px}
+.payment-heading,.payment-heading>div:last-child,.payment-section-title,.tool-card-top,.tool-name,.balance,.rule-top,.rule-heading{display:flex;align-items:center}
+.payment-heading,.payment-section-title,.tool-card-top,.rule-top,.balance{justify-content:space-between}
+.payment-heading{gap:16px;padding-bottom:18px;border-bottom:1px solid #e1e8e3}
+.payment-heading p{margin:0;color:#df765f;font-size:11px;font-weight:800;letter-spacing:1px}
+.payment-heading h2{margin:3px 0;color:#163b37}
+.payment-heading>div:last-child{gap:8px}
+.payment-summary,.tool-grid{display:grid;gap:10px}
+.payment-summary{grid-template-columns:repeat(4,1fr);margin:18px 0}
+.payment-summary article,.tool-card,.transaction-list,.payment-empty{border:1px solid #e1e8e3;border-radius:12px;background:#fff}
+.payment-summary article{padding:12px}
+.payment-summary span,.tool-card p,.tool-card small,.transaction-row p,.rule-meta,.rule-summary{color:#6b7d78;font-size:12px}
+.payment-section-title{margin:20px 0 10px}
+.payment-section-title h3{margin:0}
+.tool-grid{grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+.tool-card{display:grid;gap:8px;padding:15px}
+.tool-card.is-inactive{opacity:.6}
+.tool-type{padding:3px 7px;border-radius:99px;background:#eaf4ef;color:#35725f;font-size:11px}
+.tool-more{width:36px;height:36px;border:0;border-radius:9px;background:transparent;font-size:20px;cursor:pointer}
+.tool-name{gap:9px;min-width:0}
+.tool-name img{width:40px;height:40px;border-radius:9px;object-fit:cover;flex:0 0 auto}
+.tool-name h4{margin:0;color:#163b37;font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tool-card p,.rule-meta,.rule-summary{margin:0}
+.tool-metrics{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px;background:#f4f8f5;border-radius:9px;font-size:12px}
+.rule,.balance{padding:10px;border-radius:10px;background:#f9fbfa;font-size:12px}
+.rule{display:grid;gap:8px;border:1px solid #edf2ee}
+.rule-top{gap:8px;align-items:flex-start}
+.rule-heading{min-width:0;flex:1;gap:8px;align-items:flex-start}
+.rule-heading strong{min-width:0;flex:1;color:#163b37;line-height:1.45}
+.rule-rate{flex:0 0 auto;color:#123f3a;font-size:13px;font-weight:700}
+.rule-more{width:32px;height:32px;flex:0 0 32px;font-size:18px}
+.rule-statuses,.rule-tags{display:flex;flex-wrap:wrap;gap:6px}
+.rule-pill,.rule-tag{display:inline-flex;padding:4px 8px;border-radius:999px;font-size:11px;line-height:1.2}
+.rule-pill{background:#eef5f0;color:#2f7d70}
+.rule-pill.is-warning{background:#fff4d9;color:#9b6a17}
+.rule-pill.is-good{background:#e8f4ec;color:#2f7d70}
+.rule-summary{color:#44635c;font-weight:600}
+.rule-meta{line-height:1.5}
+.rule-tag{background:#f3f6f4;color:#58736b}
+.rule-usage{color:#6b7d78;line-height:1.5}
+.balance{background:#eef6f1}
+.payment-empty{padding:24px;text-align:center;color:#6b7d78}
+.transaction-list{overflow:hidden}
+.transaction-row{display:grid;grid-template-columns:1fr auto 36px;align-items:center;gap:10px;padding:12px;border-radius:0;border-width:0 0 1px}
+.transaction-row:last-child{border:0}
+.transaction-row p{margin:3px 0 0}
+.transaction-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0 0 10px}
+@media(max-width:600px){
+  .payment-page{padding:16px}
+  .payment-heading{align-items:stretch;flex-direction:column}
+  .payment-summary{grid-template-columns:repeat(2,1fr)}
+  .tool-grid,.transaction-filters{grid-template-columns:1fr}
+}
 </style>
