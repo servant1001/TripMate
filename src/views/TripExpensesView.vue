@@ -14,8 +14,11 @@ const props = defineProps<{
   total: number
   myPaid: number
   myBalance: number
+  personalBudgetMemberId?: string
   personalBudget: number
   personalSpent: number
+  categoryBudgetValues: Record<string, number>
+  categoryBudgetOptions: string[]
   categoryBudgets: { category: string; budget: number; spent: number }[]
   dailyBudget: number
   dailyExpenses: { date: string; spent: number }[]
@@ -27,12 +30,6 @@ const props = defineProps<{
   splitLabel: (expense: Expense) => string
   participantCount: (expense: Expense) => number
   share: (expense: Expense) => number
-}>()
-
-const emit = defineEmits<{
-  setPersonalBudget: []
-  manageCategoryBudgets: []
-  manageDailyBudget: []
 }>()
 
 const store = useTripStore()
@@ -54,6 +51,15 @@ const expenseShares = reactive<Record<string, number>>({})
 const expenseRatios = reactive<Record<string, number>>({})
 const expenseSplitUnits = reactive<Record<string, number>>({})
 const expensePayerShares = reactive<Record<string, number>>({})
+const showPersonalBudget = ref(false)
+const savingPersonalBudget = ref(false)
+const personalBudgetInput = ref(0)
+const showCategoryBudgets = ref(false)
+const savingCategoryBudgets = ref(false)
+const categoryBudgetDraft = reactive<Record<string, number>>({})
+const showDailyBudget = ref(false)
+const savingDailyBudget = ref(false)
+const dailyBudgetInput = ref(0)
 
 const expense = reactive<ExpenseDraft>({
   title: '',
@@ -328,6 +334,77 @@ async function removeExpense(expenseItem: Expense) {
   }
 }
 
+function openPersonalBudgetForm() {
+  if (!props.canSetPersonalBudget || !props.personalBudgetMemberId) {
+    return ElMessage.warning('請先登入後設定個人預算。')
+  }
+  personalBudgetInput.value = props.personalBudget
+  showPersonalBudget.value = true
+}
+
+async function savePersonalBudget() {
+  if (!props.personalBudgetMemberId) return
+  savingPersonalBudget.value = true
+  try {
+    await store.updatePersonalBudget(
+      props.trip.id,
+      props.personalBudgetMemberId,
+      Math.max(0, Number(personalBudgetInput.value) || 0),
+    )
+    showPersonalBudget.value = false
+    ElMessage.success('個人預算已儲存。')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '無法儲存個人預算。')
+  } finally {
+    savingPersonalBudget.value = false
+  }
+}
+
+function openCategoryBudgetForm() {
+  if (!props.canManageCategoryBudgets) {
+    return ElMessage.warning('只有旅行建立者可以設定分類預算。')
+  }
+  Object.keys(categoryBudgetDraft).forEach((category) => delete categoryBudgetDraft[category])
+  props.categoryBudgetOptions.forEach((category) => {
+    categoryBudgetDraft[category] = Number(props.categoryBudgetValues[category]) || 0
+  })
+  showCategoryBudgets.value = true
+}
+
+async function saveCategoryBudgets() {
+  savingCategoryBudgets.value = true
+  try {
+    await store.updateCategoryBudgets(props.trip.id, categoryBudgetDraft)
+    showCategoryBudgets.value = false
+    ElMessage.success('分類預算已儲存。')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '無法儲存分類預算。')
+  } finally {
+    savingCategoryBudgets.value = false
+  }
+}
+
+function openDailyBudgetForm() {
+  if (!props.canManageCategoryBudgets) {
+    return ElMessage.warning('只有旅行建立者可以設定每日預算。')
+  }
+  dailyBudgetInput.value = props.dailyBudget
+  showDailyBudget.value = true
+}
+
+async function saveDailyBudget() {
+  savingDailyBudget.value = true
+  try {
+    await store.updateDailyBudget(props.trip.id, dailyBudgetInput.value)
+    showDailyBudget.value = false
+    ElMessage.success('每日預算已儲存。')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '無法儲存每日預算。')
+  } finally {
+    savingDailyBudget.value = false
+  }
+}
+
 onUnmounted(() => {
   clearExpenseReceiptPreview()
 })
@@ -354,9 +431,9 @@ onUnmounted(() => {
       :participant-count="participantCount"
       :share="share"
       @add="openExpenseForm()"
-      @set-personal-budget="emit('setPersonalBudget')"
-      @manage-category-budgets="emit('manageCategoryBudgets')"
-      @manage-daily-budget="emit('manageDailyBudget')"
+      @set-personal-budget="openPersonalBudgetForm"
+      @manage-category-budgets="openCategoryBudgetForm"
+      @manage-daily-budget="openDailyBudgetForm"
       @edit="openExpenseForm"
       @remove="removeExpense"
     />
@@ -397,9 +474,51 @@ onUnmounted(() => {
       @save="saveExpense"
       @closed="resetExpenseForm"
     />
+
+    <el-dialog v-model="showPersonalBudget" title="設定個人預算" width="min(92vw, 420px)">
+      <p class="muted">此預算僅供你自己查看，會依你實際分攤到的開銷計算使用率。</p>
+      <el-form label-position="top">
+        <el-form-item label="個人預算">
+          <el-input-number v-model="personalBudgetInput" :min="0" :step="1000" controls-position="right" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button :disabled="savingPersonalBudget" @click="showPersonalBudget = false">取消</el-button>
+        <el-button type="primary" :loading="savingPersonalBudget" :disabled="savingPersonalBudget" @click="savePersonalBudget">儲存個人預算</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="showCategoryBudgets" title="設定分類預算" width="min(92vw, 520px)">
+      <p class="muted">分類預算會依全體旅伴建立的支出計算；未設定或填入 0 的分類不會顯示。</p>
+      <el-form class="category-budget-form" label-position="top">
+        <el-form-item v-for="category in categoryBudgetOptions" :key="category" :label="category">
+          <el-input-number v-model="categoryBudgetDraft[category]" :min="0" :step="1000" controls-position="right" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button :disabled="savingCategoryBudgets" @click="showCategoryBudgets = false">取消</el-button>
+        <el-button type="primary" :loading="savingCategoryBudgets" :disabled="savingCategoryBudgets" @click="saveCategoryBudgets">儲存分類預算</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="showDailyBudget" title="設定每日預算" width="min(92vw, 420px)">
+      <p class="muted">每日預算會依支出的日期統計，填入 0 可關閉每日預算提醒。</p>
+      <el-form label-position="top">
+        <el-form-item :label="`每日預算（${trip.currency || ''}）`">
+          <el-input-number v-model="dailyBudgetInput" :min="0" :step="1000" controls-position="right" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button :disabled="savingDailyBudget" @click="showDailyBudget = false">取消</el-button>
+        <el-button type="primary" :loading="savingDailyBudget" :disabled="savingDailyBudget" @click="saveDailyBudget">儲存每日預算</el-button>
+      </template>
+    </el-dialog>
   </section>
 </template>
 
 <style scoped>
 .trip-expenses-view{display:grid;min-width:0}
+.category-budget-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 14px}
+.category-budget-form :deep(.el-input-number){width:100%}
+@media(max-width:600px){.category-budget-form{grid-template-columns:1fr}}
 </style>
