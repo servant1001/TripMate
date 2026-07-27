@@ -8,7 +8,7 @@ const amount = ref(0)
 const currency = ref(props.trip.currency)
 const category = ref('購物')
 const tools = computed(() => props.tools.filter((tool) => tool.ownerUserId === props.userId && tool.isActive))
-const results = computed(() => tools.value.map((tool) => { const rule = selectApplicableRule(props.rules.filter((item) => item.paymentToolId === tool.id), { amount: amount.value, date: new Date().toISOString().slice(0, 10), currency: currency.value, category: category.value }); const calculation = calculateTransactionReward({ amount: amount.value, rate: rule?.totalRate || 0, feeRate: tool.foreignTransactionFeeRate }); return { tool, rule, net: calculation.estimatedNetRewardAmount, rate: calculation.estimatedNetRewardRate } }).sort((a, b) => b.net - a.net || b.rate - a.rate))
+const results = computed(() => tools.value.map((tool) => { const rule = selectApplicableRule(props.rules.filter((item) => item.paymentToolId === tool.id), { amount: amount.value, date: new Date().toISOString().slice(0, 10), currency: currency.value, category: category.value }); const calculation = calculateTransactionReward({ amount: amount.value, baseRate: rule?.baseRate || 0, bonusRate: rule?.bonusRate || 0, feeRate: tool.foreignTransactionFeeRate, maximumBaseRewardAmount: rule?.baseRewardCap, maximumBonusRewardAmount: rule?.bonusRewardCap, maximumRewardAmount: rule?.rewardCap }); return { tool, rule, net: calculation.estimatedNetRewardAmount, rate: calculation.estimatedNetRewardRate } }).sort((a, b) => b.net - a.net || b.rate - a.rate))
 </script>
 
 <template>

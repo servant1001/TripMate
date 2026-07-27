@@ -147,9 +147,19 @@ const reminders = computed(() => {
         if (rule.requiresRegistration && !rule.registrationCompleted) {
           rows.push(`${tool.name}：${rule.name} 尚未完成活動登錄`)
         }
+        if (rule.bonusRewardCap && usage.usedBonusRewardAmount / rule.bonusRewardCap >= 0.8) {
+          rows.push(
+            `${tool.name}：${rule.name} 加碼回饋額度已使用 ${Math.round((usage.usedBonusRewardAmount / rule.bonusRewardCap) * 100)}%`,
+          )
+        }
+        if (rule.baseRewardCap && usage.usedBaseRewardAmount / rule.baseRewardCap >= 0.8) {
+          rows.push(
+            `${tool.name}：${rule.name} 基礎回饋額度已使用 ${Math.round((usage.usedBaseRewardAmount / rule.baseRewardCap) * 100)}%`,
+          )
+        }
         if (rule.rewardCap && usage.usedRewardAmount / rule.rewardCap >= 0.8) {
           rows.push(
-            `${tool.name}：${rule.name} 回饋額度已使用 ${Math.round((usage.usedRewardAmount / rule.rewardCap) * 100)}%`,
+            `${tool.name}：${rule.name} 總回饋額度已使用 ${Math.round((usage.usedRewardAmount / rule.rewardCap) * 100)}%`,
           )
         }
         if (rule.periodEndAt && rule.periodEndAt >= now && rule.periodEndAt <= sevenDays) {
@@ -202,11 +212,32 @@ function formatRuleSummary(rule: RewardRule) {
 
 function formatRuleCaps(rule: RewardRule) {
   const parts: string[] = []
+  if (rule.baseRewardCap) {
+    parts.push(`基礎上限 ${props.trip.currency} ${rule.baseRewardCap.toLocaleString()}`)
+  }
+  if (rule.bonusRewardCap) {
+    parts.push(`加碼上限 ${props.trip.currency} ${rule.bonusRewardCap.toLocaleString()}`)
+  }
   if (rule.rewardCap) {
-    parts.push(`${capPeriodLabels[rule.capPeriod]}上限 ${props.trip.currency} ${rule.rewardCap.toLocaleString()}`)
+    parts.push(`總上限 ${props.trip.currency} ${rule.rewardCap.toLocaleString()}`)
   }
   if (rule.maximumEligibleSpend) {
     parts.push(`可回饋消費上限 ${props.trip.currency} ${rule.maximumEligibleSpend.toLocaleString()}`)
+  }
+  return parts.join('・')
+}
+
+function formatRuleUsage(rule: RewardRule, tool: PaymentTool) {
+  const usage = rewardUsage(rule, toolTransactions(tool))
+  const parts: string[] = []
+  if (rule.baseRewardCap) {
+    parts.push(`基礎已用 ${usage.usedBaseRewardAmount.toLocaleString()}／${rule.baseRewardCap.toLocaleString()}`)
+  }
+  if (rule.bonusRewardCap) {
+    parts.push(`加碼已用 ${usage.usedBonusRewardAmount.toLocaleString()}／${rule.bonusRewardCap.toLocaleString()}`)
+  }
+  if (rule.rewardCap) {
+    parts.push(`總額已用 ${usage.usedRewardAmount.toLocaleString()}／${rule.rewardCap.toLocaleString()}`)
   }
   return parts.join('・')
 }
@@ -433,11 +464,8 @@ function transactionRewardLabel(transaction: PaymentTransaction) {
               </span>
             </div>
 
-            <small v-if="rule.rewardCap" class="rule-usage">
-              回饋已使用
-              {{ rewardUsage(rule, toolTransactions(tool)).usedRewardAmount.toLocaleString() }}
-              ／
-              {{ rule.rewardCap.toLocaleString() }}
+            <small v-if="formatRuleUsage(rule, tool)" class="rule-usage">
+              {{ formatRuleUsage(rule, tool) }}
             </small>
           </div>
 

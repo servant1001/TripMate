@@ -7,6 +7,8 @@ export type RewardRuleDraft = {
   rewardType: RewardType
   baseRatePercent: number
   bonusRatePercent: number
+  baseRewardCap: number
+  bonusRewardCap: number
   rewardCap: number
   maximumEligibleSpend: number
   minimumSpend: number
@@ -76,11 +78,21 @@ const emit = defineEmits<{
         <el-form-item label="最低消費門檻">
           <el-input-number v-model="props.form.minimumSpend" :min="0" controls-position="right" />
         </el-form-item>
-        <el-form-item label="回饋金額上限">
+        <el-form-item label="基礎回饋上限">
+          <el-input-number v-model="props.form.baseRewardCap" :min="0" controls-position="right" />
+          <small class="payment-rule-hint">留空或 0 代表基礎回饋無上限。</small>
+        </el-form-item>
+        <el-form-item label="加碼回饋上限">
+          <el-input-number v-model="props.form.bonusRewardCap" :min="0" controls-position="right" />
+          <small class="payment-rule-hint">留空或 0 代表加碼回饋無上限。</small>
+        </el-form-item>
+        <el-form-item label="總回饋上限（選填）">
           <el-input-number v-model="props.form.rewardCap" :min="0" controls-position="right" />
+          <small class="payment-rule-hint">留空或 0 代表不另外限制總回饋。</small>
         </el-form-item>
         <el-form-item label="符合回饋消費上限">
           <el-input-number v-model="props.form.maximumEligibleSpend" :min="0" controls-position="right" />
+          <small class="payment-rule-hint">留空或 0 代表可計算回饋的消費金額無上限。</small>
         </el-form-item>
         <el-form-item label="上限計算期間">
           <el-select v-model="props.form.capPeriod">
@@ -146,3 +158,13 @@ const emit = defineEmits<{
     </template>
   </el-dialog>
 </template>
+
+<style scoped>
+.payment-rule-hint{
+  display:block;
+  margin-top:6px;
+  color:#6b7d78;
+  font-size:12px;
+  line-height:1.5;
+}
+</style>
