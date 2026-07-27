@@ -1,21 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
-import TripWorkspaceShell from '../components/TripWorkspaceShell.vue'
-import TripManagementDialogs from '../components/TripManagementDialogs.vue'
-import TripExpensesView from './TripExpensesView.vue'
-import TripItineraryView from './TripItineraryView.vue'
-import TripBookingsView from './TripBookingsView.vue'
-import TripFavoritesView from './TripFavoritesView.vue'
-import TripMapView from './TripMapView.vue'
-import TripAlbumView from './TripAlbumView.vue'
-import TripMembersView from './TripMembersView.vue'
-import TripPaymentsView from './TripPaymentsView.vue'
-import TripInsuranceView from './TripInsuranceView.vue'
-import TripShoppingView from './TripShoppingView.vue'
-import TripTodosView from './TripTodosView.vue'
-import TripPackingView from './TripPackingView.vue'
 import { useTripStore } from '../stores/trip'
 import { firebaseEnabled } from '../services/firebase'
 import { useTripmateSession } from '../composables/useTripmateSession'
@@ -23,6 +9,25 @@ import { useTripWorkspaceShell } from '../composables/useTripWorkspaceShell'
 import { useTripWorkspaceItinerary } from '../composables/useTripWorkspaceItinerary'
 import { useTripWorkspaceExpenses } from '../composables/useTripWorkspaceExpenses'
 import { useTripWorkspaceTripEditor } from '../composables/useTripWorkspaceTripEditor'
+
+const TripWorkspaceShell = defineAsyncComponent(
+  () => import('../components/TripWorkspaceShell.vue'),
+)
+const TripManagementDialogs = defineAsyncComponent(
+  () => import('../components/TripManagementDialogs.vue'),
+)
+const TripExpensesView = defineAsyncComponent(() => import('./TripExpensesView.vue'))
+const TripItineraryView = defineAsyncComponent(() => import('./TripItineraryView.vue'))
+const TripBookingsView = defineAsyncComponent(() => import('./TripBookingsView.vue'))
+const TripFavoritesView = defineAsyncComponent(() => import('./TripFavoritesView.vue'))
+const TripMapView = defineAsyncComponent(() => import('./TripMapView.vue'))
+const TripAlbumView = defineAsyncComponent(() => import('./TripAlbumView.vue'))
+const TripMembersView = defineAsyncComponent(() => import('./TripMembersView.vue'))
+const TripPaymentsView = defineAsyncComponent(() => import('./TripPaymentsView.vue'))
+const TripInsuranceView = defineAsyncComponent(() => import('./TripInsuranceView.vue'))
+const TripShoppingView = defineAsyncComponent(() => import('./TripShoppingView.vue'))
+const TripTodosView = defineAsyncComponent(() => import('./TripTodosView.vue'))
+const TripPackingView = defineAsyncComponent(() => import('./TripPackingView.vue'))
 
 const route = useRoute()
 const router = useRouter()
