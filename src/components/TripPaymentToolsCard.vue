@@ -126,6 +126,15 @@ const balance = (tool: PaymentTool) =>
 const stored = (tool: PaymentTool) =>
   tool.type === 'electronic_payment' || tool.type === 'transport_card'
 
+function toolStatusLabel(tool: PaymentTool) {
+  return tool.isActive ? '使用中' : '已停用'
+}
+
+function foreignFeeLabel(tool: PaymentTool) {
+  if (!tool.foreignTransactionFeeRate) return '免海外手續費'
+  return `海外手續費 ${(tool.foreignTransactionFeeRate * 100).toFixed(1)}%`
+}
+
 const reminders = computed(() => {
   const now = Date.now()
   const sevenDays = now + 7 * 86400000
@@ -223,6 +232,32 @@ function formatRuleConditions(rule: RewardRule) {
   }
   return parts
 }
+
+function transactionStatusLabel(status: PaymentTransaction['status']) {
+  return (
+    {
+      posted: '已入帳',
+      pending: '待入帳',
+      refunded: '已退款',
+      partially_refunded: '部分退款',
+      cancelled: '已取消',
+    }[status] || status
+  )
+}
+
+function transactionStatusClass(status: PaymentTransaction['status']) {
+  return `is-${status}`
+}
+
+function transactionRewardLabel(transaction: PaymentTransaction) {
+  if (transaction.estimatedRewardAmount && transaction.estimatedRewardAmount > 0) {
+    return `預估回饋 ${props.trip.currency} ${transaction.estimatedRewardAmount.toLocaleString()}`
+  }
+  if (transaction.foreignTransactionFee && transaction.foreignTransactionFee > 0) {
+    return `海外手續費 ${props.trip.currency} ${transaction.foreignTransactionFee.toLocaleString()}`
+  }
+  return '尚無回饋試算'
+}
 </script>
 
 <template>
@@ -305,7 +340,16 @@ function formatRuleConditions(rule: RewardRule) {
             {{ tool.issuer || labels[tool.type] }}
             <template v-if="tool.lastFourDigits">・末四碼 {{ tool.lastFourDigits }}</template>
           </p>
-          <small>持有人：{{ memberName(tool.ownerUserId) }}</small>
+          <div class="tool-meta-row">
+            <small>持有人：{{ memberName(tool.ownerUserId) }}</small>
+            <span class="tool-status-pill" :class="{ 'is-inactive': !tool.isActive }">
+              {{ toolStatusLabel(tool) }}
+            </span>
+          </div>
+          <div class="tool-meta-row">
+            <small>結算幣別：{{ tool.settlementCurrency || trip.currency }}</small>
+            <small>{{ foreignFeeLabel(tool) }}</small>
+          </div>
 
           <div class="tool-metrics">
             <span>
@@ -462,16 +506,34 @@ function formatRuleConditions(rule: RewardRule) {
           :key="transaction.id"
           class="transaction-row"
         >
-          <div>
-            <strong>{{ transaction.title }}</strong>
+          <div class="transaction-main">
+            <div class="transaction-title-row">
+              <strong>{{ transaction.title }}</strong>
+              <span
+                class="transaction-status-pill"
+                :class="transactionStatusClass(transaction.status)"
+              >
+                {{ transactionStatusLabel(transaction.status) }}
+              </span>
+            </div>
             <p>
               {{ transaction.transactionDate }}・{{
                 tools.find((item) => item.id === transaction.paymentToolId)?.name ||
                 '已移除工具'
               }}
             </p>
+            <div class="transaction-meta-row">
+              <span v-if="transaction.category">{{ transaction.category }}</span>
+              <span v-if="transaction.merchant">{{ transaction.merchant }}</span>
+              <span>{{ transactionRewardLabel(transaction) }}</span>
+            </div>
           </div>
-          <b>{{ transaction.originalCurrency }} {{ transaction.originalAmount.toLocaleString() }}</b>
+          <div class="transaction-amount">
+            <b>{{ transaction.originalCurrency }} {{ transaction.originalAmount.toLocaleString() }}</b>
+            <small v-if="transaction.convertedAmount && transaction.originalCurrency !== trip.currency">
+              約 {{ trip.currency }} {{ transaction.convertedAmount.toLocaleString() }}
+            </small>
+          </div>
           <el-dropdown
             v-if="canEdit"
             trigger="click"
@@ -494,7 +556,7 @@ function formatRuleConditions(rule: RewardRule) {
 
 <style scoped>
 .payment-page{grid-column:1/-1;padding:24px}
-.payment-heading,.payment-heading>div:last-child,.payment-section-title,.tool-card-top,.tool-name,.balance,.rule-top,.rule-heading{display:flex;align-items:center}
+.payment-heading,.payment-heading>div:last-child,.payment-section-title,.tool-card-top,.tool-name,.balance,.rule-top,.rule-heading,.tool-meta-row,.transaction-title-row,.transaction-meta-row{display:flex;align-items:center}
 .payment-heading,.payment-section-title,.tool-card-top,.rule-top,.balance{justify-content:space-between}
 .payment-heading{gap:16px;padding-bottom:18px;border-bottom:1px solid #e1e8e3}
 .payment-heading p{margin:0;color:#df765f;font-size:11px;font-weight:800;letter-spacing:1px}
@@ -516,6 +578,9 @@ function formatRuleConditions(rule: RewardRule) {
 .tool-name img{width:40px;height:40px;border-radius:9px;object-fit:cover;flex:0 0 auto}
 .tool-name h4{margin:0;color:#163b37;font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tool-card p,.rule-meta,.rule-summary{margin:0}
+.tool-meta-row{justify-content:space-between;gap:8px;flex-wrap:wrap}
+.tool-status-pill{display:inline-flex;padding:4px 8px;border-radius:999px;background:#e8f4ec;color:#2f7d70;font-size:11px;font-weight:700;line-height:1.2}
+.tool-status-pill.is-inactive{background:#f3f6f4;color:#7b8d87}
 .tool-metrics{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px;background:#f4f8f5;border-radius:9px;font-size:12px}
 .rule,.balance{padding:10px;border-radius:10px;background:#f9fbfa;font-size:12px}
 .rule{display:grid;gap:8px;border:1px solid #edf2ee}
@@ -536,14 +601,29 @@ function formatRuleConditions(rule: RewardRule) {
 .balance{background:#eef6f1}
 .payment-empty{padding:24px;text-align:center;color:#6b7d78}
 .transaction-list{overflow:hidden}
-.transaction-row{display:grid;grid-template-columns:1fr auto 36px;align-items:center;gap:10px;padding:12px;border-radius:0;border-width:0 0 1px}
+.transaction-row{display:grid;grid-template-columns:minmax(0,1fr) auto 36px;align-items:center;gap:12px;padding:12px;border-radius:0;border-width:0 0 1px}
 .transaction-row:last-child{border:0}
 .transaction-row p{margin:3px 0 0}
+.transaction-main{min-width:0;display:grid;gap:4px}
+.transaction-title-row{justify-content:space-between;gap:8px}
+.transaction-title-row strong{min-width:0;color:#163b37;font-size:15px;line-height:1.45}
+.transaction-meta-row{gap:6px;flex-wrap:wrap;color:#6b7d78;font-size:12px}
+.transaction-meta-row span{display:inline-flex;padding:3px 7px;border-radius:999px;background:#f3f6f4;line-height:1.2}
+.transaction-status-pill{display:inline-flex;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:700;line-height:1.2;white-space:nowrap}
+.transaction-status-pill.is-posted{background:#e8f4ec;color:#2f7d70}
+.transaction-status-pill.is-pending{background:#fff4d9;color:#9b6a17}
+.transaction-status-pill.is-refunded,.transaction-status-pill.is-partially_refunded{background:#eef5f0;color:#2f7d70}
+.transaction-status-pill.is-cancelled{background:#f7ecea;color:#b55b55}
+.transaction-amount{display:grid;justify-items:end;gap:3px;min-width:110px}
+.transaction-amount b{color:#163b37;font-size:15px}
+.transaction-amount small{color:#6b7d78;font-size:11px}
 .transaction-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0 0 10px}
 @media(max-width:600px){
   .payment-page{padding:16px}
   .payment-heading{align-items:stretch;flex-direction:column}
   .payment-summary{grid-template-columns:repeat(2,1fr)}
   .tool-grid,.transaction-filters{grid-template-columns:1fr}
+  .transaction-row{grid-template-columns:minmax(0,1fr) 36px;align-items:start}
+  .transaction-amount{justify-items:start;min-width:0}
 }
 </style>
