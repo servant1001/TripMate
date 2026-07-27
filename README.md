@@ -1,6 +1,56 @@
 # TripMate 旅伴
 
-多人旅行協作 MVP：旅行清單、旅行建立、成員／邀請碼、每日行程、個人與共同開銷及結算。
+TripMate 是一個多人旅行協作網站，支援旅伴共同規劃行程、記錄支出、整理購物與行李、管理預訂、收藏景點，以及追蹤旅行中的支付工具、保險與緊急資訊。
+
+目前專案已從單純 MVP 擴充為可實際操作的旅行工作台，前端以 Vue 3 + Element Plus 建構，資料層使用 Firebase Authentication 與 Realtime Database，圖片上傳則透過 Cloudinary + Cloudflare Worker signed upload。
+
+## 目前功能
+
+- 旅行管理
+  - 建立 / 編輯旅行
+  - 旅行封面圖片
+  - 邀請碼加入旅行
+  - 成員管理與角色限制
+
+- 每日行程
+  - 共用行程、自由活動、個人行程
+  - 地點群組、解散群組、刪除群組
+  - 行程拖曳排序
+  - 多選建立群組、批次刪除、全選 / 取消全選
+  - 從旅遊收藏快速帶入地點、圖片與 Google Maps 連結
+  - 交通行程支援出發 / 抵達站
+
+- 旅行開銷
+  - 支出建立、編輯、刪除
+  - 成員分攤與結算建議
+  - 預算 / 個人預算顯示
+
+- 待辦、行李、預訂、購物、收藏、相簿、地圖
+  - 旅行待辦與個人待辦
+  - 行李清單拖曳排序與分類
+  - 預訂管理
+  - 購物清單、關聯行程、批次加入關聯行程
+  - 旅遊收藏分類、篩選、複製、帶入行程
+  - 相簿照片與地圖檢視
+
+- 支付與回饋
+  - 個人支付工具管理
+  - 回饋規則、活動登錄、回饋上限
+  - 基礎回饋 / 加碼回饋分開計算
+  - 付款明細篩選、摘要與排序
+
+- 旅行保險與緊急資訊
+  - 保單資訊
+  - 保障內容
+  - 緊急聯絡資訊
+
+## 技術架構
+
+- Frontend：Vue 3、TypeScript、Vite、Element Plus
+- Auth / Database：Firebase Authentication、Realtime Database
+- Upload：Cloudinary
+- Secure API：Cloudflare Worker
+- Hosting：Firebase Hosting
 
 ## 開始使用
 
@@ -15,6 +65,12 @@ pnpm dev
 ```bash
 pnpm type-check
 pnpm build
+```
+
+如果要部署到正式 Firebase Hosting，可執行：
+
+```bash
+firebase deploy --only hosting --project tripmate-b3f9d
 ```
 
 ## 資料與服務
