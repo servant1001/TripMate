@@ -30,6 +30,7 @@ TripMate 是一個多人旅行協作網站，支援旅伴共同規劃行程、�
   - 行李清單拖曳排序與分類
   - 預訂管理
   - 購物清單、關聯行程、批次加入關聯行程
+  - 台灣售價欄位、最新參考匯率換算與當地 / 台灣比價
   - 旅遊收藏分類、篩選、複製、帶入行程
   - 相簿照片與地圖檢視
 
@@ -51,6 +52,7 @@ TripMate 是一個多人旅行協作網站，支援旅伴共同規劃行程、�
 - Upload：Cloudinary
 - Secure API：Cloudflare Worker
 - Hosting：Firebase Hosting
+- Exchange rates：Frankfurter API（由 Cloudflare Worker 代理並快取）
 
 ## 開始使用
 
@@ -73,10 +75,24 @@ pnpm build
 firebase deploy --only hosting --project tripmate-b3f9d
 ```
 
+如果要部署 TripMate API Worker，可在 `worker/` 目錄執行：
+
+```bash
+.\node_modules\.bin\wrangler.cmd deploy
+```
+
 ## 資料與服務
 
 `src/services/firebase.ts` 已建立 Firebase Authentication 與 Realtime Database 初始化入口；設定 `.env` 後可接入正式 Firebase 專案。未提供憑證時，介面會以瀏覽器本機資料作為可操作的示範資料層，避免留下無法操作的按鈕。封面上傳採 Cloudinary signed upload；範例 Worker 位於 `workers/cloudinary-signature.ts`，API Secret 僅可放在 Worker 的 secret 中，絕不可放入前端。專案不使用 Firebase Storage。
 
 啟用正式模式前，請在 Firebase Console 開啟 Email/Password 與 Google 登入方式，並將 `firebase.database.rules.json` 內容貼入 Realtime Database 的 Rules 分頁後發布。
 
-`worker/` 包含 Cloudflare Worker：它會驗證 Firebase ID Token、簽署 Cloudinary 上傳並安全處理邀請碼加入旅行。部署前請設定 `CLOUDINARY_CLOUD_NAME`、`CLOUDINARY_API_KEY`、`CLOUDINARY_API_SECRET`、`FIREBASE_WEB_API_KEY`、`FIREBASE_SERVICE_ACCOUNT_JSON` 五個 Worker Secret；前端不會取得任何 Secret。
+`worker/` 包含 Cloudflare Worker：它會驗證 Firebase ID Token、簽署 Cloudinary 上傳、安全處理邀請碼加入旅行，並提供購物清單使用的最新參考匯率 endpoint（`/v1/exchange-rate`）。部署前請設定 `CLOUDINARY_CLOUD_NAME`、`CLOUDINARY_API_KEY`、`CLOUDINARY_API_SECRET`、`FIREBASE_WEB_API_KEY`、`FIREBASE_SERVICE_ACCOUNT_JSON` 五個 Worker Secret；前端不會取得任何 Secret。
+
+## 購物清單比價規則
+
+- 商品若已購買，會優先使用實際價格換算台幣。
+- 商品若尚未購買，會使用預估價格換算台幣。
+- 若商品本身已是 `TWD`，則直接與 `台灣售價` 比較。
+- 若商品幣別不是 `TWD`，前端會透過 Worker 取得最新參考匯率，再換算成台幣與 `台灣售價` 比較。
+- 介面中的比價結果屬於「最新參考匯率估算」，不代表實際刷卡入帳或換匯成交價格。
