@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onUnmounted, reactive, ref } from 'vue'
+import { computed, onUnmounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import TripShoppingCard from '../components/TripShoppingCard.vue'
 import ShoppingItemDialog, { type ShoppingItemDraft } from '../components/ShoppingItemDialog.vue'
 import ShoppingItineraryPickerDialog from '../components/ShoppingItineraryPickerDialog.vue'
 import type { ExpenseKind, ItineraryItem, ShoppingItem, Trip } from '../types'
 import { uploadTripImage } from '../services/cloudinary'
+import { getLatestExchangeRate, type ExchangeRateQuote } from '../services/exchangeRates'
 import { useTripStore } from '../stores/trip'
 
 const props = defineProps<{
@@ -34,6 +35,8 @@ const shoppingImagePreview = ref('')
 const shoppingImageUrl = ref('')
 const shoppingParticipantIds = ref<string[]>([])
 const shoppingItineraryItemIds = ref<string[]>([])
+const shoppingExchangeRates = ref<Record<string, ExchangeRateQuote>>({})
+const shoppingRateLoadError = ref('')
 
 const shopping = reactive<ShoppingItemDraft>({
   name: '',
@@ -97,6 +100,14 @@ const selectedShoppingItineraries = computed(() =>
 const selectedShoppingItinerary = computed(() => selectedShoppingItineraries.value[0])
 const shoppingItineraryEntries = computed(
   () => shoppingItineraryDays.value.find((day) => day.date === shoppingItineraryPickerDay.value)?.entries || [],
+)
+const shoppingCurrenciesNeedingRates = computed(() =>
+  [...new Set(
+    props.items
+      .filter((item) => Math.max(0, Number(item.taiwanPrice) || 0) > 0)
+      .map((item) => item.currency?.trim().toUpperCase())
+      .filter((currency): currency is string => Boolean(currency && currency !== 'TWD')),
+  )],
 )
 
 const activeShoppingItineraryItemIds = computed<string[]>({
@@ -520,6 +531,29 @@ async function convert(item: ShoppingItem) {
   }
 }
 
+async function ensureShoppingExchangeRates(currencies: string[]) {
+  if (!currencies.length) {
+    shoppingRateLoadError.value = ''
+    return
+  }
+  try {
+    const quotes = await Promise.all(
+      currencies.map(async (currency) => [currency, await getLatestExchangeRate(currency, 'TWD')] as const),
+    )
+    shoppingExchangeRates.value = quotes.reduce<Record<string, ExchangeRateQuote>>((result, [currency, quote]) => {
+      result[currency] = quote
+      return result
+    }, { ...shoppingExchangeRates.value })
+    shoppingRateLoadError.value = ''
+  } catch (error) {
+    shoppingRateLoadError.value = error instanceof Error ? error.message : '無法取得最新參考匯率。'
+  }
+}
+
+watch(shoppingCurrenciesNeedingRates, (currencies) => {
+  void ensureShoppingExchangeRates(currencies)
+}, { immediate: true })
+
 onUnmounted(() => {
   clearShoppingImagePreview()
 })
@@ -530,6 +564,8 @@ onUnmounted(() => {
     <TripShoppingCard
       :trip="trip"
       :items="items"
+      :exchange-rates="shoppingExchangeRates"
+      :exchange-rate-error="shoppingRateLoadError"
       :can-edit-trip="canEdit"
       :member-name="memberName"
       @add="openShoppingForm()"

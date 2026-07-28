@@ -11,11 +11,13 @@ interface Env {
 interface User { localId: string; email?: string; displayName?: string }
 interface Member { role?: 'owner' | 'editor' | 'viewer' }
 interface Invite { tripId: string; createdBy: string; role?: 'editor' | 'viewer'; enabled?: boolean; expiresAt?: number; maxUses?: number; usedCount?: number }
+interface ExchangeRateRow { date?: string; base?: string; quote?: string; rate?: number }
 
 const enc = new TextEncoder()
 const b64 = (value: Uint8Array | string) => btoa(typeof value === 'string' ? value : String.fromCharCode(...value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
 const pem = (value: string) => Uint8Array.from(atob(value.replace(/-----(BEGIN|END) [A-Z ]+-----/g, '').replace(/\s/g, '')), (char) => char.charCodeAt(0)).buffer
-const out = (body: unknown, status: number, origin?: string | null) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...(origin ? { 'Access-Control-Allow-Origin': origin, Vary: 'Origin' } : {}) } })
+const cors = (origin?: string | null): Record<string, string> => origin ? { 'Access-Control-Allow-Origin': origin, Vary: 'Origin' } : {}
+const out = (body: unknown, status: number, origin?: string | null, headers: Record<string, string> = {}) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...headers, ...cors(origin) } })
 
 async function user(request: Request, env: Env): Promise<User> {
   const idToken = request.headers.get('Authorization')?.match(/^Bearer (.+)$/)?.[1]
@@ -61,17 +63,53 @@ async function assertTripMember(env: Env, tripId: string, uid: string): Promise<
 }
 function uploadFolder(kind: 'cover' | 'album' | 'shopping' | 'expense' | 'insurance', uid: string, tripId?: string): string { return tripId ? `tripmate/trips/${tripId}/${kind === 'cover' ? 'covers' : kind}${kind === 'insurance' ? `/${uid}` : ''}` : `tripmate/users/${uid}/covers` }
 function isManagedAsset(publicId: string, folder: string): boolean { return publicId.startsWith(`${folder}/`) && !publicId.includes('..') && /^[A-Za-z0-9_/-]+$/.test(publicId) }
+function validCurrency(value: unknown): value is string { return typeof value === 'string' && /^[A-Z]{3}$/.test(value.trim().toUpperCase()) }
+
+async function latestExchangeRate(request: Request, origin: string | null): Promise<Response> {
+  const url = new URL(request.url)
+  const from = url.searchParams.get('from')?.trim().toUpperCase() || ''
+  const to = url.searchParams.get('to')?.trim().toUpperCase() || 'TWD'
+  if (!validCurrency(from) || !validCurrency(to)) return out({ error: '請提供有效的三碼幣別。' }, 400, origin)
+  const cacheControl = { 'Cache-Control': 'public, max-age=86400' }
+  if (from === to) {
+    return out({ from, to, rate: 1, date: new Date().toISOString().slice(0, 10), provider: 'TripMate local cache', cached: true }, 200, origin, cacheControl)
+  }
+  const cacheUrl = new URL(url.origin)
+  cacheUrl.pathname = '/__tripmate_cache/exchange-rate'
+  cacheUrl.searchParams.set('from', from)
+  cacheUrl.searchParams.set('to', to)
+  const cacheKey = new Request(cacheUrl.toString(), { method: 'GET' })
+  const cache = await caches.open('tripmate-exchange')
+  const cached = await cache.match(cacheKey)
+  if (cached) {
+    const payload = await cached.json()
+    return out({ ...(payload as Record<string, unknown>), cached: true }, 200, origin, cacheControl)
+  }
+  const remote = await fetch(`https://api.frankfurter.dev/v2/rates?base=${from}&quotes=${to}`, { headers: { Accept: 'application/json' } })
+  const payload = await remote.json() as ExchangeRateRow[]
+  const row = Array.isArray(payload) ? payload[0] : undefined
+  if (!remote.ok || !row?.date || !(typeof row.rate === 'number' && Number.isFinite(row.rate) && row.rate > 0)) {
+    throw new Error('目前無法取得最新參考匯率。')
+  }
+  const result = { from, to, rate: row.rate, date: row.date, provider: 'Frankfurter', cached: false }
+  await cache.put(cacheKey, new Response(JSON.stringify(result), { headers: { 'Content-Type': 'application/json', ...cacheControl } }))
+  return out(result, 200, origin, cacheControl)
+}
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const origin = request.headers.get('Origin')
     const allowed = Boolean(origin && env.ALLOWED_ORIGIN.split(',').map((value) => value.trim()).includes(origin))
-    if (request.method === 'OPTIONS') return new Response(null, { status: allowed ? 204 : 403, headers: allowed && origin ? { 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Headers': 'Authorization, Content-Type', 'Access-Control-Allow-Methods': 'POST, OPTIONS', Vary: 'Origin' } : {} })
+    if (request.method === 'OPTIONS') return new Response(null, { status: allowed ? 204 : 403, headers: allowed && origin ? { 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Headers': 'Authorization, Content-Type', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', Vary: 'Origin' } : {} })
     if (!allowed) return out({ error: 'Origin is not allowed.' }, 403)
+    const path = new URL(request.url).pathname
+    if (path === '/v1/exchange-rate') {
+      if (request.method !== 'GET') return out({ error: 'Method not allowed.' }, 405, origin)
+      return latestExchangeRate(request, origin)
+    }
     if (request.method !== 'POST') return out({ error: 'Method not allowed.' }, 405, origin)
     try {
       const me = await user(request, env)
-      const path = new URL(request.url).pathname
       if (path === '/v1/cloudinary/signature') {
         const body = await request.json() as { kind?: string; tripId?: string }
         const kind = body.kind === 'album' || body.kind === 'shopping' || body.kind === 'expense' || body.kind === 'insurance' ? body.kind : 'cover'
