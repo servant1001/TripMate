@@ -298,3 +298,79 @@ const shoppingCategories = [
     </template>
   </el-dialog>
 </template>
+
+<style scoped>
+.shopping-upload-control {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.shopping-upload-control img,
+.shopping-upload-placeholder {
+  width: 104px;
+  height: 104px;
+  flex: 0 0 104px;
+  border-radius: 12px;
+}
+
+.shopping-upload-control img {
+  display: block;
+  object-fit: cover;
+  aspect-ratio: 1 / 1;
+  border: 1px solid #dbe8e1;
+  background: #f6f7f2;
+}
+
+.shopping-upload-placeholder {
+  display: grid;
+  place-items: center;
+  background: #eef5f0;
+  color: #2f7d70;
+  font-size: 26px;
+}
+
+.shopping-upload-actions {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+}
+
+.shopping-upload-actions input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.shopping-upload-file-button {
+  display: inline-flex;
+  width: max-content;
+  min-height: 40px;
+  align-items: center;
+  padding: 0 13px;
+  border: 1px solid #bfd7cd;
+  border-radius: 10px;
+  color: #236c59;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.shopping-upload-actions small {
+  color: #6b7d78;
+  line-height: 1.5;
+}
+
+@media (max-width: 560px) {
+  .shopping-upload-control {
+    align-items: flex-start;
+  }
+
+  .shopping-upload-control img,
+  .shopping-upload-placeholder {
+    width: 80px;
+    height: 80px;
+    flex-basis: 80px;
+  }
+}
+</style>
