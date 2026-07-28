@@ -19,6 +19,7 @@ import type {
   ItineraryItem,
   ShoppingItem,
   TransportFareConfidence,
+  TransportFareSource,
 } from "../types";
 
 interface ItineraryDay {
@@ -244,22 +245,43 @@ function transportFareConfidenceLabel(confidence?: TransportFareConfidence) {
     } as Record<TransportFareConfidence, string>
   )[confidence || "medium"];
 }
-function hasTransportFareEstimate(entry: ItineraryItem) {
+function transportFareSource(entry: ItineraryItem): TransportFareSource | "" {
+  if (entry.transportFareSource) return entry.transportFareSource;
+  if (typeof entry.transportFareEstimateAmount === "number") return "ai";
+  return "";
+}
+function transportFareAmountValue(entry: ItineraryItem) {
+  return typeof entry.transportFareAmount === "number"
+    ? entry.transportFareAmount
+    : entry.transportFareEstimateAmount;
+}
+function transportFareCurrencyValue(entry: ItineraryItem) {
+  return entry.transportFareCurrency || entry.transportFareEstimateCurrency || "";
+}
+function hasTransportFare(entry: ItineraryItem) {
   return (
-    typeof entry.transportFareEstimateAmount === "number" &&
-    Number.isFinite(entry.transportFareEstimateAmount) &&
-    entry.transportFareEstimateAmount > 0 &&
-    Boolean(entry.transportFareEstimateCurrency)
+    typeof transportFareAmountValue(entry) === "number" &&
+    Number.isFinite(transportFareAmountValue(entry)) &&
+    (transportFareAmountValue(entry) || 0) > 0 &&
+    Boolean(transportFareCurrencyValue(entry))
   );
 }
 function transportFareEstimateAmount(entry: ItineraryItem) {
-  if (!hasTransportFareEstimate(entry)) return "";
-  return `${entry.transportFareEstimateCurrency} ${new Intl.NumberFormat(
+  if (!hasTransportFare(entry)) return "";
+  return `${transportFareCurrencyValue(entry)} ${new Intl.NumberFormat(
     "zh-TW",
     {
       maximumFractionDigits: 2,
     },
-  ).format(entry.transportFareEstimateAmount || 0)}`;
+  ).format(transportFareAmountValue(entry) || 0)}`;
+}
+function transportFareInlineLabel(entry: ItineraryItem) {
+  return transportFareSource(entry) === "ai" ? "AI" : "票價";
+}
+function transportFareInlineMeta(entry: ItineraryItem) {
+  return transportFareSource(entry) === "ai"
+    ? transportFareConfidenceLabel(entry.transportFareEstimateConfidence)
+    : "";
 }
 function registerSortableList(key: string, element: Element | null) {
   if (element instanceof HTMLElement) sortableLists.set(key, element);
@@ -701,7 +723,7 @@ function sharedLabel(entry: ItineraryItem) {
               <div v-show="!isCollapsed(entry)" class="itinerary-card-body">
                 <template v-if="isItineraryGroup(entry)">
                   <div class="itinerary-group-summary"><p><strong>{{ entry.location || '未設定區域' }}</strong><span>共 {{ groupMembers(day, entry).length }} 項</span><span v-if="groupTypeSummary(day, entry)">{{ groupTypeSummary(day, entry) }}</span></p><a v-if="entry.mapUrl || entry.location" :href="mapsUrl(entry.location || entry.title, entry.mapUrl)" target="_blank" rel="noopener"><el-icon><Location /></el-icon>在 Google Maps 開啟 <el-icon><TopRight /></el-icon></a></div>
-                  <div class="itinerary-group-members" :data-sort-scope="`group:${entry.id}`" :ref="(element) => registerSortableList(`group:${entry.id}`, element as Element | null)"><article v-for="(child, childIndex) in groupMembers(day, entry)" :key="child.id" class="itinerary-group-member" :data-itinerary-id="child.id" :class="[itineraryTypeClass(child.type), { 'is-completed': child.completed, 'is-sortable-enabled': sortingEnabled && canEditTrip }]"><el-checkbox v-if="!groupingMode" :model-value="child.completed" :disabled="!canEditTrip" :aria-label="`將「${child.title}」標示為${child.completed ? '未完成' : '完成'}`" @change="emit('toggle', child)" /><el-checkbox v-else :model-value="isEntrySelected(child)" :aria-label="`選取「${child.title}」進行多選操作`" @change="toggleGroupEntry(child, Boolean($event))" /><img v-if="child.imageUrl" :src="child.imageUrl" :alt="`${child.title} 圖片`" /><span v-else class="itinerary-group-member-placeholder">{{ child.type.slice(0, 1) }}</span><span class="itinerary-group-member-copy"><el-tooltip v-if="sortingEnabled && canEditTrip" content="長按並拖曳排序" placement="top"><span class="group-drag-handle" aria-hidden="true"><el-icon><Rank /></el-icon></span></el-tooltip><strong>{{ child.title }}</strong><small><time>{{ child.time || '未排時間' }}</time><template v-if="child.endTime">－{{ child.endTime }}</template><span class="itinerary-type-chip" :class="itineraryTypeClass(child.type)">{{ child.type }}</span><template v-if="duration(child)">· {{ duration(child) }}</template><template v-if="hasTransportFareEstimate(child)"><span aria-hidden="true">·</span><span class="itinerary-fare-inline"><span class="itinerary-fare-inline-label">AI</span>{{ transportFareEstimateAmount(child) }}</span></template></small></span><el-dropdown v-if="canEditTrip" trigger="click" @command="handleEntryAction($event, child)"><el-button class="itinerary-more-button" text circle aria-label="更多子行程操作"><el-icon><MoreFilled /></el-icon></el-button><template #dropdown><el-dropdown-menu><el-dropdown-item v-if="canEstimateTransitFare(child)" command="estimate-fare">AI 估算票價</el-dropdown-item><el-dropdown-item command="edit">編輯行程</el-dropdown-item><el-dropdown-item command="add-after">在此後新增行程</el-dropdown-item><el-dropdown-item command="remove" divided class="itinerary-delete-menu-item">刪除行程</el-dropdown-item></el-dropdown-menu></template></el-dropdown><div class="itinerary-group-member-detail"><p v-if="timeWarning(groupMembers(day, entry), childIndex)" class="itinerary-time-warning"><el-icon><WarningFilled /></el-icon>{{ timeWarning(groupMembers(day, entry), childIndex) }}</p><p v-if="child.note" class="itinerary-note">{{ child.note }}</p><el-button v-if="shoppingItemsFor(child).length" class="itinerary-shopping-button" text @click.stop="openShoppingPreview(child)"><el-icon><ShoppingCart /></el-icon>採購清單 {{ shoppingItemsFor(child).length }} 項</el-button><div v-if="child.type === '交通' && child.transportDestinationName" class="itinerary-transport-route" aria-label="交通路線"><a v-if="child.mapUrl || child.location" class="itinerary-transport-stop is-linked" :href="mapsUrl(child.location || child.title, child.mapUrl)" target="_blank" rel="noopener"><span class="itinerary-transport-stop-label">出發</span><strong>{{ child.location || child.title }}</strong><el-icon><TopRight /></el-icon></a><p v-else class="itinerary-transport-stop"><span class="itinerary-transport-stop-label">出發</span><strong>{{ child.title }}</strong></p><span class="itinerary-transport-arrow" aria-hidden="true">→</span><a v-if="child.transportDestinationMapUrl || child.transportDestinationLocation" class="itinerary-transport-stop is-linked" :href="mapsUrl(child.transportDestinationLocation || child.transportDestinationName, child.transportDestinationMapUrl)" target="_blank" rel="noopener"><span class="itinerary-transport-stop-label">抵達</span><strong>{{ child.transportDestinationLocation || child.transportDestinationName }}</strong><el-icon><TopRight /></el-icon></a><p v-else class="itinerary-transport-stop"><span class="itinerary-transport-stop-label">抵達</span><strong>{{ child.transportDestinationName }}</strong></p></div><a v-else-if="child.mapUrl || child.location" class="itinerary-location is-linked" :href="mapsUrl(child.location, child.mapUrl)" target="_blank" rel="noopener"><el-icon><Location /></el-icon><span>{{ child.location || '在 Google Maps 開啟' }}</span><el-icon class="itinerary-external-icon"><TopRight /></el-icon></a><p v-else class="itinerary-location is-empty"><el-icon><Location /></el-icon><span>尚未設定地點</span></p></div></article></div>
+                  <div class="itinerary-group-members" :data-sort-scope="`group:${entry.id}`" :ref="(element) => registerSortableList(`group:${entry.id}`, element as Element | null)"><article v-for="(child, childIndex) in groupMembers(day, entry)" :key="child.id" class="itinerary-group-member" :data-itinerary-id="child.id" :class="[itineraryTypeClass(child.type), { 'is-completed': child.completed, 'is-sortable-enabled': sortingEnabled && canEditTrip }]"><el-checkbox v-if="!groupingMode" :model-value="child.completed" :disabled="!canEditTrip" :aria-label="`將「${child.title}」標示為${child.completed ? '未完成' : '完成'}`" @change="emit('toggle', child)" /><el-checkbox v-else :model-value="isEntrySelected(child)" :aria-label="`選取「${child.title}」進行多選操作`" @change="toggleGroupEntry(child, Boolean($event))" /><img v-if="child.imageUrl" :src="child.imageUrl" :alt="`${child.title} 圖片`" /><span v-else class="itinerary-group-member-placeholder">{{ child.type.slice(0, 1) }}</span><span class="itinerary-group-member-copy"><el-tooltip v-if="sortingEnabled && canEditTrip" content="長按並拖曳排序" placement="top"><span class="group-drag-handle" aria-hidden="true"><el-icon><Rank /></el-icon></span></el-tooltip><strong>{{ child.title }}</strong><small><time>{{ child.time || '未排時間' }}</time><template v-if="child.endTime">－{{ child.endTime }}</template><span class="itinerary-type-chip" :class="itineraryTypeClass(child.type)">{{ child.type }}</span><template v-if="duration(child)">· {{ duration(child) }}</template><template v-if="hasTransportFare(child)"><span aria-hidden="true">·</span><span class="itinerary-fare-inline"><span class="itinerary-fare-inline-label">{{ transportFareInlineLabel(child) }}</span>{{ transportFareEstimateAmount(child) }}</span><span v-if="transportFareInlineMeta(child)" class="itinerary-fare-inline-meta">{{ transportFareInlineMeta(child) }}</span></template></small></span><el-dropdown v-if="canEditTrip" trigger="click" @command="handleEntryAction($event, child)"><el-button class="itinerary-more-button" text circle aria-label="更多子行程操作"><el-icon><MoreFilled /></el-icon></el-button><template #dropdown><el-dropdown-menu><el-dropdown-item v-if="canEstimateTransitFare(child)" command="estimate-fare">AI 估算票價</el-dropdown-item><el-dropdown-item command="edit">編輯行程</el-dropdown-item><el-dropdown-item command="add-after">在此後新增行程</el-dropdown-item><el-dropdown-item command="remove" divided class="itinerary-delete-menu-item">刪除行程</el-dropdown-item></el-dropdown-menu></template></el-dropdown><div class="itinerary-group-member-detail"><p v-if="timeWarning(groupMembers(day, entry), childIndex)" class="itinerary-time-warning"><el-icon><WarningFilled /></el-icon>{{ timeWarning(groupMembers(day, entry), childIndex) }}</p><p v-if="child.note" class="itinerary-note">{{ child.note }}</p><el-button v-if="shoppingItemsFor(child).length" class="itinerary-shopping-button" text @click.stop="openShoppingPreview(child)"><el-icon><ShoppingCart /></el-icon>採購清單 {{ shoppingItemsFor(child).length }} 項</el-button><div v-if="child.type === '交通' && child.transportDestinationName" class="itinerary-transport-route" aria-label="交通路線"><a v-if="child.mapUrl || child.location" class="itinerary-transport-stop is-linked" :href="mapsUrl(child.location || child.title, child.mapUrl)" target="_blank" rel="noopener"><span class="itinerary-transport-stop-label">出發</span><strong>{{ child.location || child.title }}</strong><el-icon><TopRight /></el-icon></a><p v-else class="itinerary-transport-stop"><span class="itinerary-transport-stop-label">出發</span><strong>{{ child.title }}</strong></p><span class="itinerary-transport-arrow" aria-hidden="true">→</span><a v-if="child.transportDestinationMapUrl || child.transportDestinationLocation" class="itinerary-transport-stop is-linked" :href="mapsUrl(child.transportDestinationLocation || child.transportDestinationName, child.transportDestinationMapUrl)" target="_blank" rel="noopener"><span class="itinerary-transport-stop-label">抵達</span><strong>{{ child.transportDestinationLocation || child.transportDestinationName }}</strong><el-icon><TopRight /></el-icon></a><p v-else class="itinerary-transport-stop"><span class="itinerary-transport-stop-label">抵達</span><strong>{{ child.transportDestinationName }}</strong></p></div><a v-else-if="child.mapUrl || child.location" class="itinerary-location is-linked" :href="mapsUrl(child.location, child.mapUrl)" target="_blank" rel="noopener"><el-icon><Location /></el-icon><span>{{ child.location || '在 Google Maps 開啟' }}</span><el-icon class="itinerary-external-icon"><TopRight /></el-icon></a><p v-else class="itinerary-location is-empty"><el-icon><Location /></el-icon><span>尚未設定地點</span></p></div></article></div>
                 </template>
                 <template v-if="!isFreeActivity(entry) && !isItineraryGroup(entry)"
                   ><p
@@ -718,19 +740,21 @@ function sharedLabel(entry: ItineraryItem) {
                       aria-hidden="true"
                       >·</span
                     ><span v-if="duration(entry)">{{ duration(entry) }}</span
-                    ><template v-if="hasTransportFareEstimate(entry)"
+                    ><template v-if="hasTransportFare(entry)"
                       ><span
                         v-if="entry.type || duration(entry)"
                         aria-hidden="true"
                         >·</span
                       ><span class="itinerary-fare-inline"
-                        ><span class="itinerary-fare-inline-label">AI</span
+                        ><span class="itinerary-fare-inline-label">{{
+                          transportFareInlineLabel(entry)
+                        }}</span
                         >{{ transportFareEstimateAmount(entry) }}</span
-                      ><span class="itinerary-fare-inline-meta">{{
-                        transportFareConfidenceLabel(
-                          entry.transportFareEstimateConfidence,
-                        )
-                      }}</span></template
+                      ><span
+                        v-if="transportFareInlineMeta(entry)"
+                        class="itinerary-fare-inline-meta"
+                        >{{ transportFareInlineMeta(entry) }}</span
+                      ></template
                     >
                   </p>
                   <p
@@ -939,22 +963,23 @@ function sharedLabel(entry: ItineraryItem) {
                             ><span v-if="duration(personal)">{{
                               duration(personal)
                             }}</span
-                            ><template v-if="hasTransportFareEstimate(personal)"
+                            ><template v-if="hasTransportFare(personal)"
                               ><span
                                 v-if="personal.type || duration(personal)"
                                 aria-hidden="true"
                                 >·</span
                               ><span class="itinerary-fare-inline"
-                                ><span class="itinerary-fare-inline-label"
-                                  >AI</span
+                                ><span class="itinerary-fare-inline-label">{{
+                                  transportFareInlineLabel(personal)
+                                }}</span
                                 >{{
                                   transportFareEstimateAmount(personal)
                                 }}</span
-                              ><span class="itinerary-fare-inline-meta">{{
-                                transportFareConfidenceLabel(
-                                  personal.transportFareEstimateConfidence,
-                                )
-                              }}</span></template
+                              ><span
+                                v-if="transportFareInlineMeta(personal)"
+                                class="itinerary-fare-inline-meta"
+                                >{{ transportFareInlineMeta(personal) }}</span
+                              ></template
                             >
                           </p>
                           <p

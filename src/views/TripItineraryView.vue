@@ -4,7 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import TripItineraryCard from '../components/TripItineraryCard.vue'
 import { estimateTransitFare, type TransitFareEstimateResult } from '../services/ai'
 import { useTripStore } from '../stores/trip'
-import type { Favorite, FavoriteType, ItineraryActivityKind, ItineraryItem, ShoppingItem, Trip } from '../types'
+import type { Favorite, FavoriteType, ItineraryActivityKind, ItineraryItem, ShoppingItem, TransportFareConfidence, TransportFareSource, Trip } from '../types'
 
 type Day = { date: string; entries: ItineraryItem[] }
 
@@ -60,7 +60,30 @@ const loadingFareEstimate = ref(false)
 const savingFareEstimate = ref(false)
 const fareEstimateTarget = ref<ItineraryItem | null>(null)
 const fareEstimateResult = ref<TransitFareEstimateResult | null>(null)
-const item = reactive({ date: '', time: '', endTime: '', title: '', location: '', mapUrl: '', imageUrl: '', note: '', type: '景點', transportDestinationFavoriteId: '', transportDestinationName: '', transportDestinationLocation: '', transportDestinationMapUrl: '' })
+const estimatingItemFare = ref(false)
+const item = reactive({
+  date: '',
+  time: '',
+  endTime: '',
+  title: '',
+  location: '',
+  mapUrl: '',
+  imageUrl: '',
+  note: '',
+  type: '景點',
+  transportDestinationFavoriteId: '',
+  transportDestinationName: '',
+  transportDestinationLocation: '',
+  transportDestinationMapUrl: '',
+  transportFareAmount: undefined as number | undefined,
+  transportFareCurrency: '',
+  transportFareSource: '' as TransportFareSource | '',
+  transportFareEstimateConfidence: undefined as TransportFareConfidence | undefined,
+  transportFareEstimateReasoning: '',
+  transportFareEstimateAssumptions: [] as string[],
+  transportFareEstimatedAt: undefined as number | undefined,
+  transportFareEstimateModel: '',
+})
 const favoritePickerOptions: Array<{ value: FavoriteType | 'all'; label: string }> = [{ value: 'all', label: '全部' }, { value: 'attraction', label: '景點' }, { value: 'restaurant', label: '餐廳' }, { value: 'transport', label: '交通' }, { value: 'stay', label: '住宿' }, { value: 'shop', label: '商店' }]
 const itineraryGroupsForItem = computed(() => props.items.filter((entry) => entry.activityKind === 'group' && entry.date === item.date))
 const filteredFavoritesForPicker = computed(() => { const keyword = favoritePickerSearch.value.trim().toLowerCase(); return props.favorites.filter((entry) => { const matchesType = favoritePickerType.value === 'all' || normalizeFavoriteType(entry.type) === favoritePickerType.value; const matchesSearch = !keyword || [entry.name, entry.location, entry.note].some((value) => value?.toLowerCase().includes(keyword)); return matchesType && matchesSearch }) })
@@ -83,7 +106,7 @@ function normalizeGoogleMapsUrl(value: string) {
 function normalizeFavoriteType(type: FavoriteType): FavoriteType { return type === 'cafe' ? 'restaurant' : type === 'alternative' || type === 'other' ? 'attraction' : type }
 function favoriteToItineraryType(type: FavoriteType) { return ({ attraction: '景點', restaurant: '餐廳', transport: '交通', stay: '住宿', shop: '商店', cafe: '餐廳', alternative: '景點', other: '景點' } as Record<FavoriteType, string>)[type] }
 function favoriteTypeLabel(type: FavoriteType) { return favoriteToItineraryType(type) }
-function resetItem(entry?: ItineraryItem, favoriteId?: string) { const linkedFavoriteId = favoriteId || entry?.favoriteId || ''; pendingFavoriteId.value = linkedFavoriteId || null; itemFavoriteId.value = linkedFavoriteId; itemItineraryGroupId.value = entry?.itineraryGroupId || ''; editingItemId.value = entry?.id || null; Object.assign(item, entry ? { date: entry.date, time: entry.time, endTime: entry.endTime || '', title: entry.title, location: entry.location, mapUrl: entry.mapUrl || '', imageUrl: entry.imageUrl || '', note: entry.note || '', type: entry.type, transportDestinationFavoriteId: entry.transportDestinationFavoriteId || '', transportDestinationName: entry.transportDestinationName || '', transportDestinationLocation: entry.transportDestinationLocation || '', transportDestinationMapUrl: entry.transportDestinationMapUrl || '' } : { date: '', time: '', endTime: '', title: '', location: '', mapUrl: '', imageUrl: '', note: '', type: '景點', transportDestinationFavoriteId: '', transportDestinationName: '', transportDestinationLocation: '', transportDestinationMapUrl: '' }) }
+function resetItem(entry?: ItineraryItem, favoriteId?: string) { const linkedFavoriteId = favoriteId || entry?.favoriteId || ''; pendingFavoriteId.value = linkedFavoriteId || null; itemFavoriteId.value = linkedFavoriteId; itemItineraryGroupId.value = entry?.itineraryGroupId || ''; editingItemId.value = entry?.id || null; Object.assign(item, entry ? { date: entry.date, time: entry.time, endTime: entry.endTime || '', title: entry.title, location: entry.location, mapUrl: entry.mapUrl || '', imageUrl: entry.imageUrl || '', note: entry.note || '', type: entry.type, transportDestinationFavoriteId: entry.transportDestinationFavoriteId || '', transportDestinationName: entry.transportDestinationName || '', transportDestinationLocation: entry.transportDestinationLocation || '', transportDestinationMapUrl: entry.transportDestinationMapUrl || '', transportFareAmount: entry.transportFareAmount ?? entry.transportFareEstimateAmount, transportFareCurrency: entry.transportFareCurrency || entry.transportFareEstimateCurrency || props.trip.currency, transportFareSource: entry.transportFareSource || (typeof entry.transportFareEstimateAmount === 'number' ? 'ai' : ''), transportFareEstimateConfidence: entry.transportFareEstimateConfidence, transportFareEstimateReasoning: entry.transportFareEstimateReasoning || '', transportFareEstimateAssumptions: entry.transportFareEstimateAssumptions || [], transportFareEstimatedAt: entry.transportFareEstimatedAt, transportFareEstimateModel: entry.transportFareEstimateModel || '' } : { date: '', time: '', endTime: '', title: '', location: '', mapUrl: '', imageUrl: '', note: '', type: '景點', transportDestinationFavoriteId: '', transportDestinationName: '', transportDestinationLocation: '', transportDestinationMapUrl: '', transportFareAmount: undefined, transportFareCurrency: props.trip.currency, transportFareSource: '', transportFareEstimateConfidence: undefined, transportFareEstimateReasoning: '', transportFareEstimateAssumptions: [], transportFareEstimatedAt: undefined, transportFareEstimateModel: '' }) }
 function openNewItemForm() { if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。'); itemActivityKind.value = 'shared'; personalActivityParentId.value = ''; insertAfterItemId.value = null; resetItem(); showItem.value = true }
 function openItemFormForEdit(entry: ItineraryItem) { if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。'); itemActivityKind.value = entry.activityKind || 'shared'; personalActivityParentId.value = entry.parentFreeActivityId || ''; insertAfterItemId.value = null; resetItem(entry); showItem.value = true }
 function openPersonalItemForm(group: ItineraryItem) { if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。'); itemActivityKind.value = 'personal'; personalActivityParentId.value = group.id; insertAfterItemId.value = null; resetItem(); item.date = group.date; item.type = '個人行程'; showItem.value = true }
@@ -94,6 +117,64 @@ function selectFavoriteForItem(favoriteId: string) { const selected = props.favo
 function didTransportFareInputsChange(existing?: ItineraryItem, normalizedMapUrl = '', normalizedDestinationMapUrl = '') {
   if (!existing) return false
   return existing.type !== item.type || existing.title !== item.title.trim() || (existing.location || '') !== item.location.trim() || (existing.mapUrl || '') !== normalizedMapUrl || (existing.transportDestinationName || '') !== item.transportDestinationName.trim() || (existing.transportDestinationLocation || '') !== item.transportDestinationLocation.trim() || (existing.transportDestinationMapUrl || '') !== normalizedDestinationMapUrl
+}
+function clearItemFareMeta() {
+  item.transportFareSource = ''
+  item.transportFareEstimateConfidence = undefined
+  item.transportFareEstimateReasoning = ''
+  item.transportFareEstimateAssumptions = []
+  item.transportFareEstimatedAt = undefined
+  item.transportFareEstimateModel = ''
+}
+function setManualTransportFare(value?: number | null) {
+  item.transportFareAmount = typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined
+  item.transportFareCurrency = props.trip.currency
+  if (item.transportFareAmount == null) {
+    clearItemFareMeta()
+    return
+  }
+  item.transportFareSource = 'manual'
+  item.transportFareEstimateConfidence = undefined
+  item.transportFareEstimateReasoning = ''
+  item.transportFareEstimateAssumptions = []
+  item.transportFareEstimatedAt = undefined
+  item.transportFareEstimateModel = ''
+}
+const canEstimateDraftTransportFare = computed(() => item.type === '交通' && !!(item.location.trim() || item.title.trim()) && !!(item.transportDestinationLocation.trim() || item.transportDestinationName.trim()))
+async function estimateTransportFareForForm() {
+  if (estimatingItemFare.value) return
+  if (!canEstimateDraftTransportFare.value) return ElMessage.warning('請先設定出發地與抵達地，再進行 AI 估算。')
+  estimatingItemFare.value = true
+  try {
+    const result = await estimateTransitFare({
+      tripId: props.trip.id,
+      country: props.trip.country,
+      city: props.trip.city,
+      currency: props.trip.currency,
+      date: item.date || props.trip.startDate,
+      title: item.title.trim(),
+      departureName: item.title.trim(),
+      departureLocation: item.location.trim() || item.title.trim(),
+      departureMapUrl: item.mapUrl.trim(),
+      destinationName: item.transportDestinationName.trim(),
+      destinationLocation: item.transportDestinationLocation.trim(),
+      destinationMapUrl: item.transportDestinationMapUrl.trim(),
+      note: item.note.trim(),
+    })
+    item.transportFareAmount = result.amount
+    item.transportFareCurrency = result.currency
+    item.transportFareSource = 'ai'
+    item.transportFareEstimateConfidence = result.confidence
+    item.transportFareEstimateReasoning = result.reasoning
+    item.transportFareEstimateAssumptions = result.assumptions
+    item.transportFareEstimatedAt = Date.parse(result.estimatedAt)
+    item.transportFareEstimateModel = result.model
+    ElMessage.success('已帶入 AI 估算交通費，可再自行調整。')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : 'AI 交通費估算失敗。')
+  } finally {
+    estimatingItemFare.value = false
+  }
 }
 async function saveItem() {
   if (savingItem.value) return
@@ -130,10 +211,20 @@ async function saveItem() {
       transportDestinationFavoriteId: !isFree && item.type === '交通' ? item.transportDestinationFavoriteId : '',
       transportDestinationName: !isFree && item.type === '交通' ? item.transportDestinationName.trim() : '',
       transportDestinationLocation: !isFree && item.type === '交通' ? item.transportDestinationLocation.trim() : '',
+      transportFareAmount: !isFree && item.type === '交通' && typeof item.transportFareAmount === 'number' && Number.isFinite(item.transportFareAmount) && item.transportFareAmount > 0 ? item.transportFareAmount : undefined,
+      transportFareCurrency: !isFree && item.type === '交通' && typeof item.transportFareAmount === 'number' && Number.isFinite(item.transportFareAmount) && item.transportFareAmount > 0 ? (item.transportFareCurrency || props.trip.currency) : undefined,
+      transportFareSource: !isFree && item.type === '交通' && typeof item.transportFareAmount === 'number' && Number.isFinite(item.transportFareAmount) && item.transportFareAmount > 0 ? (item.transportFareSource || 'manual') : undefined,
+      transportFareEstimateAmount: !isFree && item.type === '交通' && item.transportFareSource === 'ai' && typeof item.transportFareAmount === 'number' && Number.isFinite(item.transportFareAmount) && item.transportFareAmount > 0 ? item.transportFareAmount : undefined,
+      transportFareEstimateCurrency: !isFree && item.type === '交通' && item.transportFareSource === 'ai' && typeof item.transportFareAmount === 'number' && Number.isFinite(item.transportFareAmount) && item.transportFareAmount > 0 ? (item.transportFareCurrency || props.trip.currency) : undefined,
+      transportFareEstimateConfidence: !isFree && item.type === '交通' && item.transportFareSource === 'ai' ? item.transportFareEstimateConfidence : undefined,
+      transportFareEstimateReasoning: !isFree && item.type === '交通' && item.transportFareSource === 'ai' ? item.transportFareEstimateReasoning.trim() : undefined,
+      transportFareEstimateAssumptions: !isFree && item.type === '交通' && item.transportFareSource === 'ai' ? item.transportFareEstimateAssumptions : undefined,
+      transportFareEstimatedAt: !isFree && item.type === '交通' && item.transportFareSource === 'ai' ? item.transportFareEstimatedAt : undefined,
+      transportFareEstimateModel: !isFree && item.type === '交通' && item.transportFareSource === 'ai' ? item.transportFareEstimateModel : undefined,
     }
-    const shouldResetFareEstimate = Boolean(existing && (payload.type !== '交通' || didTransportFareInputsChange(existing, normalizedMapUrl, normalizedDestinationMapUrl)))
+    const shouldResetFareEstimate = Boolean(existing && existing.transportFareSource === 'ai' && (payload.type !== '交通' || didTransportFareInputsChange(existing, normalizedMapUrl, normalizedDestinationMapUrl)))
     if (existing) {
-      const baseExisting = shouldResetFareEstimate ? (({ transportFareEstimateAmount, transportFareEstimateCurrency, transportFareEstimateConfidence, transportFareEstimateReasoning, transportFareEstimateAssumptions, transportFareEstimatedAt, transportFareEstimateModel, ...rest }) => rest)(existing) : existing
+      const baseExisting = shouldResetFareEstimate ? (({ transportFareAmount, transportFareCurrency, transportFareSource, transportFareEstimateAmount, transportFareEstimateCurrency, transportFareEstimateConfidence, transportFareEstimateReasoning, transportFareEstimateAssumptions, transportFareEstimatedAt, transportFareEstimateModel, ...rest }) => rest)(existing) : existing
       await store.updateItem({ ...baseExisting, ...payload })
     }
     else {
@@ -208,6 +299,9 @@ async function confirmFareEstimate() {
   try {
     await store.updateItem({
       ...fareEstimateTarget.value,
+      transportFareAmount: fareEstimateResult.value.amount,
+      transportFareCurrency: fareEstimateResult.value.currency,
+      transportFareSource: 'ai',
       transportFareEstimateAmount: fareEstimateResult.value.amount,
       transportFareEstimateCurrency: fareEstimateResult.value.currency,
       transportFareEstimateConfidence: fareEstimateResult.value.confidence,
@@ -462,6 +556,7 @@ async function bulkRemoveEntries(entries: ItineraryItem[]) {
         <div class="itinerary-time-grid"><el-form-item label="開始時間"><el-time-picker v-model="item.time" value-format="HH:mm" format="HH:mm" placeholder="選擇開始時間" /></el-form-item><el-form-item label="結束時間"><el-time-picker v-model="item.endTime" value-format="HH:mm" format="HH:mm" placeholder="選擇結束時間（選填）" /></el-form-item></div>
         <el-form-item v-if="itemActivityKind !== 'free'" label="類型"><el-select v-model="item.type"><el-option label="景點" value="景點" /><el-option label="餐廳" value="餐廳" /><el-option label="交通" value="交通" /><el-option label="住宿" value="住宿" /><el-option label="商店" value="商店" /></el-select></el-form-item>
         <el-form-item v-if="itemActivityKind !== 'free' && item.type === '交通'" label="抵達站／目的地（選填）"><div class="itinerary-favorite-picker-control transport-destination-control"><div class="itinerary-favorite-picker-copy"><strong>{{ item.transportDestinationName || '尚未選擇抵達站' }}</strong><span>{{ item.transportDestinationLocation || (item.transportDestinationMapUrl ? '已設定 Google Maps 連結' : '從旅遊收藏選擇下車站或目的地') }}</span></div><div class="transport-destination-actions"><el-button v-if="item.transportDestinationName" text class="transport-destination-clear" aria-label="清除抵達站" @click="Object.assign(item, { transportDestinationFavoriteId: '', transportDestinationName: '', transportDestinationLocation: '', transportDestinationMapUrl: '' })">清除</el-button><el-button class="itinerary-favorite-picker-button" @click="openFavoritePicker('destination')">{{ item.transportDestinationName ? '更換抵達站' : '選擇抵達站' }}</el-button></div></div><small>可選交通站、景點、住宿等任何收藏項目；設定後行程卡片會顯示出發站 → 抵達站。</small></el-form-item>
+        <el-form-item v-if="itemActivityKind !== 'free' && item.type === '交通'" label="交通費（選填）"><div class="transport-fare-field"><el-input-number :model-value="item.transportFareAmount" :min="0" :step="1" controls-position="right" placeholder="輸入交通費" @update:model-value="setManualTransportFare($event as number | null | undefined)" /><el-button class="transport-fare-ai-button" :loading="estimatingItemFare" :disabled="estimatingItemFare || !canEstimateDraftTransportFare" @click="estimateTransportFareForForm">AI 估算</el-button></div><div v-if="item.transportFareAmount" class="transport-fare-meta"><span>{{ item.transportFareSource === 'ai' ? 'AI 已帶入' : '手動輸入' }} {{ item.transportFareCurrency || trip.currency }} {{ new Intl.NumberFormat('zh-TW', { maximumFractionDigits: 2 }).format(item.transportFareAmount) }}</span><small v-if="item.transportFareSource === 'ai' && item.transportFareEstimateConfidence">{{ item.transportFareEstimateConfidence === 'high' ? '高信心' : item.transportFareEstimateConfidence === 'low' ? '低信心' : '中等信心' }}</small></div><small>{{ item.transportFareSource === 'ai' ? '已依目前出發地與抵達地帶入 AI 估算；你仍可直接改數字。' : '可直接手動輸入，或先設定出發地與抵達地後使用 AI 估算。' }}</small></el-form-item>
         <el-form-item v-if="itemActivityKind !== 'free'" label="Google Maps 景點網址（選填）"><el-input v-model="item.mapUrl" placeholder="貼上 Google Maps 或 maps.app.goo.gl 分享網址" /><small>行程卡片會直接開啟此景點；既有的地點文字資料會保留。</small></el-form-item>
         <el-form-item v-if="itemActivityKind !== 'free'" label="行程圖片網址（選填）"><el-input v-model="item.imageUrl" placeholder="貼上圖片網址，例如 https://..." /><div v-if="item.imageUrl" class="itinerary-form-image-preview"><img :src="item.imageUrl" alt="行程圖片預覽" /><div><strong>行程圖片預覽</strong><span>從旅遊收藏帶入或使用此網址顯示</span></div></div><small>圖片會以縮圖顯示在每日行程卡片；從旅遊收藏帶入時會自動填入。</small></el-form-item>
         <el-form-item label="備註（選填）"><el-input v-model="item.note" type="textarea" :rows="3" maxlength="240" show-word-limit placeholder="例如：預約資訊、集合地點或注意事項" /></el-form-item>

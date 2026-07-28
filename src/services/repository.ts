@@ -784,7 +784,7 @@ export const repository = {
         item.activityKind === "personal" && item.ownerId
           ? `privateItineraryItems/${tripId}/${item.ownerId}/${itemId}`
           : `itineraryItems/${tripId}/${itemId}`;
-      await set(ref(db, path), data);
+      await set(ref(db, path), withoutUndefined(data));
       return item;
     }
     const d = read();
@@ -800,7 +800,7 @@ export const repository = {
         item.activityKind === "personal" && item.ownerId
           ? `privateItineraryItems/${tripId}/${item.ownerId}/${itemId}`
           : `itineraryItems/${tripId}/${itemId}`;
-      await set(ref(db, path), data);
+      await set(ref(db, path), withoutUndefined(data));
       return;
     }
     const d = read();
