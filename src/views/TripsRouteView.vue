@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import AppHeader from '../components/AppHeader.vue'
 import TripManagementDialogs from '../components/TripManagementDialogs.vue'
 import { useTripStore } from '../stores/trip'
+import { normalizeTripCurrency } from '../constants/tripCurrencies'
 import type { Trip } from '../types'
 import { uploadTripCover, joinTripByInviteCode } from '../services/cloudinary'
 import { firebaseEnabled } from '../services/firebase'
@@ -104,6 +105,7 @@ async function createTrip() {
     ElMessage.warning('請填寫旅行名稱與日期。')
     return
   }
+  create.currency = normalizeTripCurrency(create.currency) || 'JPY'
   if (firebaseEnabled && !user.value) {
     ElMessage.warning('請先登入後建立旅行。')
     return

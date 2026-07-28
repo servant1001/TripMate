@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, onUnmounted, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import { useTripStore } from '../stores/trip'
 import { firebaseEnabled } from '../services/firebase'
+import { getLatestExchangeRate } from '../services/exchangeRates'
+import { normalizeTripCurrency } from '../constants/tripCurrencies'
 import { useTripmateSession } from '../composables/useTripmateSession'
 import { useTripWorkspaceShell } from '../composables/useTripWorkspaceShell'
 import { useTripWorkspaceItinerary } from '../composables/useTripWorkspaceItinerary'
@@ -151,6 +153,10 @@ const dailyExpenseSummary = computed(() =>
     .map(([date, spent]) => ({ date, spent })),
 )
 const personalBudget = computed(() => activeMember.value?.personalBudget || 0)
+const tripExchangeRateText = ref('')
+const tripExchangeRateDate = ref('')
+const tripExchangeRateError = ref('')
+const tripExchangeRateLoading = ref(false)
 
 const activeTripTab = shell.activeTripTab
 const tripTabLabels = shell.tripTabLabels
@@ -183,6 +189,14 @@ const editCoverPreview = tripEditor.editCoverPreview
 const invite = tripEditor.invite
 const create = tripEditor.create
 const edit = tripEditor.edit
+
+function formatExchangeRate(rate: number) {
+  const safe = Number(rate) || 0
+  return safe.toLocaleString('zh-TW', {
+    minimumFractionDigits: safe >= 1 ? 2 : 4,
+    maximumFractionDigits: safe >= 10 ? 2 : safe >= 1 ? 3 : 4,
+  })
+}
 
 function goTrips() {
   void router.push({ name: 'trips' })
@@ -416,6 +430,35 @@ watch(
   { immediate: true },
 )
 
+watch(
+  () => current.value?.currency,
+  async (currency) => {
+    const normalized = normalizeTripCurrency(currency)
+    tripExchangeRateText.value = ''
+    tripExchangeRateDate.value = ''
+    tripExchangeRateError.value = ''
+
+    if (!normalized) return
+
+    tripExchangeRateLoading.value = true
+    try {
+      const quote = await getLatestExchangeRate(normalized, 'TWD')
+      if (normalizeTripCurrency(current.value?.currency) !== normalized) return
+      tripExchangeRateText.value = `今日匯率 1 ${quote.from} ≈ TWD ${formatExchangeRate(quote.rate)}`
+      tripExchangeRateDate.value = quote.date
+    } catch (error) {
+      if (normalizeTripCurrency(current.value?.currency) !== normalized) return
+      tripExchangeRateError.value =
+        error instanceof Error ? error.message : '暫時無法取得今日匯率。'
+    } finally {
+      if (normalizeTripCurrency(current.value?.currency) === normalized) {
+        tripExchangeRateLoading.value = false
+      }
+    }
+  },
+  { immediate: true },
+)
+
 onMounted(() => {
   void initSession()
 })
@@ -441,6 +484,10 @@ onUnmounted(() => {
     :trip="current"
     :date-range="tripDateRange"
     :duration="tripDuration"
+    :exchange-rate-text="tripExchangeRateText"
+    :exchange-rate-date="tripExchangeRateDate"
+    :exchange-rate-loading="tripExchangeRateLoading"
+    :exchange-rate-error="tripExchangeRateError"
     :active-trip-tab="activeTripTab"
     :trip-tab-labels="tripTabLabels"
     :trip-tab-options="tripTabOptions"

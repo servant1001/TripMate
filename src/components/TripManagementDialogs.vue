@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { tripCurrencyOptions } from '../constants/tripCurrencies'
 
 type TripFormModel = {
   name: string
@@ -93,12 +94,22 @@ const inviteCodeModel = computed({
       </div>
 
       <div class="two-col">
-        <el-form-item label="幣別">
-          <el-select v-model="createForm.currency">
-            <el-option label="JPY" value="JPY" />
-            <el-option label="TWD" value="TWD" />
-            <el-option label="USD" value="USD" />
+        <el-form-item label="當地幣別">
+          <el-select
+            v-model="createForm.currency"
+            filterable
+            allow-create
+            default-first-option
+            placeholder="例如：JPY、KRW、EUR"
+          >
+            <el-option
+              v-for="option in tripCurrencyOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
           </el-select>
+          <small class="field-help">請依旅遊國家設定當地幣別，之後會顯示當日對 TWD 匯率。</small>
         </el-form-item>
         <el-form-item label="總預算">
           <el-input-number v-model="createForm.budget" :min="0" />
@@ -142,12 +153,22 @@ const inviteCodeModel = computed({
       </div>
 
       <div class="two-col">
-        <el-form-item label="幣別">
-          <el-select v-model="editForm.currency">
-            <el-option label="JPY" value="JPY" />
-            <el-option label="TWD" value="TWD" />
-            <el-option label="USD" value="USD" />
+        <el-form-item label="當地幣別">
+          <el-select
+            v-model="editForm.currency"
+            filterable
+            allow-create
+            default-first-option
+            placeholder="例如：JPY、KRW、EUR"
+          >
+            <el-option
+              v-for="option in tripCurrencyOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
           </el-select>
+          <small class="field-help">修改後會同步更新旅行預算顯示與當日對 TWD 匯率。</small>
         </el-form-item>
         <el-form-item label="總預算">
           <el-input-number v-model="editForm.budget" :min="0" />
@@ -180,6 +201,7 @@ const inviteCodeModel = computed({
 
 <style scoped>
 .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.field-help{display:block;margin-top:6px;color:#6b7d78;font-size:12px;line-height:1.55}
 .edit-cover-control{display:flex;align-items:center;gap:14px}
 .edit-cover-control>img,.edit-cover-placeholder{width:112px;height:72px;flex:0 0 auto;border:1px solid #dbe6e0;border-radius:10px;object-fit:cover}
 .edit-cover-placeholder{display:grid;place-items:center;background:#eef5f0;color:#5d9385;font-size:25px}

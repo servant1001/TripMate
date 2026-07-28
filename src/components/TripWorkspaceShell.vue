@@ -12,6 +12,10 @@ defineProps<{
   trip: Trip
   dateRange: string
   duration: string
+  exchangeRateText?: string
+  exchangeRateDate?: string
+  exchangeRateLoading?: boolean
+  exchangeRateError?: string
   activeTripTab: TripTab
   tripTabLabels: Record<TripTab, string>
   tripTabOptions: TripTab[]
@@ -56,6 +60,10 @@ const emit = defineEmits<{
         :trip="trip"
         :date-range="dateRange"
         :duration="duration"
+        :exchange-rate-text="exchangeRateText"
+        :exchange-rate-date="exchangeRateDate"
+        :exchange-rate-loading="exchangeRateLoading"
+        :exchange-rate-error="exchangeRateError"
         :can-edit-settings="canEditTripSettings"
         :can-manage-members="canManageMembers"
         :open-member-manager="() => emit('openMemberManager')"

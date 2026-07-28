@@ -1,6 +1,7 @@
 import { reactive, ref, type ComputedRef } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { uploadTripCover } from '../services/cloudinary'
+import { normalizeTripCurrency } from '../constants/tripCurrencies'
 import type { Trip } from '../types'
 import { useTripStore } from '../stores/trip'
 
@@ -91,6 +92,7 @@ export function useTripWorkspaceTripEditor({
       ElMessage.warning('請填寫旅行名稱與日期。')
       return
     }
+    edit.currency = normalizeTripCurrency(edit.currency) || 'JPY'
     savingTrip.value = true
     try {
       if (editCoverFile.value) {
