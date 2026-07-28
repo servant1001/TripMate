@@ -45,6 +45,7 @@ const shopping = reactive<ShoppingItemDraft>({
   unit: '件',
   estimatedUnitPrice: 0,
   actualUnitPrice: 0,
+  taiwanPrice: 0,
   currency: 'JPY',
   requestedBy: '',
   assignedTo: '',
@@ -155,6 +156,7 @@ function resetShoppingForm() {
     unit: '件',
     estimatedUnitPrice: 0,
     actualUnitPrice: 0,
+    taiwanPrice: 0,
     currency: props.trip.currency || 'JPY',
     requestedBy: '',
     assignedTo: '',
@@ -197,6 +199,7 @@ function openShoppingForm(existing?: ShoppingItem) {
       unit: existing.unit || '件',
       estimatedUnitPrice: existing.estimatedUnitPrice || 0,
       actualUnitPrice: existing.actualUnitPrice || 0,
+      taiwanPrice: existing.taiwanPrice || 0,
       currency: existing.currency,
       requestedBy: existing.requestedBy || '',
       assignedTo: existing.assignedTo || '',
@@ -260,6 +263,7 @@ async function saveShoppingItem() {
     const quantity = Math.max(1, Number(shopping.quantity) || 1)
     const estimatedUnitPrice = Math.max(0, Number(shopping.estimatedUnitPrice) || 0)
     const actualUnitPrice = Math.max(0, Number(shopping.actualUnitPrice) || 0)
+    const taiwanPrice = Math.max(0, Number(shopping.taiwanPrice) || 0)
     const imageUrl = shoppingImageFile.value
       ? await uploadTripImage(shoppingImageFile.value, 'shopping', props.trip.id)
       : normalizeExternalUrl(shoppingImageUrl.value) || existing?.imageUrl || ''
@@ -280,6 +284,7 @@ async function saveShoppingItem() {
       estimatedTotalPrice: estimatedUnitPrice * quantity,
       actualUnitPrice,
       actualTotalPrice: actualUnitPrice * quantity,
+      taiwanPrice,
       currency: shopping.currency || props.trip.currency,
       requestedBy: shopping.requestedBy.trim(),
       assignedTo: shopping.assignedTo || '',
@@ -439,6 +444,7 @@ async function duplicate(item: ShoppingItem) {
       estimatedTotalPrice: item.estimatedTotalPrice || 0,
       actualUnitPrice: 0,
       actualTotalPrice: 0,
+      taiwanPrice: item.taiwanPrice || 0,
       currency: item.currency || props.trip.currency,
       requestedBy: item.requestedBy || '',
       assignedTo: item.assignedTo || '',

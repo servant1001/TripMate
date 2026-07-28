@@ -17,6 +17,7 @@ export type ShoppingItemDraft = {
   unit: string
   estimatedUnitPrice: number
   actualUnitPrice: number
+  taiwanPrice: number
   currency: string
   requestedBy: string
   assignedTo: string
@@ -174,12 +175,16 @@ const shoppingCategories = [
         </el-form-item>
       </div>
 
-      <div class="two-col">
+      <div class="three-col">
         <el-form-item label="預估單價">
           <el-input-number v-model="form.estimatedUnitPrice" :min="0" :step="100" controls-position="right" />
         </el-form-item>
         <el-form-item label="實際單價（選填）">
           <el-input-number v-model="form.actualUnitPrice" :min="0" :step="100" controls-position="right" />
+        </el-form-item>
+        <el-form-item label="台灣售價（TWD／選填）">
+          <el-input-number v-model="form.taiwanPrice" :min="0" :step="10" controls-position="right" />
+          <small>填寫你在台灣常見的售價，方便到當地購買時直接比價。</small>
         </el-form-item>
       </div>
 
@@ -300,6 +305,29 @@ const shoppingCategories = [
 </template>
 
 <style scoped>
+.two-col,
+.three-col {
+  display: grid;
+  gap: 12px;
+}
+
+.two-col {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.three-col {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.three-col :deep(.el-input-number),
+.three-col :deep(.el-select),
+.three-col :deep(.el-date-editor),
+.two-col :deep(.el-input-number),
+.two-col :deep(.el-select),
+.two-col :deep(.el-date-editor) {
+  width: 100%;
+}
+
 .shopping-upload-control {
   display: flex;
   gap: 14px;
@@ -362,6 +390,11 @@ const shoppingCategories = [
 }
 
 @media (max-width: 560px) {
+  .two-col,
+  .three-col {
+    grid-template-columns: 1fr;
+  }
+
   .shopping-upload-control {
     align-items: flex-start;
   }
