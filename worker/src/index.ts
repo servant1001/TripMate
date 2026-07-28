@@ -6,12 +6,37 @@ interface Env {
   CLOUDINARY_API_KEY: string
   CLOUDINARY_API_SECRET: string
   FIREBASE_SERVICE_ACCOUNT_JSON: string
+  GROQ_API_KEY: string
 }
 
 interface User { localId: string; email?: string; displayName?: string }
 interface Member { role?: 'owner' | 'editor' | 'viewer' }
 interface Invite { tripId: string; createdBy: string; role?: 'editor' | 'viewer'; enabled?: boolean; expiresAt?: number; maxUses?: number; usedCount?: number }
 interface ExchangeRateRow { date?: string; base?: string; quote?: string; rate?: number }
+interface TransitFareEstimateRequest {
+  tripId?: string
+  country?: string
+  city?: string
+  currency?: string
+  date?: string
+  title?: string
+  departureName?: string
+  departureLocation?: string
+  departureMapUrl?: string
+  destinationName?: string
+  destinationLocation?: string
+  destinationMapUrl?: string
+  note?: string
+}
+interface TransitFareEstimateResult {
+  amount: number
+  currency: string
+  confidence: 'high' | 'medium' | 'low'
+  reasoning: string
+  assumptions: string[]
+  model: string
+  estimatedAt: string
+}
 
 const enc = new TextEncoder()
 const b64 = (value: Uint8Array | string) => btoa(typeof value === 'string' ? value : String.fromCharCode(...value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
@@ -64,6 +89,73 @@ async function assertTripMember(env: Env, tripId: string, uid: string): Promise<
 function uploadFolder(kind: 'cover' | 'album' | 'shopping' | 'expense' | 'insurance', uid: string, tripId?: string): string { return tripId ? `tripmate/trips/${tripId}/${kind === 'cover' ? 'covers' : kind}${kind === 'insurance' ? `/${uid}` : ''}` : `tripmate/users/${uid}/covers` }
 function isManagedAsset(publicId: string, folder: string): boolean { return publicId.startsWith(`${folder}/`) && !publicId.includes('..') && /^[A-Za-z0-9_/-]+$/.test(publicId) }
 function validCurrency(value: unknown): value is string { return typeof value === 'string' && /^[A-Z]{3}$/.test(value.trim().toUpperCase()) }
+function clean(value: unknown): string { return typeof value === 'string' ? value.trim() : '' }
+function extractJsonObject(value: string): string {
+  const trimmed = value.trim()
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) return trimmed
+  const start = trimmed.indexOf('{')
+  const end = trimmed.lastIndexOf('}')
+  if (start < 0 || end <= start) throw new Error('AI 回應格式無法解析。')
+  return trimmed.slice(start, end + 1)
+}
+
+async function estimateTransitFareWithGroq(env: Env, input: Required<Pick<TransitFareEstimateRequest, 'country' | 'city' | 'currency' | 'title' | 'departureName' | 'destinationName'>> & TransitFareEstimateRequest): Promise<TransitFareEstimateResult> {
+  if (!clean(env.GROQ_API_KEY)) throw new Error('Groq API key 尚未設定。')
+  const prompt = [
+    '你是旅行票價估算助理，請根據使用者提供的交通資訊，估算單程成人大眾運輸票價。',
+    '請優先以當地常見的地鐵、電車、捷運、機場快線、公車等公開票價常識做合理估算。',
+    '不要捏造不存在的精確官方資料；若無法完全確認，請保守估算並在 assumptions 說明。',
+    '只回傳 JSON，不要加上 markdown code block。',
+    'JSON schema: {"amount": number, "currency": string, "confidence": "high"|"medium"|"low", "reasoning": string, "assumptions": string[] }',
+    `旅行國家：${input.country}`,
+    `旅行城市：${input.city}`,
+    `行程日期：${clean(input.date) || '未提供'}`,
+    `幣別：${input.currency}`,
+    `行程名稱：${input.title}`,
+    `出發地名稱：${input.departureName}`,
+    `出發地補充：${clean(input.departureLocation) || clean(input.departureMapUrl) || '未提供'}`,
+    `抵達地名稱：${input.destinationName}`,
+    `抵達地補充：${clean(input.destinationLocation) || clean(input.destinationMapUrl) || '未提供'}`,
+    `備註：${clean(input.note) || '未提供'}`,
+    'amount 請回傳數字，不要加貨幣符號；currency 請維持輸入幣別。',
+  ].join('\n')
+  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${env.GROQ_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'llama-3.3-70b-versatile',
+      temperature: 0.2,
+      max_tokens: 500,
+      messages: [
+        { role: 'system', content: '你是謹慎的旅遊交通票價估算助理。只輸出 JSON 物件。' },
+        { role: 'user', content: prompt },
+      ],
+    }),
+  })
+  const payload = await response.json() as {
+    error?: { message?: string }
+    choices?: Array<{ message?: { content?: string } }>
+  }
+  const content = payload.choices?.[0]?.message?.content
+  if (!response.ok || !content) throw new Error(payload.error?.message || 'Groq 票價估算暫時無法使用。')
+  const parsed = JSON.parse(extractJsonObject(content)) as Partial<TransitFareEstimateResult>
+  const amount = typeof parsed.amount === 'number' ? parsed.amount : Number(parsed.amount)
+  const confidence = parsed.confidence === 'high' || parsed.confidence === 'low' ? parsed.confidence : 'medium'
+  const currency = clean(parsed.currency || input.currency).toUpperCase()
+  if (!Number.isFinite(amount) || amount <= 0 || !validCurrency(currency)) throw new Error('AI 票價估算結果格式不正確。')
+  return {
+    amount: Math.round(amount * 100) / 100,
+    currency,
+    confidence,
+    reasoning: clean(parsed.reasoning) || '依據路線型態與城市常見大眾運輸費率估算。',
+    assumptions: Array.isArray(parsed.assumptions) ? parsed.assumptions.map((item) => clean(item)).filter(Boolean).slice(0, 5) : [],
+    model: 'llama-3.3-70b-versatile',
+    estimatedAt: new Date().toISOString(),
+  }
+}
 
 async function latestExchangeRate(request: Request, origin: string | null): Promise<Response> {
   const url = new URL(request.url)
@@ -153,6 +245,29 @@ export default {
         if (!trip || trip.ownerId !== invite.createdBy) return out({ error: 'Invite verification failed.' }, 403, origin)
         await db(env, '', 'PATCH', { [`tripMembers/${invite.tripId}/${me.localId}`]: { name: me.displayName || me.email?.split('@')[0] || 'Companion', email: me.email || '', role: invite.role || 'editor', joinedAt: Date.now() }, [`userTrips/${me.localId}/${invite.tripId}`]: true, [`tripInvites/${code}/usedCount`]: (invite.usedCount || 0) + 1 })
         return out({ tripId: invite.tripId }, 200, origin)
+      }
+      if (path === '/v1/ai/transit-fare-estimate') {
+        const body = await request.json() as TransitFareEstimateRequest
+        const tripId = clean(body.tripId)
+        const country = clean(body.country)
+        const city = clean(body.city)
+        const currency = clean(body.currency).toUpperCase()
+        const title = clean(body.title)
+        const departureName = clean(body.departureName || body.departureLocation || title)
+        const destinationName = clean(body.destinationName || body.destinationLocation)
+        if (!tripId || !country || !city || !validCurrency(currency) || !title) return out({ error: '請提供完整的旅行與交通資訊。' }, 400, origin)
+        if (!departureName || !destinationName) return out({ error: '估算交通票價前，請先設定出發地與抵達地。' }, 400, origin)
+        await assertTripMember(env, tripId, me.localId)
+        const result = await estimateTransitFareWithGroq(env, {
+          ...body,
+          country,
+          city,
+          currency,
+          title,
+          departureName,
+          destinationName,
+        })
+        return out(result, 200, origin)
       }
       return out({ error: 'Route not found.' }, 404, origin)
     } catch (error) { return out({ error: error instanceof Error ? error.message : 'Worker error.' }, 401, origin) }

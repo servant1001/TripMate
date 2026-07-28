@@ -2,6 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import TripItineraryCard from '../components/TripItineraryCard.vue'
+import { estimateTransitFare, type TransitFareEstimateResult } from '../services/ai'
 import { useTripStore } from '../stores/trip'
 import type { Favorite, FavoriteType, ItineraryActivityKind, ItineraryItem, ShoppingItem, Trip } from '../types'
 
@@ -54,6 +55,11 @@ const showFavoritePicker = ref(false)
 const favoritePickerTarget = ref<'source' | 'destination'>('source')
 const favoritePickerSearch = ref('')
 const favoritePickerType = ref<FavoriteType | 'all'>('all')
+const showFareEstimateDialog = ref(false)
+const loadingFareEstimate = ref(false)
+const savingFareEstimate = ref(false)
+const fareEstimateTarget = ref<ItineraryItem | null>(null)
+const fareEstimateResult = ref<TransitFareEstimateResult | null>(null)
 const item = reactive({ date: '', time: '', endTime: '', title: '', location: '', mapUrl: '', imageUrl: '', note: '', type: '景點', transportDestinationFavoriteId: '', transportDestinationName: '', transportDestinationLocation: '', transportDestinationMapUrl: '' })
 const favoritePickerOptions: Array<{ value: FavoriteType | 'all'; label: string }> = [{ value: 'all', label: '全部' }, { value: 'attraction', label: '景點' }, { value: 'restaurant', label: '餐廳' }, { value: 'transport', label: '交通' }, { value: 'stay', label: '住宿' }, { value: 'shop', label: '商店' }]
 const itineraryGroupsForItem = computed(() => props.items.filter((entry) => entry.activityKind === 'group' && entry.date === item.date))
@@ -85,8 +91,141 @@ function openItemFormAfter(entry: ItineraryItem) { if (!props.canEdit) return El
 function openFavoritePicker(target: 'source' | 'destination' = 'source') { favoritePickerTarget.value = target; favoritePickerSearch.value = ''; favoritePickerType.value = 'all'; showFavoritePicker.value = true }
 function applyFavoriteToItem(favoriteId: string) { const selected = props.favorites.find((entry) => entry.id === favoriteId); if (!selected) return; const type = favoriteToItineraryType(selected.type); itemFavoriteId.value = selected.id; pendingFavoriteId.value = selected.id; Object.assign(item, { title: selected.name, location: selected.location || '', mapUrl: selected.mapUrl || '', imageUrl: selected.imageUrl || '', type }); if (type !== '交通') Object.assign(item, { transportDestinationFavoriteId: '', transportDestinationName: '', transportDestinationLocation: '', transportDestinationMapUrl: '' }) }
 function selectFavoriteForItem(favoriteId: string) { const selected = props.favorites.find((entry) => entry.id === favoriteId); if (!selected) return; if (favoritePickerTarget.value === 'destination') Object.assign(item, { transportDestinationFavoriteId: selected.id, transportDestinationName: selected.name, transportDestinationLocation: selected.location || '', transportDestinationMapUrl: selected.mapUrl || '' }); else applyFavoriteToItem(favoriteId); showFavoritePicker.value = false }
-async function saveItem() { if (savingItem.value) return; if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。'); if (!item.title.trim() || !item.date) return ElMessage.warning('請填寫行程名稱與日期。'); if (item.endTime && item.time && item.endTime <= item.time) return ElMessage.warning('結束時間必須晚於開始時間。'); const kind = itemActivityKind.value; if (kind === 'personal' && !personalActivityParentId.value) return ElMessage.warning('請從自由活動群組新增個人行程。'); const sameLevelItems = kind === 'personal' ? props.personalItems.filter((entry) => entry.parentFreeActivityId === personalActivityParentId.value) : props.items.filter((entry) => (entry.activityKind || 'shared') !== 'personal'); const conflict = sameLevelItems.some((entry) => entry.id !== editingItemId.value && entry.date === item.date && item.time && entry.time && entry.time < (item.endTime || item.time) && (entry.endTime || entry.time) > item.time); if (conflict) return ElMessage.warning('此時段與既有行程重疊，請調整時間。'); savingItem.value = true; try { const isFree = kind === 'free'; const isPersonal = kind === 'personal'; const existing = editingItemId.value ? props.items.find((entry) => entry.id === editingItemId.value) : undefined; const rawImage = item.imageUrl.trim(); const payload = { ...item, title: item.title.trim(), type: isFree ? '自由活動' : item.type, location: isFree ? '' : item.location.trim(), mapUrl: isFree ? '' : normalizeGoogleMapsUrl(item.mapUrl), imageUrl: isFree ? '' : rawImage && !/^https?:\/\//i.test(rawImage) ? `https://${rawImage}` : rawImage, note: item.note.trim(), activityKind: kind, parentFreeActivityId: isPersonal ? personalActivityParentId.value : '', itineraryGroupId: !isFree && !isPersonal ? itemItineraryGroupId.value : '', ownerId: isPersonal ? (props.userId || props.trip.ownerId) : '', favoriteId: !isFree ? pendingFavoriteId.value || existing?.favoriteId || '' : '', transportDestinationMapUrl: !isFree && item.type === '交通' ? normalizeGoogleMapsUrl(item.transportDestinationMapUrl) : '', transportDestinationFavoriteId: !isFree && item.type === '交通' ? item.transportDestinationFavoriteId : '', transportDestinationName: !isFree && item.type === '交通' ? item.transportDestinationName.trim() : '', transportDestinationLocation: !isFree && item.type === '交通' ? item.transportDestinationLocation.trim() : '' }; if (existing) await store.updateItem({ ...existing, ...payload }); else { const ordered = sameLevelItems.filter((entry) => entry.date === item.date).sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || (a.time || '').localeCompare(b.time || '')); const afterIndex = !isPersonal && insertAfterItemId.value ? ordered.findIndex((entry) => entry.id === insertAfterItemId.value) : -1; const insertIndex = afterIndex >= 0 ? afterIndex + 1 : ordered.length; const added = await store.addItem({ tripId: props.trip.id, ...payload, order: insertIndex }); if (afterIndex >= 0) { const reordered = [...ordered]; reordered.splice(insertIndex, 0, added); await store.reorderItems(reordered) } const savedFavorite = !isFree && !isPersonal && pendingFavoriteId.value ? props.favorites.find((entry) => entry.id === pendingFavoriteId.value) : undefined; if (savedFavorite) await store.updateFavorite({ ...savedFavorite, addedToItinerary: true }) } showItem.value = false; editingItemId.value = null; insertAfterItemId.value = null; pendingFavoriteId.value = null; personalActivityParentId.value = ''; itemActivityKind.value = 'shared' } catch (error) { ElMessage.error(error instanceof Error ? error.message : '無法儲存行程。') } finally { savingItem.value = false } }
+function didTransportFareInputsChange(existing?: ItineraryItem, normalizedMapUrl = '', normalizedDestinationMapUrl = '') {
+  if (!existing) return false
+  return existing.type !== item.type || existing.title !== item.title.trim() || (existing.location || '') !== item.location.trim() || (existing.mapUrl || '') !== normalizedMapUrl || (existing.transportDestinationName || '') !== item.transportDestinationName.trim() || (existing.transportDestinationLocation || '') !== item.transportDestinationLocation.trim() || (existing.transportDestinationMapUrl || '') !== normalizedDestinationMapUrl
+}
+async function saveItem() {
+  if (savingItem.value) return
+  if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。')
+  if (!item.title.trim() || !item.date) return ElMessage.warning('請填寫行程名稱與日期。')
+  if (item.endTime && item.time && item.endTime <= item.time) return ElMessage.warning('結束時間必須晚於開始時間。')
+  const kind = itemActivityKind.value
+  if (kind === 'personal' && !personalActivityParentId.value) return ElMessage.warning('請從自由活動群組新增個人行程。')
+  const sameLevelItems = kind === 'personal' ? props.personalItems.filter((entry) => entry.parentFreeActivityId === personalActivityParentId.value) : props.items.filter((entry) => (entry.activityKind || 'shared') !== 'personal')
+  const conflict = sameLevelItems.some((entry) => entry.id !== editingItemId.value && entry.date === item.date && item.time && entry.time && entry.time < (item.endTime || item.time) && (entry.endTime || entry.time) > item.time)
+  if (conflict) return ElMessage.warning('此時段與既有行程重疊，請調整時間。')
+  savingItem.value = true
+  try {
+    const isFree = kind === 'free'
+    const isPersonal = kind === 'personal'
+    const existing = editingItemId.value ? props.items.find((entry) => entry.id === editingItemId.value) : undefined
+    const rawImage = item.imageUrl.trim()
+    const normalizedMapUrl = isFree ? '' : normalizeGoogleMapsUrl(item.mapUrl)
+    const normalizedDestinationMapUrl = !isFree && item.type === '交通' ? normalizeGoogleMapsUrl(item.transportDestinationMapUrl) : ''
+    let payload = {
+      ...item,
+      title: item.title.trim(),
+      type: isFree ? '自由活動' : item.type,
+      location: isFree ? '' : item.location.trim(),
+      mapUrl: normalizedMapUrl,
+      imageUrl: isFree ? '' : rawImage && !/^https?:\/\//i.test(rawImage) ? `https://${rawImage}` : rawImage,
+      note: item.note.trim(),
+      activityKind: kind,
+      parentFreeActivityId: isPersonal ? personalActivityParentId.value : '',
+      itineraryGroupId: !isFree && !isPersonal ? itemItineraryGroupId.value : '',
+      ownerId: isPersonal ? (props.userId || props.trip.ownerId) : '',
+      favoriteId: !isFree ? pendingFavoriteId.value || existing?.favoriteId || '' : '',
+      transportDestinationMapUrl: normalizedDestinationMapUrl,
+      transportDestinationFavoriteId: !isFree && item.type === '交通' ? item.transportDestinationFavoriteId : '',
+      transportDestinationName: !isFree && item.type === '交通' ? item.transportDestinationName.trim() : '',
+      transportDestinationLocation: !isFree && item.type === '交通' ? item.transportDestinationLocation.trim() : '',
+    }
+    const shouldResetFareEstimate = Boolean(existing && (payload.type !== '交通' || didTransportFareInputsChange(existing, normalizedMapUrl, normalizedDestinationMapUrl)))
+    if (existing) {
+      const baseExisting = shouldResetFareEstimate ? (({ transportFareEstimateAmount, transportFareEstimateCurrency, transportFareEstimateConfidence, transportFareEstimateReasoning, transportFareEstimateAssumptions, transportFareEstimatedAt, transportFareEstimateModel, ...rest }) => rest)(existing) : existing
+      await store.updateItem({ ...baseExisting, ...payload })
+    }
+    else {
+      const ordered = sameLevelItems.filter((entry) => entry.date === item.date).sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || (a.time || '').localeCompare(b.time || ''))
+      const afterIndex = !isPersonal && insertAfterItemId.value ? ordered.findIndex((entry) => entry.id === insertAfterItemId.value) : -1
+      const insertIndex = afterIndex >= 0 ? afterIndex + 1 : ordered.length
+      const added = await store.addItem({ tripId: props.trip.id, ...payload, order: insertIndex })
+      if (afterIndex >= 0) {
+        const reordered = [...ordered]
+        reordered.splice(insertIndex, 0, added)
+        await store.reorderItems(reordered)
+      }
+      const savedFavorite = !isFree && !isPersonal && pendingFavoriteId.value ? props.favorites.find((entry) => entry.id === pendingFavoriteId.value) : undefined
+      if (savedFavorite) await store.updateFavorite({ ...savedFavorite, addedToItinerary: true })
+    }
+    showItem.value = false
+    editingItemId.value = null
+    insertAfterItemId.value = null
+    pendingFavoriteId.value = null
+    personalActivityParentId.value = ''
+    itemActivityKind.value = 'shared'
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '無法儲存行程。')
+  } finally {
+    savingItem.value = false
+  }
+}
 watch(() => props.favoriteRequestId, (favoriteId) => { if (!favoriteId) return; openNewItemForm(); item.date = props.trip.startDate; applyFavoriteToItem(favoriteId); emit('favoriteRequestConsumed') })
+
+function fareEstimateRouteSummary(entry: ItineraryItem) {
+  return `${entry.location || entry.title} → ${entry.transportDestinationLocation || entry.transportDestinationName || '未設定抵達地'}`
+}
+
+async function openFareEstimate(entry: ItineraryItem) {
+  if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。')
+  if (entry.type !== '交通') return ElMessage.warning('目前僅支援交通類型的票價估算。')
+  if (!(entry.location || entry.title).trim() || !(entry.transportDestinationLocation || entry.transportDestinationName || '').trim()) {
+    return ElMessage.warning('請先設定出發地與抵達地，再進行票價估算。')
+  }
+  fareEstimateTarget.value = entry
+  fareEstimateResult.value = null
+  showFareEstimateDialog.value = true
+  loadingFareEstimate.value = true
+  try {
+    fareEstimateResult.value = await estimateTransitFare({
+      tripId: props.trip.id,
+      country: props.trip.country,
+      city: props.trip.city,
+      currency: props.trip.currency,
+      date: entry.date || props.trip.startDate,
+      title: entry.title,
+      departureName: entry.title,
+      departureLocation: entry.location || entry.title,
+      departureMapUrl: entry.mapUrl || '',
+      destinationName: entry.transportDestinationName || '',
+      destinationLocation: entry.transportDestinationLocation || '',
+      destinationMapUrl: entry.transportDestinationMapUrl || '',
+      note: entry.note || '',
+    })
+  } catch (error) {
+    showFareEstimateDialog.value = false
+    fareEstimateTarget.value = null
+    ElMessage.error(error instanceof Error ? error.message : 'AI 票價估算失敗。')
+  } finally {
+    loadingFareEstimate.value = false
+  }
+}
+
+async function confirmFareEstimate() {
+  if (!fareEstimateTarget.value || !fareEstimateResult.value || savingFareEstimate.value) return
+  savingFareEstimate.value = true
+  try {
+    await store.updateItem({
+      ...fareEstimateTarget.value,
+      transportFareEstimateAmount: fareEstimateResult.value.amount,
+      transportFareEstimateCurrency: fareEstimateResult.value.currency,
+      transportFareEstimateConfidence: fareEstimateResult.value.confidence,
+      transportFareEstimateReasoning: fareEstimateResult.value.reasoning,
+      transportFareEstimateAssumptions: fareEstimateResult.value.assumptions,
+      transportFareEstimatedAt: Date.parse(fareEstimateResult.value.estimatedAt),
+      transportFareEstimateModel: fareEstimateResult.value.model,
+    })
+    ElMessage.success('已將 AI 票價估算寫回行程。')
+    showFareEstimateDialog.value = false
+    fareEstimateTarget.value = null
+    fareEstimateResult.value = null
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '無法儲存 AI 票價估算。')
+  } finally {
+    savingFareEstimate.value = false
+  }
+}
 
 function openGroupForm(entries: ItineraryItem[] = [], existing?: ItineraryItem) {
   if (!props.canEdit) {
@@ -274,6 +413,7 @@ async function bulkRemoveEntries(entries: ItineraryItem[]) {
       @dissolve-group="dissolveGroup"
       @delete-group="deleteGroup"
       @bulk-remove="bulkRemoveEntries"
+      @estimate-fare="openFareEstimate"
       @toggle-sorting="emit('toggleSorting')"
       @sort="emit('sort', $event)"
       @sort-group="emit('sortGroup', $event)"
@@ -335,9 +475,43 @@ async function bulkRemoveEntries(entries: ItineraryItem[]) {
       <div v-else class="favorite-picker-empty"><strong>找不到符合的收藏</strong><p>試試其他關鍵字或類別。</p></div>
       <template #footer><el-button @click="showFavoritePicker = false">取消</el-button></template>
     </el-dialog>
+
+    <el-dialog v-model="showFareEstimateDialog" title="AI 交通票價估算" class="fare-estimate-dialog" width="min(92vw, 520px)" destroy-on-close>
+      <div class="fare-estimate-content">
+        <template v-if="fareEstimateTarget">
+          <div class="fare-estimate-summary">
+            <span class="fare-estimate-kicker">估算路線</span>
+            <strong>{{ fareEstimateTarget.title }}</strong>
+            <p>{{ fareEstimateRouteSummary(fareEstimateTarget) }}</p>
+          </div>
+          <div v-if="loadingFareEstimate" class="fare-estimate-loading">
+            <el-skeleton :rows="4" animated />
+          </div>
+          <template v-else-if="fareEstimateResult">
+            <div class="fare-estimate-result-card">
+              <span class="fare-estimate-label">參考票價</span>
+              <strong>{{ fareEstimateResult.currency }} {{ new Intl.NumberFormat('zh-TW', { maximumFractionDigits: 2 }).format(fareEstimateResult.amount) }}</strong>
+              <small>{{ fareEstimateResult.confidence === 'high' ? '高信心' : fareEstimateResult.confidence === 'low' ? '低信心' : '中等信心' }}・模型 {{ fareEstimateResult.model }}</small>
+            </div>
+            <div class="fare-estimate-block">
+              <span>估算說明</span>
+              <p>{{ fareEstimateResult.reasoning }}</p>
+            </div>
+            <div v-if="fareEstimateResult.assumptions.length" class="fare-estimate-block">
+              <span>估算假設</span>
+              <ul>
+                <li v-for="assumption in fareEstimateResult.assumptions" :key="assumption">{{ assumption }}</li>
+              </ul>
+            </div>
+            <p class="fare-estimate-disclaimer">這是 AI 依目前路線資訊做出的參考估算；按下確認後才會寫回這筆行程。</p>
+          </template>
+        </template>
+      </div>
+      <template #footer><el-button :disabled="savingFareEstimate" @click="showFareEstimateDialog = false">取消</el-button><el-button type="primary" :loading="savingFareEstimate || loadingFareEstimate" :disabled="!fareEstimateResult || loadingFareEstimate" @click="confirmFareEstimate">確認寫回行程</el-button></template>
+    </el-dialog>
   </section>
 </template>
 
 <style scoped>
-.trip-itinerary-view{display:grid;min-width:0}.two-col,.three-col,.itinerary-time-grid{display:grid;gap:12px}.two-col,.itinerary-time-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.three-col{grid-template-columns:repeat(3,minmax(0,1fr))}.three-col :deep(.el-date-editor),.three-col :deep(.el-time-picker),.itinerary-time-grid :deep(.el-time-picker),.itinerary-form :deep(.el-date-editor),.itinerary-form :deep(.el-select){width:100%}.itinerary-form small{display:block;margin-top:5px;color:#71827c;font-size:12px;line-height:1.5}.itinerary-favorite-picker-control{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid #dce8e2;border-radius:10px;background:#fbfdfc}.itinerary-favorite-picker-copy{display:grid;min-width:0;gap:2px}.itinerary-favorite-picker-copy strong,.itinerary-favorite-picker-copy span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.itinerary-favorite-picker-copy strong{color:#244a43;font-size:13px}.itinerary-favorite-picker-copy span{color:#71827c;font-size:12px}.itinerary-favorite-picker-button{flex:0 0 auto;min-height:36px;border-color:#bfd7cd;color:#236c59;font-weight:700}.transport-destination-actions{display:flex;flex:0 0 auto;align-items:center;gap:4px}.transport-destination-clear{color:#a96a50}.itinerary-form-image-preview{display:flex;align-items:center;gap:10px;margin-top:9px;padding:8px;border:1px solid #e1e8e3;border-radius:10px;background:#fbfcfa}.itinerary-form-image-preview img{width:52px;height:52px;border-radius:8px;object-fit:cover}.itinerary-form-image-preview div{display:grid;gap:2px}.itinerary-form-image-preview strong{color:#244a43;font-size:13px}.itinerary-form-image-preview span{color:#71827c;font-size:12px}.itinerary-group-member-selector{display:grid;gap:7px}.itinerary-group-member-selector :deep(.el-checkbox){height:auto;margin-right:0;white-space:normal}.itinerary-group-member-selector small{display:block;margin:2px 0 0;color:#71827c;font-size:12px}.favorite-picker-toolbar{display:grid;gap:12px}.favorite-picker-filters{display:flex;flex-wrap:wrap;gap:7px}.favorite-picker-filter{min-height:34px;margin:0;border-color:#d9e6e0;color:#477168}.favorite-picker-filter.is-active{border-color:#123f3a;background:#123f3a;color:#fff}.favorite-picker-filter small{margin-left:4px;font-size:11px}.favorite-picker-list{display:grid;gap:9px;max-height:52vh;margin-top:14px;overflow:auto}.favorite-picker-row{display:grid;grid-template-columns:48px minmax(0,1fr) auto;align-items:center;gap:10px;width:100%;padding:9px;border:1px solid #e1e8e3;border-radius:12px;background:#fff;text-align:left;cursor:pointer}.favorite-picker-row:hover,.favorite-picker-row.is-selected{border-color:#9fc8b8;background:#f5faf7}.favorite-picker-row img,.favorite-picker-placeholder{display:grid;width:48px;height:48px;place-items:center;border-radius:9px;background:#eef5f0;color:#347965;object-fit:cover;font-weight:800}.favorite-picker-row-copy{display:grid;min-width:0;gap:3px}.favorite-picker-row-copy strong,.favorite-picker-row-copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.favorite-picker-row-copy strong{color:#244a43;font-size:14px}.favorite-picker-row-copy small{color:#71827c;font-size:12px}.favorite-picker-type{width:max-content;padding:2px 6px;border-radius:999px;background:#eaf4ef;color:#3b7868;font-size:11px;font-weight:700}.favorite-picker-select{color:#2f7d70;font-size:13px;font-weight:800;white-space:nowrap}.favorite-picker-empty{padding:30px 10px;text-align:center;color:#71827c}.favorite-picker-empty strong{color:#244a43}.favorite-picker-empty p{margin:5px 0 0;font-size:13px}@media(max-width:600px){.two-col,.three-col,.itinerary-time-grid{grid-template-columns:1fr}.itinerary-group-dialog :deep(.el-dialog__body),.itinerary-dialog :deep(.el-dialog__body),.favorite-picker-dialog :deep(.el-dialog__body){padding:16px}.itinerary-group-dialog :deep(.el-dialog__footer),.itinerary-dialog :deep(.el-dialog__footer),.favorite-picker-dialog :deep(.el-dialog__footer){padding:12px 16px 18px}.itinerary-favorite-picker-control{align-items:stretch;flex-direction:column}.itinerary-favorite-picker-button{width:100%}.transport-destination-actions{display:grid;grid-template-columns:1fr 1fr}.favorite-picker-row{grid-template-columns:44px minmax(0,1fr)}.favorite-picker-row img,.favorite-picker-placeholder{width:44px;height:44px}.favorite-picker-select{grid-column:2;justify-self:start}}
+.trip-itinerary-view{display:grid;min-width:0}.two-col,.three-col,.itinerary-time-grid{display:grid;gap:12px}.two-col,.itinerary-time-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.three-col{grid-template-columns:repeat(3,minmax(0,1fr))}.three-col :deep(.el-date-editor),.three-col :deep(.el-time-picker),.itinerary-time-grid :deep(.el-time-picker),.itinerary-form :deep(.el-date-editor),.itinerary-form :deep(.el-select){width:100%}.itinerary-form small{display:block;margin-top:5px;color:#71827c;font-size:12px;line-height:1.5}.itinerary-favorite-picker-control{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid #dce8e2;border-radius:10px;background:#fbfdfc}.itinerary-favorite-picker-copy{display:grid;min-width:0;gap:2px}.itinerary-favorite-picker-copy strong,.itinerary-favorite-picker-copy span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.itinerary-favorite-picker-copy strong{color:#244a43;font-size:13px}.itinerary-favorite-picker-copy span{color:#71827c;font-size:12px}.itinerary-favorite-picker-button{flex:0 0 auto;min-height:36px;border-color:#bfd7cd;color:#236c59;font-weight:700}.transport-destination-actions{display:flex;flex:0 0 auto;align-items:center;gap:4px}.transport-destination-clear{color:#a96a50}.itinerary-form-image-preview{display:flex;align-items:center;gap:10px;margin-top:9px;padding:8px;border:1px solid #e1e8e3;border-radius:10px;background:#fbfcfa}.itinerary-form-image-preview img{width:52px;height:52px;border-radius:8px;object-fit:cover}.itinerary-form-image-preview div{display:grid;gap:2px}.itinerary-form-image-preview strong{color:#244a43;font-size:13px}.itinerary-form-image-preview span{color:#71827c;font-size:12px}.itinerary-group-member-selector{display:grid;gap:7px}.itinerary-group-member-selector :deep(.el-checkbox){height:auto;margin-right:0;white-space:normal}.itinerary-group-member-selector small{display:block;margin:2px 0 0;color:#71827c;font-size:12px}.favorite-picker-toolbar{display:grid;gap:12px}.favorite-picker-filters{display:flex;flex-wrap:wrap;gap:7px}.favorite-picker-filter{min-height:34px;margin:0;border-color:#d9e6e0;color:#477168}.favorite-picker-filter.is-active{border-color:#123f3a;background:#123f3a;color:#fff}.favorite-picker-filter small{margin-left:4px;font-size:11px}.favorite-picker-list{display:grid;gap:9px;max-height:52vh;margin-top:14px;overflow:auto}.favorite-picker-row{display:grid;grid-template-columns:48px minmax(0,1fr) auto;align-items:center;gap:10px;width:100%;padding:9px;border:1px solid #e1e8e3;border-radius:12px;background:#fff;text-align:left;cursor:pointer}.favorite-picker-row:hover,.favorite-picker-row.is-selected{border-color:#9fc8b8;background:#f5faf7}.favorite-picker-row img,.favorite-picker-placeholder{display:grid;width:48px;height:48px;place-items:center;border-radius:9px;background:#eef5f0;color:#347965;object-fit:cover;font-weight:800}.favorite-picker-row-copy{display:grid;min-width:0;gap:3px}.favorite-picker-row-copy strong,.favorite-picker-row-copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.favorite-picker-row-copy strong{color:#244a43;font-size:14px}.favorite-picker-row-copy small{color:#71827c;font-size:12px}.favorite-picker-type{width:max-content;padding:2px 6px;border-radius:999px;background:#eaf4ef;color:#3b7868;font-size:11px;font-weight:700}.favorite-picker-select{color:#2f7d70;font-size:13px;font-weight:800;white-space:nowrap}.favorite-picker-empty{padding:30px 10px;text-align:center;color:#71827c}.favorite-picker-empty strong{color:#244a43}.favorite-picker-empty p{margin:5px 0 0;font-size:13px}.fare-estimate-content{display:grid;gap:14px}.fare-estimate-summary{display:grid;gap:4px;padding:14px;border:1px solid #e1e8e3;border-radius:14px;background:#fbfcfa}.fare-estimate-summary strong{color:#163b37;font-size:16px}.fare-estimate-summary p{margin:0;color:#6b7d78;font-size:13px;line-height:1.6}.fare-estimate-kicker,.fare-estimate-label,.fare-estimate-block span{color:#2f7d70;font-size:12px;font-weight:800;letter-spacing:.08em}.fare-estimate-result-card{display:grid;gap:4px;padding:16px;border-radius:16px;background:#eef5f0}.fare-estimate-result-card strong{color:#123f3a;font-size:28px;line-height:1.1}.fare-estimate-result-card small{color:#5e746d;font-size:12px}.fare-estimate-block{display:grid;gap:6px}.fare-estimate-block p,.fare-estimate-block ul{margin:0;color:#405651;font-size:14px;line-height:1.65}.fare-estimate-block ul{padding-left:18px}.fare-estimate-disclaimer{margin:0;color:#6b7d78;font-size:12px;line-height:1.6}@media(max-width:600px){.two-col,.three-col,.itinerary-time-grid{grid-template-columns:1fr}.itinerary-group-dialog :deep(.el-dialog__body),.itinerary-dialog :deep(.el-dialog__body),.favorite-picker-dialog :deep(.el-dialog__body),.fare-estimate-dialog :deep(.el-dialog__body){padding:16px}.itinerary-group-dialog :deep(.el-dialog__footer),.itinerary-dialog :deep(.el-dialog__footer),.favorite-picker-dialog :deep(.el-dialog__footer),.fare-estimate-dialog :deep(.el-dialog__footer){padding:12px 16px 18px}.itinerary-favorite-picker-control{align-items:stretch;flex-direction:column}.itinerary-favorite-picker-button{width:100%}.transport-destination-actions{display:grid;grid-template-columns:1fr 1fr}.favorite-picker-row{grid-template-columns:44px minmax(0,1fr)}.favorite-picker-row img,.favorite-picker-placeholder{width:44px;height:44px}.favorite-picker-select{grid-column:2;justify-self:start}.fare-estimate-result-card strong{font-size:24px}}
 </style>
