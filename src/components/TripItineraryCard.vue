@@ -276,7 +276,7 @@ function transportFareEstimateAmount(entry: ItineraryItem) {
   ).format(transportFareAmountValue(entry) || 0)}`;
 }
 function transportFareInlineLabel(entry: ItineraryItem) {
-  return transportFareSource(entry) === "ai" ? "AI" : "票價";
+  return transportFareSource(entry) === "rule" ? "規則" : transportFareSource(entry) === "ai" ? "AI" : "票價";
 }
 function transportFareInlineMeta(entry: ItineraryItem) {
   return transportFareSource(entry) === "ai"

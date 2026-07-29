@@ -31,12 +31,18 @@ interface TransitFareEstimateRequest {
 interface TransitFareEstimateResult {
   amount: number
   currency: string
+  source: 'rule' | 'ai'
+  provider: string
+  fareMode?: 'ticket' | 'ic'
   confidence: 'high' | 'medium' | 'low'
   reasoning: string
   assumptions: string[]
   model: string
   estimatedAt: string
 }
+
+type FareMode = 'ticket' | 'ic'
+type FareBracket = { maxStops: number; ticket: number; ic: number }
 
 const enc = new TextEncoder()
 const b64 = (value: Uint8Array | string) => btoa(typeof value === 'string' ? value : String.fromCharCode(...value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
@@ -99,6 +105,224 @@ function extractJsonObject(value: string): string {
   return trimmed.slice(start, end + 1)
 }
 
+const TOKYO_METRO_FARE_BRACKETS: FareBracket[] = [
+  { maxStops: 4, ticket: 180, ic: 178 },
+  { maxStops: 8, ticket: 210, ic: 209 },
+  { maxStops: 14, ticket: 260, ic: 252 },
+  { maxStops: 20, ticket: 300, ic: 293 },
+  { maxStops: Number.POSITIVE_INFINITY, ticket: 330, ic: 324 },
+]
+
+const TOEI_SUBWAY_FARE_BRACKETS: FareBracket[] = [
+  { maxStops: 3, ticket: 180, ic: 178 },
+  { maxStops: 7, ticket: 220, ic: 220 },
+  { maxStops: 12, ticket: 280, ic: 272 },
+  { maxStops: 17, ticket: 330, ic: 325 },
+  { maxStops: 22, ticket: 380, ic: 377 },
+  { maxStops: Number.POSITIVE_INFINITY, ticket: 430, ic: 430 },
+]
+
+const KEISEI_ACCESS_FIXED_FARES: Record<string, { ticket: number; ic: number }> = {
+  '新鎌ヶ谷': { ticket: 910, ic: 906 },
+  '新鎌谷': { ticket: 910, ic: 906 },
+  '東松戸': { ticket: 940, ic: 936 },
+  '青砥': { ticket: 1120, ic: 1110 },
+  '日暮里': { ticket: 1240, ic: 1235 },
+  '上野': { ticket: 1240, ic: 1235 },
+  '京成上野': { ticket: 1240, ic: 1235 },
+  '押上': { ticket: 1170, ic: 1162 },
+  '浅草': { ticket: 1290, ic: 1276 },
+  '浅草橋': { ticket: 1290, ic: 1276 },
+  '東日本橋': { ticket: 1290, ic: 1276 },
+  '人形町': { ticket: 1330, ic: 1318 },
+  '日本橋': { ticket: 1330, ic: 1318 },
+  '東銀座': { ticket: 1330, ic: 1318 },
+  '新橋': { ticket: 1330, ic: 1318 },
+  '品川': { ticket: 1520, ic: 1502 },
+}
+
+const TOKYO_METRO_LINES: Record<string, string[]> = {
+  '半蔵門線': ['渋谷', '表参道', '青山一丁目', '永田町', '半蔵門', '九段下', '神保町', '大手町', '三越前', '水天宮前', '清澄白河', '住吉', '錦糸町', '押上'],
+  '銀座線': ['浅草', '田原町', '稲荷町', '上野', '上野広小路', '末広町', '神田', '三越前', '日本橋', '京橋', '銀座', '新橋', '虎ノ門', '溜池山王', '赤坂見附', '青山一丁目', '外苑前', '表参道', '渋谷'],
+  '日比谷線': ['北千住', '南千住', '三ノ輪', '入谷', '上野', '仲御徒町', '秋葉原', '小伝馬町', '人形町', '茅場町', '八丁堀', '築地', '東銀座', '銀座', '日比谷', '霞ケ関', '虎ノ門ヒルズ', '神谷町', '六本木', '広尾', '恵比寿', '中目黒'],
+}
+
+const TOEI_LINES: Record<string, string[]> = {
+  '浅草線': ['西馬込', '馬込', '中延', '戸越', '五反田', '高輪台', '泉岳寺', '三田', '大門', '新橋', '東銀座', '宝町', '日本橋', '人形町', '東日本橋', '浅草橋', '蔵前', '浅草', '本所吾妻橋', '押上'],
+}
+
+const STATION_ALIAS: Record<string, string> = {
+  '淺草': '浅草',
+  '淺草橋': '浅草橋',
+  '淺草線': '浅草線',
+  '半藏門': '半蔵門',
+  '半藏門線': '半蔵門線',
+  '澀谷': '渋谷',
+  '錦系町': '錦糸町',
+  '清澄白河站': '清澄白河',
+  '錦糸町站': '錦糸町',
+  '押上站': '押上',
+  '京成上野站': '京成上野',
+  '上野站': '上野',
+  '成田機場第一航廈': '成田空港第1ターミナル',
+  '成田機場第1航廈': '成田空港第1ターミナル',
+  '成田機場第一候機樓': '成田空港第1ターミナル',
+  '成田機場第1候機樓': '成田空港第1ターミナル',
+  '成田機場第二航廈': '成田空港第2・第3ターミナル',
+  '成田機場第2航廈': '成田空港第2・第3ターミナル',
+  '成田機場第二候機樓': '成田空港第2・第3ターミナル',
+  '成田機場第2候機樓': '成田空港第2・第3ターミナル',
+  '成田機場第二第三航廈': '成田空港第2・第3ターミナル',
+  '成田機場第2第3航廈': '成田空港第2・第3ターミナル',
+  '成田機場第2・第3航廈': '成田空港第2・第3ターミナル',
+  '成田機場第2第3候機樓': '成田空港第2・第3ターミナル',
+  '成田機場第2・第3候機樓': '成田空港第2・第3ターミナル',
+}
+
+const AIRPORT_ALIASES = new Set(['成田空港第1ターミナル', '成田空港第2・第3ターミナル'])
+
+function normalizeStationText(value: string): string {
+  let normalized = clean(value)
+    .replace(/[（）()]/g, ' ')
+    .replace(/東京Metro|TokyoMetro|Toei Subway|都營地鐵|都営地下鉄|東京メトロ|京成Access特快|ACCESS特快|JR東日本|JR/gi, ' ')
+    .replace(/[－–—]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (normalized.includes('-')) normalized = normalized.split('-')[0]?.trim() || normalized
+  normalized = normalized.replace(/駅$/u, '').trim()
+  normalized = normalized.replace(/[第候機樓楼]/g, (char) => (char === '樓' ? '楼' : char))
+  const compact = normalized.replace(/\s+/g, '')
+  return STATION_ALIAS[compact] || STATION_ALIAS[normalized] || normalized
+}
+
+function normalizeLineText(value: string): string {
+  const normalized = clean(value).replace(/\s+/g, '')
+  if (/半[藏蔵]門線/.test(normalized)) return '半蔵門線'
+  if (/(銀座線)/.test(normalized)) return '銀座線'
+  if (/(日比谷線)/.test(normalized)) return '日比谷線'
+  if (/(浅草線|淺草線)/.test(normalized)) return '浅草線'
+  return ''
+}
+
+function detectLineName(input: TransitFareEstimateRequest): string {
+  const joined = [
+    input.title,
+    input.departureName,
+    input.departureLocation,
+    input.destinationName,
+    input.destinationLocation,
+  ].map((value) => clean(value)).join(' ')
+  return normalizeLineText(joined)
+}
+
+function detectFareMode(input: TransitFareEstimateRequest): FareMode {
+  const joined = [
+    input.title,
+    input.note,
+    input.departureName,
+    input.destinationName,
+  ].map((value) => clean(value).toLowerCase()).join(' ')
+  return /pasmo|suica|ic|交通卡|ic卡/.test(joined) ? 'ic' : 'ticket'
+}
+
+function fareFromBrackets(brackets: FareBracket[], stops: number, mode: FareMode) {
+  const match = brackets.find((item) => stops <= item.maxStops) || brackets[brackets.length - 1]
+  return mode === 'ic' ? match.ic : match.ticket
+}
+
+function estimateFromLineStops(line: string[], from: string, to: string) {
+  const fromIndex = line.findIndex((item) => item === from)
+  const toIndex = line.findIndex((item) => item === to)
+  if (fromIndex < 0 || toIndex < 0) return null
+  return Math.abs(fromIndex - toIndex)
+}
+
+function buildRuleResult(amount: number, currency: string, provider: string, fareMode: FareMode, confidence: 'high' | 'medium' | 'low', reasoning: string, assumptions: string[], model: string): TransitFareEstimateResult {
+  return {
+    amount,
+    currency,
+    source: 'rule',
+    provider,
+    fareMode,
+    confidence,
+    reasoning,
+    assumptions,
+    model,
+    estimatedAt: new Date().toISOString(),
+  }
+}
+
+function estimateTransitFareByOfficialRules(input: Required<Pick<TransitFareEstimateRequest, 'country' | 'city' | 'currency' | 'title' | 'departureName' | 'destinationName'>> & TransitFareEstimateRequest): TransitFareEstimateResult | null {
+  const fareMode = detectFareMode(input)
+  const departure = normalizeStationText(input.departureName)
+  const destination = normalizeStationText(input.destinationName)
+  const lineName = detectLineName(input)
+  const ticketLabel = fareMode === 'ic' ? 'IC 卡票價' : '車票票價'
+
+  const nonAirport = AIRPORT_ALIASES.has(departure) ? destination : AIRPORT_ALIASES.has(destination) ? departure : ''
+  if ((AIRPORT_ALIASES.has(departure) || AIRPORT_ALIASES.has(destination)) && nonAirport && KEISEI_ACCESS_FIXED_FARES[nonAirport]) {
+    const fare = KEISEI_ACCESS_FIXED_FARES[nonAirport]
+    const amount = fareMode === 'ic' ? fare.ic : fare.ticket
+    return buildRuleResult(
+      amount,
+      input.currency,
+      '京成 ACCESS 特快官方票價表',
+      fareMode,
+      'high',
+      `根據京成 ACCESS 特快官方主要車站票價表，${nonAirport} 往返成田機場適用 ${ticketLabel} ${amount} ${input.currency}。`,
+      [
+        '目前優先使用你提供路線可對應的京成官方固定票價。',
+        '若行程文字未標示 IC 卡，系統預設以車票票價估算。',
+      ],
+      'official-rule:keisei-access',
+    )
+  }
+
+  if (lineName && TOKYO_METRO_LINES[lineName]) {
+    const stops = estimateFromLineStops(TOKYO_METRO_LINES[lineName], departure, destination)
+    if (stops != null) {
+      const amount = fareFromBrackets(TOKYO_METRO_FARE_BRACKETS, stops, fareMode)
+      return buildRuleResult(
+        amount,
+        input.currency,
+        'Tokyo Metro 官方票價級距',
+        fareMode,
+        stops <= 1 ? 'high' : 'medium',
+        `根據 Tokyo Metro 官方票價級距，並以 ${lineName} 同線 ${stops} 站的站數近似乘車距離，推定適用 ${ticketLabel} ${amount} ${input.currency}。`,
+        [
+          'Tokyo Metro 官方以乘車距離區間計價。',
+          '目前第一版以同線站數近似距離；未直接串接官方轉乘查詢服務。',
+          fareMode === 'ticket' ? '目前預設採用車票票價；若實際使用 PASMO / Suica，票價通常會略低。': '已依 IC 卡票價估算。',
+        ],
+        'official-rule:tokyo-metro',
+      )
+    }
+  }
+
+  if (lineName && TOEI_LINES[lineName]) {
+    const stops = estimateFromLineStops(TOEI_LINES[lineName], departure, destination)
+    if (stops != null) {
+      const amount = fareFromBrackets(TOEI_SUBWAY_FARE_BRACKETS, stops, fareMode)
+      return buildRuleResult(
+        amount,
+        input.currency,
+        '都營地鐵官方票價級距',
+        fareMode,
+        stops <= 1 ? 'high' : 'medium',
+        `根據都營地鐵官方票價級距，並以 ${lineName} 同線 ${stops} 站的站數近似乘車距離，推定適用 ${ticketLabel} ${amount} ${input.currency}。`,
+        [
+          '都營地鐵官方以最短路徑距離計價。',
+          '目前第一版以同線站數近似距離；特殊轉乘例外尚未細拆。',
+          fareMode === 'ticket' ? '目前預設採用車票票價；若實際使用 IC 卡，票價可能略低。': '已依 IC 卡票價估算。',
+        ],
+        'official-rule:toei-subway',
+      )
+    }
+  }
+
+  return null
+}
+
 async function estimateTransitFareWithGroq(env: Env, input: Required<Pick<TransitFareEstimateRequest, 'country' | 'city' | 'currency' | 'title' | 'departureName' | 'destinationName'>> & TransitFareEstimateRequest): Promise<TransitFareEstimateResult> {
   if (!clean(env.GROQ_API_KEY)) throw new Error('Groq API key 尚未設定。')
   const prompt = [
@@ -149,6 +373,8 @@ async function estimateTransitFareWithGroq(env: Env, input: Required<Pick<Transi
   return {
     amount: Math.round(amount * 100) / 100,
     currency,
+    source: 'ai',
+    provider: 'Groq AI 票價估算',
     confidence,
     reasoning: clean(parsed.reasoning) || '依據路線型態與城市常見大眾運輸費率估算。',
     assumptions: Array.isArray(parsed.assumptions) ? parsed.assumptions.map((item) => clean(item)).filter(Boolean).slice(0, 5) : [],
@@ -258,7 +484,7 @@ export default {
         if (!tripId || !country || !city || !validCurrency(currency) || !title) return out({ error: '請提供完整的旅行與交通資訊。' }, 400, origin)
         if (!departureName || !destinationName) return out({ error: '估算交通票價前，請先設定出發地與抵達地。' }, 400, origin)
         await assertTripMember(env, tripId, me.localId)
-        const result = await estimateTransitFareWithGroq(env, {
+        const normalizedInput = {
           ...body,
           country,
           city,
@@ -266,7 +492,8 @@ export default {
           title,
           departureName,
           destinationName,
-        })
+        }
+        const result = estimateTransitFareByOfficialRules(normalizedInput) || await estimateTransitFareWithGroq(env, normalizedInput)
         return out(result, 200, origin)
       }
       return out({ error: 'Route not found.' }, 404, origin)

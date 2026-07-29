@@ -1,5 +1,5 @@
 import { auth } from './firebase'
-import type { TransportFareConfidence } from '../types'
+import type { TransportFareConfidence, TransportFareSource } from '../types'
 
 const workerUrl = import.meta.env.VITE_WORKER_API_URL as string | undefined
 
@@ -22,6 +22,9 @@ export interface TransitFareEstimateInput {
 export interface TransitFareEstimateResult {
   amount: number
   currency: string
+  source: Exclude<TransportFareSource, 'manual'>
+  provider: string
+  fareMode?: 'ticket' | 'ic'
   confidence: TransportFareConfidence
   reasoning: string
   assumptions: string[]

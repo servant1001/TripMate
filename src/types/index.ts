@@ -4,7 +4,7 @@ export type ExpenseSplitMode = 'equal' | 'custom' | 'ratio' | 'shares'
 export type TodoScope = 'shared' | 'personal'
 export type ItineraryActivityKind = 'shared' | 'free' | 'personal' | 'group'
 export type TransportFareConfidence = 'high' | 'medium' | 'low'
-export type TransportFareSource = 'manual' | 'ai'
+export type TransportFareSource = 'manual' | 'rule' | 'ai'
 
 export interface Member { id: string; name: string; email: string; role: Role; personalBudget?: number }
 export interface Trip { id: string; name: string; country: string; city: string; startDate: string; endDate: string; currency: string; budget: number; coverUrl?: string; inviteCode: string; ownerId: string; members: Member[] }

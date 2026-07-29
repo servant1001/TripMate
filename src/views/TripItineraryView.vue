@@ -106,7 +106,14 @@ function normalizeGoogleMapsUrl(value: string) {
 function normalizeFavoriteType(type: FavoriteType): FavoriteType { return type === 'cafe' ? 'restaurant' : type === 'alternative' || type === 'other' ? 'attraction' : type }
 function favoriteToItineraryType(type: FavoriteType) { return ({ attraction: '景點', restaurant: '餐廳', transport: '交通', stay: '住宿', shop: '商店', cafe: '餐廳', alternative: '景點', other: '景點' } as Record<FavoriteType, string>)[type] }
 function favoriteTypeLabel(type: FavoriteType) { return favoriteToItineraryType(type) }
-function resetItem(entry?: ItineraryItem, favoriteId?: string) { const linkedFavoriteId = favoriteId || entry?.favoriteId || ''; pendingFavoriteId.value = linkedFavoriteId || null; itemFavoriteId.value = linkedFavoriteId; itemItineraryGroupId.value = entry?.itineraryGroupId || ''; editingItemId.value = entry?.id || null; Object.assign(item, entry ? { date: entry.date, time: entry.time, endTime: entry.endTime || '', title: entry.title, location: entry.location, mapUrl: entry.mapUrl || '', imageUrl: entry.imageUrl || '', note: entry.note || '', type: entry.type, transportDestinationFavoriteId: entry.transportDestinationFavoriteId || '', transportDestinationName: entry.transportDestinationName || '', transportDestinationLocation: entry.transportDestinationLocation || '', transportDestinationMapUrl: entry.transportDestinationMapUrl || '', transportFareAmount: entry.transportFareAmount ?? entry.transportFareEstimateAmount, transportFareCurrency: entry.transportFareCurrency || entry.transportFareEstimateCurrency || props.trip.currency, transportFareSource: entry.transportFareSource || (typeof entry.transportFareEstimateAmount === 'number' ? 'ai' : ''), transportFareEstimateConfidence: entry.transportFareEstimateConfidence, transportFareEstimateReasoning: entry.transportFareEstimateReasoning || '', transportFareEstimateAssumptions: entry.transportFareEstimateAssumptions || [], transportFareEstimatedAt: entry.transportFareEstimatedAt, transportFareEstimateModel: entry.transportFareEstimateModel || '' } : { date: '', time: '', endTime: '', title: '', location: '', mapUrl: '', imageUrl: '', note: '', type: '景點', transportDestinationFavoriteId: '', transportDestinationName: '', transportDestinationLocation: '', transportDestinationMapUrl: '', transportFareAmount: undefined, transportFareCurrency: props.trip.currency, transportFareSource: '', transportFareEstimateConfidence: undefined, transportFareEstimateReasoning: '', transportFareEstimateAssumptions: [], transportFareEstimatedAt: undefined, transportFareEstimateModel: '' }) }
+function inferredFareSource(entry?: ItineraryItem): TransportFareSource | '' {
+  if (!entry) return ''
+  if (entry.transportFareSource) return entry.transportFareSource
+  if (entry.transportFareEstimateModel?.startsWith('official-rule:')) return 'rule'
+  if (typeof entry.transportFareEstimateAmount === 'number') return 'ai'
+  return ''
+}
+function resetItem(entry?: ItineraryItem, favoriteId?: string) { const linkedFavoriteId = favoriteId || entry?.favoriteId || ''; pendingFavoriteId.value = linkedFavoriteId || null; itemFavoriteId.value = linkedFavoriteId; itemItineraryGroupId.value = entry?.itineraryGroupId || ''; editingItemId.value = entry?.id || null; Object.assign(item, entry ? { date: entry.date, time: entry.time, endTime: entry.endTime || '', title: entry.title, location: entry.location, mapUrl: entry.mapUrl || '', imageUrl: entry.imageUrl || '', note: entry.note || '', type: entry.type, transportDestinationFavoriteId: entry.transportDestinationFavoriteId || '', transportDestinationName: entry.transportDestinationName || '', transportDestinationLocation: entry.transportDestinationLocation || '', transportDestinationMapUrl: entry.transportDestinationMapUrl || '', transportFareAmount: entry.transportFareAmount ?? entry.transportFareEstimateAmount, transportFareCurrency: entry.transportFareCurrency || entry.transportFareEstimateCurrency || props.trip.currency, transportFareSource: inferredFareSource(entry), transportFareEstimateConfidence: entry.transportFareEstimateConfidence, transportFareEstimateReasoning: entry.transportFareEstimateReasoning || '', transportFareEstimateAssumptions: entry.transportFareEstimateAssumptions || [], transportFareEstimatedAt: entry.transportFareEstimatedAt, transportFareEstimateModel: entry.transportFareEstimateModel || '' } : { date: '', time: '', endTime: '', title: '', location: '', mapUrl: '', imageUrl: '', note: '', type: '景點', transportDestinationFavoriteId: '', transportDestinationName: '', transportDestinationLocation: '', transportDestinationMapUrl: '', transportFareAmount: undefined, transportFareCurrency: props.trip.currency, transportFareSource: '', transportFareEstimateConfidence: undefined, transportFareEstimateReasoning: '', transportFareEstimateAssumptions: [], transportFareEstimatedAt: undefined, transportFareEstimateModel: '' }) }
 function openNewItemForm() { if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。'); itemActivityKind.value = 'shared'; personalActivityParentId.value = ''; insertAfterItemId.value = null; resetItem(); showItem.value = true }
 function openItemFormForEdit(entry: ItineraryItem) { if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。'); itemActivityKind.value = entry.activityKind || 'shared'; personalActivityParentId.value = entry.parentFreeActivityId || ''; insertAfterItemId.value = null; resetItem(entry); showItem.value = true }
 function openPersonalItemForm(group: ItineraryItem) { if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。'); itemActivityKind.value = 'personal'; personalActivityParentId.value = group.id; insertAfterItemId.value = null; resetItem(); item.date = group.date; item.type = '個人行程'; showItem.value = true }
@@ -125,6 +132,14 @@ function clearItemFareMeta() {
   item.transportFareEstimateAssumptions = []
   item.transportFareEstimatedAt = undefined
   item.transportFareEstimateModel = ''
+}
+function transportFareSourceLabel(source: TransportFareSource | '') {
+  return source === 'rule' ? '官方規則已帶入' : source === 'ai' ? 'AI 已帶入' : '手動輸入'
+}
+function transportFareSourceHint(source: TransportFareSource | '') {
+  if (source === 'rule') return '已依官方票價規則帶入；你仍可直接改數字。'
+  if (source === 'ai') return '已依目前出發地與抵達地帶入 AI 估算；你仍可直接改數字。'
+  return '可直接手動輸入，或先設定出發地與抵達地後使用估算。'
 }
 function setManualTransportFare(value?: number | null) {
   item.transportFareAmount = typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined
@@ -163,15 +178,15 @@ async function estimateTransportFareForForm() {
     })
     item.transportFareAmount = result.amount
     item.transportFareCurrency = result.currency
-    item.transportFareSource = 'ai'
+    item.transportFareSource = result.source
     item.transportFareEstimateConfidence = result.confidence
     item.transportFareEstimateReasoning = result.reasoning
     item.transportFareEstimateAssumptions = result.assumptions
     item.transportFareEstimatedAt = Date.parse(result.estimatedAt)
     item.transportFareEstimateModel = result.model
-    ElMessage.success('已帶入 AI 估算交通費，可再自行調整。')
+    ElMessage.success(result.source === 'rule' ? '已帶入官方規則估算交通費，可再自行調整。' : '已帶入 AI 估算交通費，可再自行調整。')
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : 'AI 交通費估算失敗。')
+    ElMessage.error(error instanceof Error ? error.message : '交通費估算失敗。')
   } finally {
     estimatingItemFare.value = false
   }
@@ -214,15 +229,15 @@ async function saveItem() {
       transportFareAmount: !isFree && item.type === '交通' && typeof item.transportFareAmount === 'number' && Number.isFinite(item.transportFareAmount) && item.transportFareAmount > 0 ? item.transportFareAmount : undefined,
       transportFareCurrency: !isFree && item.type === '交通' && typeof item.transportFareAmount === 'number' && Number.isFinite(item.transportFareAmount) && item.transportFareAmount > 0 ? (item.transportFareCurrency || props.trip.currency) : undefined,
       transportFareSource: !isFree && item.type === '交通' && typeof item.transportFareAmount === 'number' && Number.isFinite(item.transportFareAmount) && item.transportFareAmount > 0 ? (item.transportFareSource || 'manual') : undefined,
-      transportFareEstimateAmount: !isFree && item.type === '交通' && item.transportFareSource === 'ai' && typeof item.transportFareAmount === 'number' && Number.isFinite(item.transportFareAmount) && item.transportFareAmount > 0 ? item.transportFareAmount : undefined,
-      transportFareEstimateCurrency: !isFree && item.type === '交通' && item.transportFareSource === 'ai' && typeof item.transportFareAmount === 'number' && Number.isFinite(item.transportFareAmount) && item.transportFareAmount > 0 ? (item.transportFareCurrency || props.trip.currency) : undefined,
-      transportFareEstimateConfidence: !isFree && item.type === '交通' && item.transportFareSource === 'ai' ? item.transportFareEstimateConfidence : undefined,
-      transportFareEstimateReasoning: !isFree && item.type === '交通' && item.transportFareSource === 'ai' ? item.transportFareEstimateReasoning.trim() : undefined,
-      transportFareEstimateAssumptions: !isFree && item.type === '交通' && item.transportFareSource === 'ai' ? item.transportFareEstimateAssumptions : undefined,
-      transportFareEstimatedAt: !isFree && item.type === '交通' && item.transportFareSource === 'ai' ? item.transportFareEstimatedAt : undefined,
-      transportFareEstimateModel: !isFree && item.type === '交通' && item.transportFareSource === 'ai' ? item.transportFareEstimateModel : undefined,
+      transportFareEstimateAmount: !isFree && item.type === '交通' && item.transportFareSource && item.transportFareSource !== 'manual' && typeof item.transportFareAmount === 'number' && Number.isFinite(item.transportFareAmount) && item.transportFareAmount > 0 ? item.transportFareAmount : undefined,
+      transportFareEstimateCurrency: !isFree && item.type === '交通' && item.transportFareSource && item.transportFareSource !== 'manual' && typeof item.transportFareAmount === 'number' && Number.isFinite(item.transportFareAmount) && item.transportFareAmount > 0 ? (item.transportFareCurrency || props.trip.currency) : undefined,
+      transportFareEstimateConfidence: !isFree && item.type === '交通' && item.transportFareSource && item.transportFareSource !== 'manual' ? item.transportFareEstimateConfidence : undefined,
+      transportFareEstimateReasoning: !isFree && item.type === '交通' && item.transportFareSource && item.transportFareSource !== 'manual' ? item.transportFareEstimateReasoning.trim() : undefined,
+      transportFareEstimateAssumptions: !isFree && item.type === '交通' && item.transportFareSource && item.transportFareSource !== 'manual' ? item.transportFareEstimateAssumptions : undefined,
+      transportFareEstimatedAt: !isFree && item.type === '交通' && item.transportFareSource && item.transportFareSource !== 'manual' ? item.transportFareEstimatedAt : undefined,
+      transportFareEstimateModel: !isFree && item.type === '交通' && item.transportFareSource && item.transportFareSource !== 'manual' ? item.transportFareEstimateModel : undefined,
     }
-    const shouldResetFareEstimate = Boolean(existing && existing.transportFareSource === 'ai' && (payload.type !== '交通' || didTransportFareInputsChange(existing, normalizedMapUrl, normalizedDestinationMapUrl)))
+    const shouldResetFareEstimate = Boolean(existing && existing.transportFareSource && existing.transportFareSource !== 'manual' && (payload.type !== '交通' || didTransportFareInputsChange(existing, normalizedMapUrl, normalizedDestinationMapUrl)))
     if (existing) {
       const baseExisting = shouldResetFareEstimate ? (({ transportFareAmount, transportFareCurrency, transportFareSource, transportFareEstimateAmount, transportFareEstimateCurrency, transportFareEstimateConfidence, transportFareEstimateReasoning, transportFareEstimateAssumptions, transportFareEstimatedAt, transportFareEstimateModel, ...rest }) => rest)(existing) : existing
       await store.updateItem({ ...baseExisting, ...payload })
@@ -287,7 +302,7 @@ async function openFareEstimate(entry: ItineraryItem) {
   } catch (error) {
     showFareEstimateDialog.value = false
     fareEstimateTarget.value = null
-    ElMessage.error(error instanceof Error ? error.message : 'AI 票價估算失敗。')
+    ElMessage.error(error instanceof Error ? error.message : '票價估算失敗。')
   } finally {
     loadingFareEstimate.value = false
   }
@@ -301,7 +316,7 @@ async function confirmFareEstimate() {
       ...fareEstimateTarget.value,
       transportFareAmount: fareEstimateResult.value.amount,
       transportFareCurrency: fareEstimateResult.value.currency,
-      transportFareSource: 'ai',
+      transportFareSource: fareEstimateResult.value.source,
       transportFareEstimateAmount: fareEstimateResult.value.amount,
       transportFareEstimateCurrency: fareEstimateResult.value.currency,
       transportFareEstimateConfidence: fareEstimateResult.value.confidence,
@@ -310,12 +325,12 @@ async function confirmFareEstimate() {
       transportFareEstimatedAt: Date.parse(fareEstimateResult.value.estimatedAt),
       transportFareEstimateModel: fareEstimateResult.value.model,
     })
-    ElMessage.success('已將 AI 票價估算寫回行程。')
+    ElMessage.success(fareEstimateResult.value.source === 'rule' ? '已將官方規則票價寫回行程。' : '已將 AI 票價估算寫回行程。')
     showFareEstimateDialog.value = false
     fareEstimateTarget.value = null
     fareEstimateResult.value = null
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '無法儲存 AI 票價估算。')
+    ElMessage.error(error instanceof Error ? error.message : '無法儲存票價估算。')
   } finally {
     savingFareEstimate.value = false
   }
@@ -556,7 +571,7 @@ async function bulkRemoveEntries(entries: ItineraryItem[]) {
         <div class="itinerary-time-grid"><el-form-item label="開始時間"><el-time-picker v-model="item.time" value-format="HH:mm" format="HH:mm" placeholder="選擇開始時間" /></el-form-item><el-form-item label="結束時間"><el-time-picker v-model="item.endTime" value-format="HH:mm" format="HH:mm" placeholder="選擇結束時間（選填）" /></el-form-item></div>
         <el-form-item v-if="itemActivityKind !== 'free'" label="類型"><el-select v-model="item.type"><el-option label="景點" value="景點" /><el-option label="餐廳" value="餐廳" /><el-option label="交通" value="交通" /><el-option label="住宿" value="住宿" /><el-option label="商店" value="商店" /></el-select></el-form-item>
         <el-form-item v-if="itemActivityKind !== 'free' && item.type === '交通'" label="抵達站／目的地（選填）"><div class="itinerary-favorite-picker-control transport-destination-control"><div class="itinerary-favorite-picker-copy"><strong>{{ item.transportDestinationName || '尚未選擇抵達站' }}</strong><span>{{ item.transportDestinationLocation || (item.transportDestinationMapUrl ? '已設定 Google Maps 連結' : '從旅遊收藏選擇下車站或目的地') }}</span></div><div class="transport-destination-actions"><el-button v-if="item.transportDestinationName" text class="transport-destination-clear" aria-label="清除抵達站" @click="Object.assign(item, { transportDestinationFavoriteId: '', transportDestinationName: '', transportDestinationLocation: '', transportDestinationMapUrl: '' })">清除</el-button><el-button class="itinerary-favorite-picker-button" @click="openFavoritePicker('destination')">{{ item.transportDestinationName ? '更換抵達站' : '選擇抵達站' }}</el-button></div></div><small>可選交通站、景點、住宿等任何收藏項目；設定後行程卡片會顯示出發站 → 抵達站。</small></el-form-item>
-        <el-form-item v-if="itemActivityKind !== 'free' && item.type === '交通'" label="交通費（選填）"><div class="transport-fare-field"><el-input-number :model-value="item.transportFareAmount" :min="0" :step="1" controls-position="right" placeholder="輸入交通費" @update:model-value="setManualTransportFare($event as number | null | undefined)" /><el-button class="transport-fare-ai-button" :loading="estimatingItemFare" :disabled="estimatingItemFare || !canEstimateDraftTransportFare" @click="estimateTransportFareForForm">AI 估算</el-button></div><div v-if="item.transportFareAmount" class="transport-fare-meta"><span>{{ item.transportFareSource === 'ai' ? 'AI 已帶入' : '手動輸入' }} {{ item.transportFareCurrency || trip.currency }} {{ new Intl.NumberFormat('zh-TW', { maximumFractionDigits: 2 }).format(item.transportFareAmount) }}</span><small v-if="item.transportFareSource === 'ai' && item.transportFareEstimateConfidence">{{ item.transportFareEstimateConfidence === 'high' ? '高信心' : item.transportFareEstimateConfidence === 'low' ? '低信心' : '中等信心' }}</small></div><small>{{ item.transportFareSource === 'ai' ? '已依目前出發地與抵達地帶入 AI 估算；你仍可直接改數字。' : '可直接手動輸入，或先設定出發地與抵達地後使用 AI 估算。' }}</small></el-form-item>
+        <el-form-item v-if="itemActivityKind !== 'free' && item.type === '交通'" label="交通費（選填）"><div class="transport-fare-field"><el-input-number :model-value="item.transportFareAmount" :min="0" :step="1" controls-position="right" placeholder="輸入交通費" @update:model-value="setManualTransportFare($event as number | null | undefined)" /><el-button class="transport-fare-ai-button" :loading="estimatingItemFare" :disabled="estimatingItemFare || !canEstimateDraftTransportFare" @click="estimateTransportFareForForm">智能估算</el-button></div><div v-if="item.transportFareAmount" class="transport-fare-meta"><span>{{ transportFareSourceLabel(item.transportFareSource) }} {{ item.transportFareCurrency || trip.currency }} {{ new Intl.NumberFormat('zh-TW', { maximumFractionDigits: 2 }).format(item.transportFareAmount) }}</span><small v-if="item.transportFareSource && item.transportFareSource !== 'manual' && item.transportFareEstimateConfidence">{{ item.transportFareEstimateConfidence === 'high' ? '高信心' : item.transportFareEstimateConfidence === 'low' ? '低信心' : '中等信心' }}</small></div><small>{{ transportFareSourceHint(item.transportFareSource) }}</small></el-form-item>
         <el-form-item v-if="itemActivityKind !== 'free'" label="Google Maps 景點網址（選填）"><el-input v-model="item.mapUrl" placeholder="貼上 Google Maps 或 maps.app.goo.gl 分享網址" /><small>行程卡片會直接開啟此景點；既有的地點文字資料會保留。</small></el-form-item>
         <el-form-item v-if="itemActivityKind !== 'free'" label="行程圖片網址（選填）"><el-input v-model="item.imageUrl" placeholder="貼上圖片網址，例如 https://..." /><div v-if="item.imageUrl" class="itinerary-form-image-preview"><img :src="item.imageUrl" alt="行程圖片預覽" /><div><strong>行程圖片預覽</strong><span>從旅遊收藏帶入或使用此網址顯示</span></div></div><small>圖片會以縮圖顯示在每日行程卡片；從旅遊收藏帶入時會自動填入。</small></el-form-item>
         <el-form-item label="備註（選填）"><el-input v-model="item.note" type="textarea" :rows="3" maxlength="240" show-word-limit placeholder="例如：預約資訊、集合地點或注意事項" /></el-form-item>
@@ -571,7 +586,7 @@ async function bulkRemoveEntries(entries: ItineraryItem[]) {
       <template #footer><el-button @click="showFavoritePicker = false">取消</el-button></template>
     </el-dialog>
 
-    <el-dialog v-model="showFareEstimateDialog" title="AI 交通票價估算" class="fare-estimate-dialog" width="min(92vw, 520px)" destroy-on-close>
+    <el-dialog v-model="showFareEstimateDialog" title="交通票價估算" class="fare-estimate-dialog" width="min(92vw, 520px)" destroy-on-close>
       <div class="fare-estimate-content">
         <template v-if="fareEstimateTarget">
           <div class="fare-estimate-summary">
@@ -584,9 +599,9 @@ async function bulkRemoveEntries(entries: ItineraryItem[]) {
           </div>
           <template v-else-if="fareEstimateResult">
             <div class="fare-estimate-result-card">
-              <span class="fare-estimate-label">參考票價</span>
+              <span class="fare-estimate-label">{{ fareEstimateResult.source === 'rule' ? '官方規則估算' : 'AI 參考票價' }}</span>
               <strong>{{ fareEstimateResult.currency }} {{ new Intl.NumberFormat('zh-TW', { maximumFractionDigits: 2 }).format(fareEstimateResult.amount) }}</strong>
-              <small>{{ fareEstimateResult.confidence === 'high' ? '高信心' : fareEstimateResult.confidence === 'low' ? '低信心' : '中等信心' }}・模型 {{ fareEstimateResult.model }}</small>
+              <small>{{ fareEstimateResult.confidence === 'high' ? '高信心' : fareEstimateResult.confidence === 'low' ? '低信心' : '中等信心' }}・{{ fareEstimateResult.provider }}<template v-if="fareEstimateResult.fareMode">・{{ fareEstimateResult.fareMode === 'ic' ? 'IC 卡票價' : '車票票價' }}</template><template v-if="fareEstimateResult.source === 'ai'">・模型 {{ fareEstimateResult.model }}</template></small>
             </div>
             <div class="fare-estimate-block">
               <span>估算說明</span>
@@ -598,7 +613,7 @@ async function bulkRemoveEntries(entries: ItineraryItem[]) {
                 <li v-for="assumption in fareEstimateResult.assumptions" :key="assumption">{{ assumption }}</li>
               </ul>
             </div>
-            <p class="fare-estimate-disclaimer">這是 AI 依目前路線資訊做出的參考估算；按下確認後才會寫回這筆行程。</p>
+            <p class="fare-estimate-disclaimer">{{ fareEstimateResult.source === 'rule' ? '這是依官方票價規則推定的參考結果；按下確認後才會寫回這筆行程。' : '這是 AI 依目前路線資訊做出的參考估算；按下確認後才會寫回這筆行程。' }}</p>
           </template>
         </template>
       </div>
