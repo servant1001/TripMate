@@ -11,12 +11,14 @@ export function useTripWorkspaceItinerary({
   favorites,
   user,
   canEditTrip,
+  openItineraryTab,
 }: {
   store: ReturnType<typeof useTripStore>
   items: ComputedRef<ItineraryItem[]>
   favorites: ComputedRef<Favorite[]>
   user: Ref<User | null>
   canEditTrip: ComputedRef<boolean>
+  openItineraryTab?: () => void
 }) {
   const favoriteItineraryRequestId = ref('')
 
@@ -159,6 +161,7 @@ export function useTripWorkspaceItinerary({
       return
     }
     favoriteItineraryRequestId.value = favoriteItem.id
+    openItineraryTab?.()
   }
 
   function clearFavoriteRequest() {

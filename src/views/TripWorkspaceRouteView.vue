@@ -91,6 +91,9 @@ const itinerary = useTripWorkspaceItinerary({
   favorites: currentFavorites,
   user,
   canEditTrip: shell.canEditTrip,
+  openItineraryTab: () => {
+    if (activeId.value) shell.selectTripTab('itinerary', activeId.value)
+  },
 })
 
 const activeMemberId = computed(

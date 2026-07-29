@@ -267,7 +267,7 @@ async function saveItem() {
     savingItem.value = false
   }
 }
-watch(() => props.favoriteRequestId, (favoriteId) => { if (!favoriteId) return; openNewItemForm(); item.date = props.trip.startDate; applyFavoriteToItem(favoriteId); emit('favoriteRequestConsumed') })
+watch(() => props.favoriteRequestId, (favoriteId) => { if (!favoriteId) return; openNewItemForm(); item.date = props.trip.startDate; applyFavoriteToItem(favoriteId); emit('favoriteRequestConsumed') }, { immediate: true })
 
 function fareEstimateRouteSummary(entry: ItineraryItem) {
   return `${entry.location || entry.title} → ${entry.transportDestinationLocation || entry.transportDestinationName || '未設定抵達地'}`
