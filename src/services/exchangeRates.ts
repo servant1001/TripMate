@@ -15,9 +15,10 @@ function normalizeCurrency(value: string) {
   return value.trim().toUpperCase()
 }
 
-export async function getLatestExchangeRate(fromCurrency: string, toCurrency = 'TWD'): Promise<ExchangeRateQuote> {
+export async function getLatestExchangeRate(fromCurrency: string, toCurrency = 'TWD', options?: { force?: boolean }): Promise<ExchangeRateQuote> {
   const from = normalizeCurrency(fromCurrency)
   const to = normalizeCurrency(toCurrency)
+  const force = Boolean(options?.force)
   if (!from || !to) throw new Error('缺少匯率查詢幣別。')
   if (from === to) {
     return {
@@ -32,10 +33,15 @@ export async function getLatestExchangeRate(fromCurrency: string, toCurrency = '
   if (!workerUrl) throw new Error('請先設定 Cloudflare Worker API。')
   const key = `${from}_${to}`
   const current = cache.get(key)
-  if (current?.data && current.expiresAt > Date.now()) return current.data
-  if (current?.promise) return current.promise
+  if (!force && current?.data && current.expiresAt > Date.now()) return current.data
+  if (!force && current?.promise) return current.promise
 
-  const promise = fetch(`${workerUrl.replace(/\/$/, '')}/v1/exchange-rate?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {
+  const url = new URL(`${workerUrl.replace(/\/$/, '')}/v1/exchange-rate`)
+  url.searchParams.set('from', from)
+  url.searchParams.set('to', to)
+  if (force) url.searchParams.set('refresh', '1')
+
+  const promise = fetch(url.toString(), {
     method: 'GET',
     headers: { Accept: 'application/json' },
   })

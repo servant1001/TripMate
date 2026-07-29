@@ -387,6 +387,7 @@ async function latestExchangeRate(request: Request, origin: string | null): Prom
   const url = new URL(request.url)
   const from = url.searchParams.get('from')?.trim().toUpperCase() || ''
   const to = url.searchParams.get('to')?.trim().toUpperCase() || 'TWD'
+  const forceRefresh = url.searchParams.get('refresh') === '1'
   if (!validCurrency(from) || !validCurrency(to)) return out({ error: '請提供有效的三碼幣別。' }, 400, origin)
   const cacheControl = { 'Cache-Control': 'public, max-age=86400' }
   if (from === to) {
@@ -398,10 +399,12 @@ async function latestExchangeRate(request: Request, origin: string | null): Prom
   cacheUrl.searchParams.set('to', to)
   const cacheKey = new Request(cacheUrl.toString(), { method: 'GET' })
   const cache = await caches.open('tripmate-exchange')
-  const cached = await cache.match(cacheKey)
-  if (cached) {
-    const payload = await cached.json()
-    return out({ ...(payload as Record<string, unknown>), cached: true }, 200, origin, cacheControl)
+  if (!forceRefresh) {
+    const cached = await cache.match(cacheKey)
+    if (cached) {
+      const payload = await cached.json()
+      return out({ ...(payload as Record<string, unknown>), cached: true }, 200, origin, cacheControl)
+    }
   }
   const remote = await fetch(`https://api.frankfurter.dev/v2/rates?base=${from}&quotes=${to}`, { headers: { Accept: 'application/json' } })
   const payload = await remote.json() as ExchangeRateRow[]

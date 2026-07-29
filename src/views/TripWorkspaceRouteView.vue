@@ -201,6 +201,34 @@ function formatExchangeRate(rate: number) {
   })
 }
 
+async function refreshTripExchangeRate(force = false) {
+  const normalized = normalizeTripCurrency(current.value?.currency)
+  tripExchangeRateText.value = ''
+  tripExchangeRateDate.value = ''
+  tripExchangeRateError.value = ''
+
+  if (!normalized) return
+
+  tripExchangeRateLoading.value = true
+  try {
+    const quote = await getLatestExchangeRate(normalized, 'TWD', { force })
+    if (normalizeTripCurrency(current.value?.currency) !== normalized) return
+    tripExchangeRateText.value = `今日匯率 1 ${quote.from} ≈ TWD ${formatExchangeRate(quote.rate)}`
+    tripExchangeRateDate.value = quote.date
+    if (force) {
+      ElMessage.success('已更新今日匯率。')
+    }
+  } catch (error) {
+    if (normalizeTripCurrency(current.value?.currency) !== normalized) return
+    tripExchangeRateError.value =
+      error instanceof Error ? error.message : '暫時無法取得今日匯率。'
+  } finally {
+    if (normalizeTripCurrency(current.value?.currency) === normalized) {
+      tripExchangeRateLoading.value = false
+    }
+  }
+}
+
 function goTrips() {
   void router.push({ name: 'trips' })
 }
@@ -435,29 +463,8 @@ watch(
 
 watch(
   () => current.value?.currency,
-  async (currency) => {
-    const normalized = normalizeTripCurrency(currency)
-    tripExchangeRateText.value = ''
-    tripExchangeRateDate.value = ''
-    tripExchangeRateError.value = ''
-
-    if (!normalized) return
-
-    tripExchangeRateLoading.value = true
-    try {
-      const quote = await getLatestExchangeRate(normalized, 'TWD')
-      if (normalizeTripCurrency(current.value?.currency) !== normalized) return
-      tripExchangeRateText.value = `今日匯率 1 ${quote.from} ≈ TWD ${formatExchangeRate(quote.rate)}`
-      tripExchangeRateDate.value = quote.date
-    } catch (error) {
-      if (normalizeTripCurrency(current.value?.currency) !== normalized) return
-      tripExchangeRateError.value =
-        error instanceof Error ? error.message : '暫時無法取得今日匯率。'
-    } finally {
-      if (normalizeTripCurrency(current.value?.currency) === normalized) {
-        tripExchangeRateLoading.value = false
-      }
-    }
+  async () => {
+    await refreshTripExchangeRate()
   },
   { immediate: true },
 )
@@ -510,6 +517,7 @@ onUnmounted(() => {
     @edit-trip="tripEditor.startEditTrip"
     @remove-trip="tripEditor.removeTrip"
     @open-member-manager="openMemberManager"
+    @refresh-exchange-rate="() => void refreshTripExchangeRate(true)"
   >
     <RouterView />
   </TripWorkspaceShell>

@@ -37,6 +37,7 @@ const emit = defineEmits<{
   editTrip: []
   removeTrip: []
   openMemberManager: []
+  refreshExchangeRate: []
   'update:mobileTripMenuOpen': [value: boolean]
 }>()
 </script>
@@ -68,6 +69,7 @@ const emit = defineEmits<{
         :can-manage-members="canManageMembers"
         :open-member-manager="() => emit('openMemberManager')"
         :role-label="roleLabel"
+        :refresh-exchange-rate="() => emit('refreshExchangeRate')"
         @back="emit('back')"
         @edit="emit('editTrip')"
         @remove="emit('removeTrip')"
