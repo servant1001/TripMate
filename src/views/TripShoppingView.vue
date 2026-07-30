@@ -104,7 +104,12 @@ const shoppingItineraryEntries = computed(
 const shoppingCurrenciesNeedingRates = computed(() =>
   [...new Set(
     props.items
-      .filter((item) => Math.max(0, Number(item.taiwanPrice) || 0) > 0)
+      .filter((item) => {
+        const estimated = Math.max(0, Number(item.estimatedTotalPrice) || (Number(item.estimatedUnitPrice) || 0) * item.quantity)
+        const actual = Math.max(0, Number(item.actualTotalPrice) || (Number(item.actualUnitPrice) || 0) * item.quantity)
+        const taiwan = Math.max(0, Number(item.taiwanPrice) || 0)
+        return estimated > 0 || actual > 0 || taiwan > 0
+      })
       .map((item) => item.currency?.trim().toUpperCase())
       .filter((currency): currency is string => Boolean(currency && currency !== 'TWD')),
   )],

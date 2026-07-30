@@ -27,22 +27,25 @@ const sortedItems = computed(() => [...props.items].sort((a, b) => {
   const priorityOrder: Record<ShoppingPriority, number> = { high: 0, medium: 1, low: 2 }
   return statusOrder[a.status] - statusOrder[b.status] || priorityOrder[a.priority] - priorityOrder[b.priority] || (a.plannedDate || '9999-12-31').localeCompare(b.plannedDate || '9999-12-31') || b.createdAt - a.createdAt
 }))
+const filteredItems = computed(() => sortedItems.value.filter((item) => (statusFilter.value === 'all' || item.status === statusFilter.value) && (typeFilter.value === 'all' || item.shoppingType === typeFilter.value) && (categoryFilter.value === 'all' || item.category === categoryFilter.value) && (assigneeFilter.value === 'all' || (assigneeFilter.value === 'unassigned' ? !item.assignedTo : item.assignedTo === assigneeFilter.value)) && (storeFilter.value === 'all' || item.storeName === storeFilter.value)))
 const storeModeAllItems = computed(() => storeFilter.value === 'all' ? [] : props.items.filter((item) => item.storeName?.trim() === storeFilter.value && item.status !== 'cancelled'))
 const storeModePendingItems = computed(() => storeModeAllItems.value.filter((item) => item.status !== 'purchased'))
 const storeModePurchasedCount = computed(() => storeModeAllItems.value.filter((item) => item.status === 'purchased').length)
 const storeModeEstimatedTotal = computed(() => storeModePendingItems.value.reduce((sum, item) => sum + (Number(item.estimatedTotalPrice) || (Number(item.estimatedUnitPrice) || 0) * item.quantity), 0))
 const storeModeProgress = computed(() => storeModeAllItems.value.length ? Math.round((storeModePurchasedCount.value / storeModeAllItems.value.length) * 100) : 0)
-const visibleItems = computed(() => storeMode.value ? sortedItems.value.filter((item) => item.storeName?.trim() === storeFilter.value && item.status !== 'purchased' && item.status !== 'cancelled') : sortedItems.value.filter((item) => (statusFilter.value === 'all' || item.status === statusFilter.value) && (typeFilter.value === 'all' || item.shoppingType === typeFilter.value) && (categoryFilter.value === 'all' || item.category === categoryFilter.value) && (assigneeFilter.value === 'all' || (assigneeFilter.value === 'unassigned' ? !item.assignedTo : item.assignedTo === assigneeFilter.value)) && (storeFilter.value === 'all' || item.storeName === storeFilter.value)))
+const summaryItems = computed(() => storeMode.value ? storeModeAllItems.value : filteredItems.value)
+const visibleItems = computed(() => storeMode.value ? sortedItems.value.filter((item) => item.storeName?.trim() === storeFilter.value && item.status !== 'purchased' && item.status !== 'cancelled') : filteredItems.value)
 const displayGroups = computed(() => {
   if (!groupByStore.value) return [{ name: '', items: visibleItems.value }]
   const groups = new Map<string, ShoppingItem[]>()
   visibleItems.value.forEach((item) => { const name = item.storeName?.trim() || '尚未指定店家'; (groups.get(name) || groups.set(name, []).get(name)!).push(item) })
   return [...groups.entries()].map(([name, items]) => ({ name, items }))
 })
-const purchasedCount = computed(() => props.items.filter((item) => item.status === 'purchased').length)
-const outstandingCount = computed(() => props.items.filter((item) => item.status === 'wishlist' || item.status === 'planned').length)
-const estimateTotal = computed(() => props.items.filter((item) => item.status !== 'cancelled').reduce((sum, item) => sum + (Number(item.estimatedTotalPrice) || (Number(item.estimatedUnitPrice) || 0) * item.quantity), 0))
-const actualTotal = computed(() => props.items.filter((item) => item.status === 'purchased').reduce((sum, item) => sum + (Number(item.actualTotalPrice) || (Number(item.actualUnitPrice) || 0) * item.quantity || Number(item.estimatedTotalPrice) || 0), 0))
+const filteredItemCount = computed(() => summaryItems.value.length)
+const purchasedCount = computed(() => summaryItems.value.filter((item) => item.status === 'purchased').length)
+const outstandingCount = computed(() => summaryItems.value.filter((item) => item.status === 'wishlist' || item.status === 'planned').length)
+const estimateTotal = computed(() => summaryItems.value.filter((item) => item.status !== 'cancelled').reduce((sum, item) => sum + (Number(item.estimatedTotalPrice) || (Number(item.estimatedUnitPrice) || 0) * item.quantity), 0))
+const actualTotal = computed(() => summaryItems.value.filter((item) => item.status === 'purchased').reduce((sum, item) => sum + (Number(item.actualTotalPrice) || (Number(item.actualUnitPrice) || 0) * item.quantity || Number(item.estimatedTotalPrice) || 0), 0))
 function amount(item: ShoppingItem, actual = false) { const total = actual ? Number(item.actualTotalPrice) || (Number(item.actualUnitPrice) || 0) * item.quantity : Number(item.estimatedTotalPrice) || (Number(item.estimatedUnitPrice) || 0) * item.quantity; return total > 0 ? `${item.currency} ${total.toLocaleString()}` : '' }
 function numberLabel(value: number) { return value.toLocaleString(undefined, { maximumFractionDigits: value % 1 ? 2 : 0 }) }
 function unitAmount(item: ShoppingItem, actual = false) { const amount = Math.max(0, Number(actual ? item.actualUnitPrice : item.estimatedUnitPrice) || 0); return amount > 0 ? `${item.currency} ${amount.toLocaleString()}` : '' }
@@ -64,6 +67,30 @@ function taiwanCompareSummary(item: ShoppingItem) { const kind = taiwanCompareKi
 function taiwanCompareAmount(item: ShoppingItem) { if (!canCompareTaiwanPrice(item)) return ''; const diff = Math.abs(convertedAmountTwd(item) - Math.max(0, Number(item.taiwanPrice) || 0)); if (!diff) return ''; return `便宜 TWD ${numberLabel(diff)}` }
 function needsTaiwanCompareHint(item: ShoppingItem) { return !!taiwanPriceAmount(item) && !(item.currency?.trim().toUpperCase() === 'TWD') && !currencyRate(item) }
 function mapsUrl(item: ShoppingItem) { if (item.mapUrl) return item.mapUrl; const query = item.address || item.location || [item.storeName, item.storeBranch].filter(Boolean).join(' '); return query ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}` : '' }
+function summaryTwdAmount(items: ShoppingItem[], mode: 'estimated' | 'actual') {
+  if (!items.length) return 0
+  return Math.round(
+    items.reduce((sum, item) => {
+      const quote = currencyRate(item)
+      if (!quote?.rate) return sum
+      const base = mode === 'actual'
+        ? Math.max(0, Number(item.actualTotalPrice) || (Number(item.actualUnitPrice) || 0) * item.quantity || Number(item.estimatedTotalPrice) || 0)
+        : Math.max(0, Number(item.estimatedTotalPrice) || (Number(item.estimatedUnitPrice) || 0) * item.quantity)
+      return sum + base * quote.rate
+    }, 0) * 100,
+  ) / 100
+}
+function canShowSummaryTwd(items: ShoppingItem[], mode: 'estimated' | 'actual') {
+  const relevant = items.filter((item) => {
+    const base = mode === 'actual'
+      ? Math.max(0, Number(item.actualTotalPrice) || (Number(item.actualUnitPrice) || 0) * item.quantity || Number(item.estimatedTotalPrice) || 0)
+      : Math.max(0, Number(item.estimatedTotalPrice) || (Number(item.estimatedUnitPrice) || 0) * item.quantity)
+    return base > 0
+  })
+  return relevant.length > 0 && relevant.every((item) => Boolean(currencyRate(item)?.rate))
+}
+const estimateTotalTwd = computed(() => canShowSummaryTwd(summaryItems.value, 'estimated') ? summaryTwdAmount(summaryItems.value, 'estimated') : 0)
+const actualTotalTwd = computed(() => canShowSummaryTwd(summaryItems.value, 'actual') ? summaryTwdAmount(summaryItems.value, 'actual') : 0)
 function toggleStoreMode() { if (!storeMode.value && !stores.value.length) return; storeMode.value = !storeMode.value; if (storeMode.value && (storeFilter.value === 'all' || !stores.value.includes(storeFilter.value))) storeFilter.value = stores.value[0]; if (!storeMode.value) storeFilter.value = 'all' }
 function changeStore(offset: number) { if (!stores.value.length) return; const currentIndex = Math.max(0, stores.value.indexOf(storeFilter.value)); storeFilter.value = stores.value[(currentIndex + offset + stores.value.length) % stores.value.length] }
 function handleItemAction(command: 'edit' | 'duplicate' | 'remove', item: ShoppingItem) { if (command === 'edit') emit('edit', item); if (command === 'duplicate') emit('duplicate', item); if (command === 'remove') emit('remove', item) }
@@ -78,7 +105,30 @@ function primaryAmountLabel(item: ShoppingItem) { return item.status === 'purcha
   <section id="shopping" class="trip-detail-card shopping-panel">
     <div class="detail-card-heading"><div><p class="section-kicker">SHOPPING</p><h2>購物清單</h2><p>集中記下想買、代購與旅伴共同採買的商品。</p></div><div class="shopping-heading-actions"><el-button class="shopping-store-mode" :class="{ 'is-active': storeMode }" :disabled="!storeMode && !stores.length" title="在店內只顯示該店尚未完成的採買項目" @click="toggleStoreMode"><el-icon><Location /></el-icon>{{ storeMode ? '離開到店模式' : '到店採買' }}</el-button><el-button v-if="canEditTrip" class="shopping-select-button" :class="{ 'is-active': selectionMode }" @click="toggleSelectionMode">{{ selectionMode ? '取消選取' : '選取商品' }}</el-button><el-button v-if="canEditTrip" class="shopping-add-button" @click="emit('add')"><el-icon><Plus /></el-icon>新增商品</el-button><span v-else class="readonly-chip">唯讀</span></div></div>
 
-    <div class="shopping-summary"><div><span>商品總數</span><strong>{{ items.length }}</strong></div><div><span>尚待購買</span><strong>{{ outstandingCount }}</strong></div><div><span>已購買</span><strong>{{ purchasedCount }}</strong></div><div><span>預估總額</span><strong>{{ trip.currency }} {{ estimateTotal.toLocaleString() }}</strong></div><div><span>實際已花</span><strong>{{ trip.currency }} {{ actualTotal.toLocaleString() }}</strong></div></div>
+    <div class="shopping-summary">
+      <div>
+        <span>商品總數</span>
+        <strong>{{ filteredItemCount }}</strong>
+      </div>
+      <div>
+        <span>尚待購買</span>
+        <strong>{{ outstandingCount }}</strong>
+      </div>
+      <div>
+        <span>已購買</span>
+        <strong>{{ purchasedCount }}</strong>
+      </div>
+      <div>
+        <span>預估總額</span>
+        <strong>{{ trip.currency }} {{ estimateTotal.toLocaleString() }}</strong>
+        <small v-if="estimateTotalTwd > 0" class="shopping-summary-twd">約 TWD {{ numberLabel(estimateTotalTwd) }}</small>
+      </div>
+      <div>
+        <span>實際已花</span>
+        <strong>{{ trip.currency }} {{ actualTotal.toLocaleString() }}</strong>
+        <small v-if="actualTotalTwd > 0" class="shopping-summary-twd">約 TWD {{ numberLabel(actualTotalTwd) }}</small>
+      </div>
+    </div>
 
     <div v-if="storeMode" class="shopping-store-mode-panel"><div class="shopping-store-mode-top"><div><span>目前店家</span><strong>{{ storeFilter }}</strong><small>只顯示尚未完成的採買項目</small></div><div class="shopping-store-switch"><el-button text circle aria-label="上一間店" title="上一間店" @click="changeStore(-1)">‹</el-button><el-select v-model="storeFilter" aria-label="選擇到店店家"><el-option v-for="store in stores" :key="store" :label="store" :value="store" /></el-select><el-button text circle aria-label="下一間店" title="下一間店" @click="changeStore(1)">›</el-button></div></div><div class="shopping-store-progress"><div><span>採買進度</span><strong>{{ storeModePurchasedCount }} / {{ storeModeAllItems.length }} 已購買</strong></div><el-progress :percentage="storeModeProgress" :stroke-width="8" :show-text="false" /><p><span>尚待購買 {{ storeModePendingItems.length }} 項</span><strong>{{ trip.currency }} {{ storeModeEstimatedTotal.toLocaleString() }}</strong></p></div></div>
     <div v-else class="shopping-filters"><el-select v-model="statusFilter" aria-label="依狀態篩選"><el-option label="全部狀態" value="all" /><el-option v-for="(label, status) in statusLabels" :key="status" :label="label" :value="status" /></el-select><el-select v-model="typeFilter" aria-label="依購物類型篩選"><el-option label="全部類型" value="all" /><el-option v-for="(label, type) in typeLabels" :key="type" :label="label" :value="type" /></el-select><el-select v-model="categoryFilter" aria-label="依分類篩選"><el-option label="全部分類" value="all" /><el-option v-for="category in categories" :key="category" :label="category" :value="category" /></el-select><el-select v-model="assigneeFilter" aria-label="依負責人篩選"><el-option label="全部負責人" value="all" /><el-option label="尚未分派" value="unassigned" /><el-option v-for="member in trip.members" :key="member.id" :label="member.name" :value="member.id" /></el-select><el-select v-if="stores.length" v-model="storeFilter" aria-label="依店家篩選"><el-option label="全部店家" value="all" /><el-option v-for="store in stores" :key="store" :label="store" :value="store" /></el-select><el-button class="shopping-group-button" text @click="groupByStore = !groupByStore">{{ groupByStore ? '依店家顯示中' : '依清單顯示中' }}</el-button></div>
@@ -151,9 +201,10 @@ function primaryAmountLabel(item: ShoppingItem) { return item.status === 'purcha
 .shopping-store-mode:hover,.shopping-store-mode.is-active{border-color:#84b6a5;background:#eef5f0;color:#123f3a}
 .readonly-chip{display:inline-flex;align-items:center;min-height:32px;padding:0 10px;border-radius:999px;background:#eef5f0;color:#62766f;font-size:13px;font-weight:700}
 .shopping-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-top:16px}
-.shopping-summary>div{display:grid;gap:2px;padding:10px 11px;border:1px solid #e2ebe5;border-radius:10px;background:#fbfcfa}
+.shopping-summary>div{display:grid;gap:3px;padding:10px 11px;border:1px solid #e2ebe5;border-radius:10px;background:#fbfcfa}
 .shopping-summary span{color:#71827c;font-size:12px}
 .shopping-summary strong{overflow:hidden;color:#173d37;font-size:14px;text-overflow:ellipsis;white-space:nowrap}
+.shopping-summary-twd{color:#9aa9a3;font-size:11px;font-weight:700;line-height:1.4}
 .shopping-filters{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
 .shopping-filters :deep(.el-select){width:145px}
 .shopping-group-button{min-height:36px;color:#2f7d70;font-weight:700}
