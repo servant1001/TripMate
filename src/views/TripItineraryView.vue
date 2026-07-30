@@ -346,6 +346,8 @@ function openGroupForm(entries: ItineraryItem[] = [], existing?: ItineraryItem) 
     ? props.items.filter((item) => item.itineraryGroupId === existing.id).map((item) => item.id)
     : entries.map((item) => item.id)
   const first = entries[0] || existing
+  const uniqueLocations = [...new Set(entries.map((item) => (item.location || '').trim()).filter(Boolean))]
+  const suggestedGroupLocation = uniqueLocations.length === 1 ? uniqueLocations[0] : ''
   Object.assign(
     itineraryGroup,
     existing
@@ -363,8 +365,8 @@ function openGroupForm(entries: ItineraryItem[] = [], existing?: ItineraryItem) 
           time: '',
           endTime: '',
           title: '',
-          location: first?.location || '',
-          mapUrl: first?.mapUrl || '',
+          location: suggestedGroupLocation,
+          mapUrl: '',
           note: '',
         },
   )

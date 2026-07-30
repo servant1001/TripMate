@@ -142,6 +142,67 @@ function isItineraryGroup(entry: ItineraryItem) { return activityKind(entry) ===
 function visibleDayEntries(day: ItineraryDay) { return day.entries.filter((entry) => !entry.itineraryGroupId); }
 function groupMembers(day: ItineraryDay, group: ItineraryItem) { return day.entries.filter((entry) => entry.itineraryGroupId === group.id).sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || (a.time || "").localeCompare(b.time || "")); }
 function groupTypeSummary(day: ItineraryDay, group: ItineraryItem) { const counts = groupMembers(day, group).reduce<Record<string, number>>((all, item) => { all[item.type || "其他"] = (all[item.type || "其他"] || 0) + 1; return all }, {}); return Object.entries(counts).map(([type, count]) => `${type} ${count}`).join("、"); }
+function normalizedGroupArea(value?: string) {
+  const text = (value || "").trim();
+  return text && text !== "未設定區域" ? text : "";
+}
+function groupMapStops(day: ItineraryDay, group: ItineraryItem) {
+  const seen = new Set<string>();
+  return groupMembers(day, group)
+    .map((entry) => (entry.location || entry.title || "").trim())
+    .filter((label) => {
+      if (!label || seen.has(label)) return false;
+      seen.add(label);
+      return true;
+    })
+    .slice(0, 8);
+}
+function groupDirectionsUrl(day: ItineraryDay, group: ItineraryItem) {
+  const stops = groupMapStops(day, group);
+  if (!stops.length) return "";
+  if (stops.length === 1) {
+    const firstMember = groupMembers(day, group)[0];
+    return props.mapsUrl(stops[0], firstMember?.mapUrl);
+  }
+  const [origin, ...rest] = stops;
+  const destination = rest[rest.length - 1];
+  const waypoints = rest.slice(0, -1);
+  const params = new URLSearchParams({
+    api: "1",
+    origin,
+    destination,
+    travelmode: "walking",
+  });
+  if (waypoints.length) {
+    params.set("waypoints", waypoints.join("|"));
+  }
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
+}
+function groupMapUrl(day: ItineraryDay, group: ItineraryItem) {
+  const members = groupMembers(day, group);
+  const firstMember = members[0];
+  const area = normalizedGroupArea(group.location);
+  const inheritedSingleSpot =
+    members.length > 1 &&
+    Boolean(group.mapUrl) &&
+    group.mapUrl === (firstMember?.mapUrl || "") &&
+    (!area || area === (firstMember?.location || "").trim());
+
+  if (area && !inheritedSingleSpot) {
+    return props.mapsUrl(area, group.mapUrl);
+  }
+
+  const directionsUrl = groupDirectionsUrl(day, group);
+  if (directionsUrl) return directionsUrl;
+
+  if (group.mapUrl && !inheritedSingleSpot) {
+    return props.mapsUrl(group.title || area, group.mapUrl);
+  }
+
+  if (area) return props.mapsUrl(area);
+  if (group.title.trim()) return props.mapsUrl(group.title.trim());
+  return "";
+}
 function toggleGroupingMode() { groupingMode.value = !groupingMode.value; if (!groupingMode.value) selectedGroupEntryIds.value = []; }
 function toggleGroupEntry(entry: ItineraryItem, checked: boolean) { const selected = new Set(selectedGroupEntryIds.value); checked ? selected.add(entry.id) : selected.delete(entry.id); selectedGroupEntryIds.value = [...selected]; }
 function createGroupFromSelection() {
@@ -722,7 +783,7 @@ function sharedLabel(entry: ItineraryItem) {
 
               <div v-show="!isCollapsed(entry)" class="itinerary-card-body">
                 <template v-if="isItineraryGroup(entry)">
-                  <div class="itinerary-group-summary"><p><strong>{{ entry.location || '未設定區域' }}</strong><span>共 {{ groupMembers(day, entry).length }} 項</span><span v-if="groupTypeSummary(day, entry)">{{ groupTypeSummary(day, entry) }}</span></p><a v-if="entry.mapUrl || entry.location" :href="mapsUrl(entry.location || entry.title, entry.mapUrl)" target="_blank" rel="noopener"><el-icon><Location /></el-icon>在 Google Maps 開啟 <el-icon><TopRight /></el-icon></a></div>
+                  <div class="itinerary-group-summary"><p><strong>{{ entry.location || '未設定區域' }}</strong><span>共 {{ groupMembers(day, entry).length }} 項</span><span v-if="groupTypeSummary(day, entry)">{{ groupTypeSummary(day, entry) }}</span></p><a v-if="groupMapUrl(day, entry)" :href="groupMapUrl(day, entry)" target="_blank" rel="noopener noreferrer"><el-icon><Location /></el-icon>在 Google Maps 開啟 <el-icon><TopRight /></el-icon></a></div>
                   <div class="itinerary-group-members" :data-sort-scope="`group:${entry.id}`" :ref="(element) => registerSortableList(`group:${entry.id}`, element as Element | null)"><article v-for="(child, childIndex) in groupMembers(day, entry)" :key="child.id" class="itinerary-group-member" :data-itinerary-id="child.id" :class="[itineraryTypeClass(child.type), { 'is-completed': child.completed, 'is-sortable-enabled': sortingEnabled && canEditTrip }]"><el-checkbox v-if="!groupingMode" :model-value="child.completed" :disabled="!canEditTrip" :aria-label="`將「${child.title}」標示為${child.completed ? '未完成' : '完成'}`" @change="emit('toggle', child)" /><el-checkbox v-else :model-value="isEntrySelected(child)" :aria-label="`選取「${child.title}」進行多選操作`" @change="toggleGroupEntry(child, Boolean($event))" /><img v-if="child.imageUrl" :src="child.imageUrl" :alt="`${child.title} 圖片`" /><span v-else class="itinerary-group-member-placeholder">{{ child.type.slice(0, 1) }}</span><span class="itinerary-group-member-copy"><el-tooltip v-if="sortingEnabled && canEditTrip" content="長按並拖曳排序" placement="top"><span class="group-drag-handle" aria-hidden="true"><el-icon><Rank /></el-icon></span></el-tooltip><strong>{{ child.title }}</strong><small><time>{{ child.time || '未排時間' }}</time><template v-if="child.endTime">－{{ child.endTime }}</template><span class="itinerary-type-chip" :class="itineraryTypeClass(child.type)">{{ child.type }}</span><template v-if="duration(child)">· {{ duration(child) }}</template><template v-if="hasTransportFare(child)"><span aria-hidden="true">·</span><span class="itinerary-fare-inline"><span class="itinerary-fare-inline-label">{{ transportFareInlineLabel(child) }}</span>{{ transportFareEstimateAmount(child) }}</span><span v-if="transportFareInlineMeta(child)" class="itinerary-fare-inline-meta">{{ transportFareInlineMeta(child) }}</span></template></small></span><el-dropdown v-if="canEditTrip" trigger="click" @command="handleEntryAction($event, child)"><el-button class="itinerary-more-button" text circle aria-label="更多子行程操作"><el-icon><MoreFilled /></el-icon></el-button><template #dropdown><el-dropdown-menu><el-dropdown-item v-if="canEstimateTransitFare(child)" command="estimate-fare">AI 估算票價</el-dropdown-item><el-dropdown-item command="edit">編輯行程</el-dropdown-item><el-dropdown-item command="add-after">在此後新增行程</el-dropdown-item><el-dropdown-item command="remove" divided class="itinerary-delete-menu-item">刪除行程</el-dropdown-item></el-dropdown-menu></template></el-dropdown><div class="itinerary-group-member-detail"><p v-if="timeWarning(groupMembers(day, entry), childIndex)" class="itinerary-time-warning"><el-icon><WarningFilled /></el-icon>{{ timeWarning(groupMembers(day, entry), childIndex) }}</p><p v-if="child.note" class="itinerary-note">{{ child.note }}</p><el-button v-if="shoppingItemsFor(child).length" class="itinerary-shopping-button" text @click.stop="openShoppingPreview(child)"><el-icon><ShoppingCart /></el-icon>採購清單 {{ shoppingItemsFor(child).length }} 項</el-button><div v-if="child.type === '交通' && child.transportDestinationName" class="itinerary-transport-route" aria-label="交通路線"><a v-if="child.mapUrl || child.location" class="itinerary-transport-stop is-linked" :href="mapsUrl(child.location || child.title, child.mapUrl)" target="_blank" rel="noopener"><span class="itinerary-transport-stop-label">出發</span><strong>{{ child.location || child.title }}</strong><el-icon><TopRight /></el-icon></a><p v-else class="itinerary-transport-stop"><span class="itinerary-transport-stop-label">出發</span><strong>{{ child.title }}</strong></p><span class="itinerary-transport-arrow" aria-hidden="true">→</span><a v-if="child.transportDestinationMapUrl || child.transportDestinationLocation" class="itinerary-transport-stop is-linked" :href="mapsUrl(child.transportDestinationLocation || child.transportDestinationName, child.transportDestinationMapUrl)" target="_blank" rel="noopener"><span class="itinerary-transport-stop-label">抵達</span><strong>{{ child.transportDestinationLocation || child.transportDestinationName }}</strong><el-icon><TopRight /></el-icon></a><p v-else class="itinerary-transport-stop"><span class="itinerary-transport-stop-label">抵達</span><strong>{{ child.transportDestinationName }}</strong></p></div><a v-else-if="child.mapUrl || child.location" class="itinerary-location is-linked" :href="mapsUrl(child.location, child.mapUrl)" target="_blank" rel="noopener"><el-icon><Location /></el-icon><span>{{ child.location || '在 Google Maps 開啟' }}</span><el-icon class="itinerary-external-icon"><TopRight /></el-icon></a><p v-else class="itinerary-location is-empty"><el-icon><Location /></el-icon><span>尚未設定地點</span></p></div></article></div>
                 </template>
                 <template v-if="!isFreeActivity(entry) && !isItineraryGroup(entry)"
