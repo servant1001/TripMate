@@ -489,6 +489,16 @@ async function duplicate(item: ShoppingItem) {
   }
 }
 
+async function reorderShoppingItems(items: ShoppingItem[]) {
+  if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看購物清單，無法修改。')
+  try {
+    await store.reorderShoppingItems(items)
+    ElMessage.success('已更新購物清單順序。')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '無法儲存購物清單排序。')
+  }
+}
+
 async function convert(item: ShoppingItem) {
   if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看購物清單，無法修改。')
   if (item.expenseId) return ElMessage.info('這筆商品已建立對應開銷。')
@@ -579,6 +589,7 @@ onUnmounted(() => {
       @remove="remove"
       @status="updateStatus"
       @convert="convert"
+      @reorder="reorderShoppingItems"
       @batch-link="openBatchShoppingItineraryPicker($event)"
     />
 

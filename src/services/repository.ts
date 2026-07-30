@@ -846,6 +846,7 @@ export const repository = {
     const item = {
       ...input,
       id: id(),
+      order: input.order ?? Date.now(),
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -880,6 +881,24 @@ export const repository = {
     );
     write(d);
     return updated;
+  },
+  async reorderShoppingItems(items: ShoppingItem[]) {
+    if (!items.length) return;
+    const db = database;
+    if (firebaseEnabled && db) {
+      const updates: Record<string, number> = {};
+      items.forEach((item, order) => {
+        updates[`shoppingItems/${item.tripId}/${item.id}/order`] = order;
+      });
+      await update(ref(db), updates);
+      return;
+    }
+    const orders = new Map(items.map((item, order) => [item.id, order]));
+    const d = read();
+    d.shoppingItems = d.shoppingItems.map((item) =>
+      orders.has(item.id) ? { ...item, order: orders.get(item.id) } : item,
+    );
+    write(d);
   },
   async deleteShoppingItem(item: ShoppingItem) {
     const db = database;

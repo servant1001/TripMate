@@ -367,6 +367,22 @@ export const useTripStore = defineStore("trips", {
       if (index >= 0) this.shoppingItems.splice(index, 1, updated);
       return updated;
     },
+    async reorderShoppingItems(items: ShoppingItem[]) {
+      const previousOrders = new Map(
+        this.shoppingItems.map((item) => [item.id, item.order]),
+      );
+      items.forEach((item, order) => {
+        item.order = order;
+      });
+      try {
+        await repository.reorderShoppingItems(items);
+      } catch (error) {
+        this.shoppingItems.forEach((item) => {
+          item.order = previousOrders.get(item.id);
+        });
+        throw error;
+      }
+    },
     async deleteShoppingItem(item: ShoppingItem) {
       await repository.deleteShoppingItem(item);
       this.shoppingItems = this.shoppingItems.filter(

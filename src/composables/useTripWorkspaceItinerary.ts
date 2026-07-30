@@ -78,7 +78,7 @@ export function useTripWorkspaceItinerary({
           (a, b) =>
             (a.order ?? Number.MAX_SAFE_INTEGER) -
               (b.order ?? Number.MAX_SAFE_INTEGER) ||
-            (a.time || '').localeCompare(b.time || ''),
+            compareItineraryTime(a, b),
         ),
       })),
   )
@@ -107,13 +107,37 @@ export function useTripWorkspaceItinerary({
     return `約 ${hours ? `${hours} 小時` : ''}${hours && remainingMinutes ? ' ' : ''}${remainingMinutes ? `${remainingMinutes} 分` : ''}`
   }
 
+  function timeToMinutes(value?: string) {
+    if (!value) return Number.NaN
+    const [hourText, minuteText = '0'] = value.split(':')
+    const hour = Number(hourText)
+    const minute = Number(minuteText)
+    if (!Number.isFinite(hour) || !Number.isFinite(minute)) return Number.NaN
+    return hour * 60 + minute
+  }
+
+  function compareItineraryTime(a: ItineraryItem, b: ItineraryItem) {
+    const aMinutes = timeToMinutes(a.time)
+    const bMinutes = timeToMinutes(b.time)
+    const aHasTime = Number.isFinite(aMinutes)
+    const bHasTime = Number.isFinite(bMinutes)
+    if (aHasTime && bHasTime && aMinutes !== bMinutes) return aMinutes - bMinutes
+    if (aHasTime && !bHasTime) return -1
+    if (!aHasTime && bHasTime) return 1
+    return 0
+  }
+
   function itineraryTimeWarning(entries: ItineraryItem[], index: number) {
     if (index === 0) return ''
     const previous = entries[index - 1]
     const entry = entries[index]
     if (!previous?.time || !entry?.time) return ''
-    if (entry.time < previous.time) return '開始時間早於上一筆行程'
-    if (entry.time < (previous.endTime || previous.time)) return '與上一筆行程時間重疊'
+    const previousStart = timeToMinutes(previous.time)
+    const previousEnd = timeToMinutes(previous.endTime || previous.time)
+    const entryStart = timeToMinutes(entry.time)
+    if (!Number.isFinite(previousStart) || !Number.isFinite(previousEnd) || !Number.isFinite(entryStart)) return ''
+    if (entryStart < previousStart) return '開始時間早於上一筆行程'
+    if (entryStart < previousEnd) return '與上一筆行程時間重疊'
     return ''
   }
 
@@ -203,7 +227,7 @@ export function useTripWorkspaceItinerary({
         (a, b) =>
           (a.order ?? Number.MAX_SAFE_INTEGER) -
             (b.order ?? Number.MAX_SAFE_INTEGER) ||
-          (a.time || '').localeCompare(b.time || ''),
+          compareItineraryTime(a, b),
       )
     if (oldIndex < 0 || newIndex < 0 || oldIndex >= entries.length || newIndex >= entries.length) return
     const reordered = [...entries]
@@ -228,7 +252,7 @@ export function useTripWorkspaceItinerary({
         (a, b) =>
           (a.order ?? Number.MAX_SAFE_INTEGER) -
             (b.order ?? Number.MAX_SAFE_INTEGER) ||
-          (a.time || '').localeCompare(b.time || ''),
+          compareItineraryTime(a, b),
       )
     if (oldIndex < 0 || newIndex < 0 || oldIndex >= entries.length || newIndex >= entries.length) return
     const reordered = [...entries]
@@ -267,7 +291,7 @@ export function useTripWorkspaceItinerary({
     const byOrder = (a: ItineraryItem, b: ItineraryItem) =>
       (a.order ?? Number.MAX_SAFE_INTEGER) -
         (b.order ?? Number.MAX_SAFE_INTEGER) ||
-      (a.time || '').localeCompare(b.time || '')
+      compareItineraryTime(a, b)
 
     const entriesFor = (scope: string) =>
       scope.startsWith('personal:')
