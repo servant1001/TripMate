@@ -41,7 +41,7 @@ const store = useTripStore()
 const showGroupForm = ref(false)
 const editingGroupId = ref<string | null>(null)
 const groupMemberIds = ref<string[]>([])
-const itineraryGroup = reactive({ date: '', time: '', endTime: '', title: '', location: '', mapUrl: '', note: '' })
+const itineraryGroup = reactive({ date: '', time: '', endTime: '', title: '', location: '', mapUrl: '', website: '', note: '' })
 const showItem = ref(false)
 const savingItem = ref(false)
 const editingItemId = ref<string | null>(null)
@@ -68,6 +68,7 @@ const item = reactive({
   title: '',
   location: '',
   mapUrl: '',
+  website: '',
   imageUrl: '',
   note: '',
   type: '景點',
@@ -102,6 +103,10 @@ function normalizeGoogleMapsUrl(value: string) {
     throw new Error('請貼上有效的 Google Maps 景點網址。')
   }
 }
+function normalizeUrl(value: string) {
+  const raw = value.trim()
+  return raw && !/^https?:\/\//i.test(raw) ? `https://${raw}` : raw
+}
 
 function normalizeFavoriteType(type: FavoriteType): FavoriteType { return type === 'cafe' ? 'restaurant' : type === 'alternative' || type === 'other' ? 'attraction' : type }
 function favoriteToItineraryType(type: FavoriteType) { return ({ attraction: '景點', restaurant: '餐廳', transport: '交通', stay: '住宿', shop: '商店', cafe: '餐廳', alternative: '景點', other: '景點' } as Record<FavoriteType, string>)[type] }
@@ -113,13 +118,13 @@ function inferredFareSource(entry?: ItineraryItem): TransportFareSource | '' {
   if (typeof entry.transportFareEstimateAmount === 'number') return 'ai'
   return ''
 }
-function resetItem(entry?: ItineraryItem, favoriteId?: string) { const linkedFavoriteId = favoriteId || entry?.favoriteId || ''; pendingFavoriteId.value = linkedFavoriteId || null; itemFavoriteId.value = linkedFavoriteId; itemItineraryGroupId.value = entry?.itineraryGroupId || ''; editingItemId.value = entry?.id || null; Object.assign(item, entry ? { date: entry.date, time: entry.time, endTime: entry.endTime || '', title: entry.title, location: entry.location, mapUrl: entry.mapUrl || '', imageUrl: entry.imageUrl || '', note: entry.note || '', type: entry.type, transportDestinationFavoriteId: entry.transportDestinationFavoriteId || '', transportDestinationName: entry.transportDestinationName || '', transportDestinationLocation: entry.transportDestinationLocation || '', transportDestinationMapUrl: entry.transportDestinationMapUrl || '', transportFareAmount: entry.transportFareAmount ?? entry.transportFareEstimateAmount, transportFareCurrency: entry.transportFareCurrency || entry.transportFareEstimateCurrency || props.trip.currency, transportFareSource: inferredFareSource(entry), transportFareEstimateConfidence: entry.transportFareEstimateConfidence, transportFareEstimateReasoning: entry.transportFareEstimateReasoning || '', transportFareEstimateAssumptions: entry.transportFareEstimateAssumptions || [], transportFareEstimatedAt: entry.transportFareEstimatedAt, transportFareEstimateModel: entry.transportFareEstimateModel || '' } : { date: '', time: '', endTime: '', title: '', location: '', mapUrl: '', imageUrl: '', note: '', type: '景點', transportDestinationFavoriteId: '', transportDestinationName: '', transportDestinationLocation: '', transportDestinationMapUrl: '', transportFareAmount: undefined, transportFareCurrency: props.trip.currency, transportFareSource: '', transportFareEstimateConfidence: undefined, transportFareEstimateReasoning: '', transportFareEstimateAssumptions: [], transportFareEstimatedAt: undefined, transportFareEstimateModel: '' }) }
+function resetItem(entry?: ItineraryItem, favoriteId?: string) { const linkedFavoriteId = favoriteId || entry?.favoriteId || ''; pendingFavoriteId.value = linkedFavoriteId || null; itemFavoriteId.value = linkedFavoriteId; itemItineraryGroupId.value = entry?.itineraryGroupId || ''; editingItemId.value = entry?.id || null; Object.assign(item, entry ? { date: entry.date, time: entry.time, endTime: entry.endTime || '', title: entry.title, location: entry.location, mapUrl: entry.mapUrl || '', website: entry.website || '', imageUrl: entry.imageUrl || '', note: entry.note || '', type: entry.type, transportDestinationFavoriteId: entry.transportDestinationFavoriteId || '', transportDestinationName: entry.transportDestinationName || '', transportDestinationLocation: entry.transportDestinationLocation || '', transportDestinationMapUrl: entry.transportDestinationMapUrl || '', transportFareAmount: entry.transportFareAmount ?? entry.transportFareEstimateAmount, transportFareCurrency: entry.transportFareCurrency || entry.transportFareEstimateCurrency || props.trip.currency, transportFareSource: inferredFareSource(entry), transportFareEstimateConfidence: entry.transportFareEstimateConfidence, transportFareEstimateReasoning: entry.transportFareEstimateReasoning || '', transportFareEstimateAssumptions: entry.transportFareEstimateAssumptions || [], transportFareEstimatedAt: entry.transportFareEstimatedAt, transportFareEstimateModel: entry.transportFareEstimateModel || '' } : { date: '', time: '', endTime: '', title: '', location: '', mapUrl: '', website: '', imageUrl: '', note: '', type: '景點', transportDestinationFavoriteId: '', transportDestinationName: '', transportDestinationLocation: '', transportDestinationMapUrl: '', transportFareAmount: undefined, transportFareCurrency: props.trip.currency, transportFareSource: '', transportFareEstimateConfidence: undefined, transportFareEstimateReasoning: '', transportFareEstimateAssumptions: [], transportFareEstimatedAt: undefined, transportFareEstimateModel: '' }) }
 function openNewItemForm() { if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。'); itemActivityKind.value = 'shared'; personalActivityParentId.value = ''; insertAfterItemId.value = null; resetItem(); showItem.value = true }
 function openItemFormForEdit(entry: ItineraryItem) { if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。'); itemActivityKind.value = entry.activityKind || 'shared'; personalActivityParentId.value = entry.parentFreeActivityId || ''; insertAfterItemId.value = null; resetItem(entry); showItem.value = true }
 function openPersonalItemForm(group: ItineraryItem) { if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。'); itemActivityKind.value = 'personal'; personalActivityParentId.value = group.id; insertAfterItemId.value = null; resetItem(); item.date = group.date; item.type = '個人行程'; showItem.value = true }
 function openItemFormAfter(entry: ItineraryItem) { if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。'); itemActivityKind.value = 'shared'; personalActivityParentId.value = ''; insertAfterItemId.value = entry.id; resetItem(); itemItineraryGroupId.value = entry.itineraryGroupId || ''; item.date = entry.date; showItem.value = true }
 function openFavoritePicker(target: 'source' | 'destination' = 'source') { favoritePickerTarget.value = target; favoritePickerSearch.value = ''; favoritePickerType.value = 'all'; showFavoritePicker.value = true }
-function applyFavoriteToItem(favoriteId: string) { const selected = props.favorites.find((entry) => entry.id === favoriteId); if (!selected) return; const type = favoriteToItineraryType(selected.type); itemFavoriteId.value = selected.id; pendingFavoriteId.value = selected.id; Object.assign(item, { title: selected.name, location: selected.location || '', mapUrl: selected.mapUrl || '', imageUrl: selected.imageUrl || '', type }); if (type !== '交通') Object.assign(item, { transportDestinationFavoriteId: '', transportDestinationName: '', transportDestinationLocation: '', transportDestinationMapUrl: '' }) }
+function applyFavoriteToItem(favoriteId: string) { const selected = props.favorites.find((entry) => entry.id === favoriteId); if (!selected) return; const type = favoriteToItineraryType(selected.type); itemFavoriteId.value = selected.id; pendingFavoriteId.value = selected.id; Object.assign(item, { title: selected.name, location: selected.location || '', mapUrl: selected.mapUrl || '', website: selected.website || '', imageUrl: selected.imageUrl || '', type }); if (type !== '交通') Object.assign(item, { transportDestinationFavoriteId: '', transportDestinationName: '', transportDestinationLocation: '', transportDestinationMapUrl: '' }) }
 function selectFavoriteForItem(favoriteId: string) { const selected = props.favorites.find((entry) => entry.id === favoriteId); if (!selected) return; if (favoritePickerTarget.value === 'destination') Object.assign(item, { transportDestinationFavoriteId: selected.id, transportDestinationName: selected.name, transportDestinationLocation: selected.location || '', transportDestinationMapUrl: selected.mapUrl || '' }); else applyFavoriteToItem(favoriteId); showFavoritePicker.value = false }
 function didTransportFareInputsChange(existing?: ItineraryItem, normalizedMapUrl = '', normalizedDestinationMapUrl = '') {
   if (!existing) return false
@@ -207,6 +212,7 @@ async function saveItem() {
     const isPersonal = kind === 'personal'
     const existing = editingItemId.value ? props.items.find((entry) => entry.id === editingItemId.value) : undefined
     const rawImage = item.imageUrl.trim()
+    const normalizedWebsite = normalizeUrl(item.website)
     const normalizedMapUrl = isFree ? '' : normalizeGoogleMapsUrl(item.mapUrl)
     const normalizedDestinationMapUrl = !isFree && item.type === '交通' ? normalizeGoogleMapsUrl(item.transportDestinationMapUrl) : ''
     let payload = {
@@ -215,6 +221,7 @@ async function saveItem() {
       type: isFree ? '自由活動' : item.type,
       location: isFree ? '' : item.location.trim(),
       mapUrl: normalizedMapUrl,
+      website: normalizedWebsite,
       imageUrl: isFree ? '' : rawImage && !/^https?:\/\//i.test(rawImage) ? `https://${rawImage}` : rawImage,
       note: item.note.trim(),
       activityKind: kind,
@@ -358,6 +365,7 @@ function openGroupForm(entries: ItineraryItem[] = [], existing?: ItineraryItem) 
           title: existing.title,
           location: existing.location || '',
           mapUrl: existing.mapUrl || '',
+          website: existing.website || '',
           note: existing.note || '',
         }
       : {
@@ -367,6 +375,7 @@ function openGroupForm(entries: ItineraryItem[] = [], existing?: ItineraryItem) 
           title: '',
           location: suggestedGroupLocation,
           mapUrl: '',
+          website: '',
           note: '',
         },
   )
@@ -393,6 +402,7 @@ async function saveGroup() {
       title: itineraryGroup.title.trim(),
       location: itineraryGroup.location.trim(),
       mapUrl: normalizeGoogleMapsUrl(itineraryGroup.mapUrl),
+      website: normalizeUrl(itineraryGroup.website),
       imageUrl: '',
       note: itineraryGroup.note.trim(),
       type: '地點群組',
@@ -544,6 +554,7 @@ async function bulkRemoveEntries(entries: ItineraryItem[]) {
           <el-form-item label="結束時間（選填）"><el-time-picker v-model="itineraryGroup.endTime" value-format="HH:mm" format="HH:mm" placeholder="選填" /></el-form-item>
         </div>
         <el-form-item label="Google Maps 區域連結（選填）"><el-input v-model="itineraryGroup.mapUrl" placeholder="貼上 Google Maps 區域或地點網址" /></el-form-item>
+        <el-form-item label="群組網站（選填）"><el-input v-model="itineraryGroup.website" placeholder="例如：https://example.com" /><small>可放區域介紹、商圈官網或整理頁面，會顯示在群組卡片上。</small></el-form-item>
         <el-form-item label="群組備註（選填）"><el-input v-model="itineraryGroup.note" type="textarea" :rows="2" maxlength="200" show-word-limit /></el-form-item>
         <el-form-item label="群組內行程">
           <el-checkbox-group v-model="groupMemberIds" class="itinerary-group-member-selector">
@@ -575,6 +586,7 @@ async function bulkRemoveEntries(entries: ItineraryItem[]) {
         <el-form-item v-if="itemActivityKind !== 'free' && item.type === '交通'" label="抵達站／目的地（選填）"><div class="itinerary-favorite-picker-control transport-destination-control"><div class="itinerary-favorite-picker-copy"><strong>{{ item.transportDestinationName || '尚未選擇抵達站' }}</strong><span>{{ item.transportDestinationLocation || (item.transportDestinationMapUrl ? '已設定 Google Maps 連結' : '從旅遊收藏選擇下車站或目的地') }}</span></div><div class="transport-destination-actions"><el-button v-if="item.transportDestinationName" text class="transport-destination-clear" aria-label="清除抵達站" @click="Object.assign(item, { transportDestinationFavoriteId: '', transportDestinationName: '', transportDestinationLocation: '', transportDestinationMapUrl: '' })">清除</el-button><el-button class="itinerary-favorite-picker-button" @click="openFavoritePicker('destination')">{{ item.transportDestinationName ? '更換抵達站' : '選擇抵達站' }}</el-button></div></div><small>可選交通站、景點、住宿等任何收藏項目；設定後行程卡片會顯示出發站 → 抵達站。</small></el-form-item>
         <el-form-item v-if="itemActivityKind !== 'free' && item.type === '交通'" label="交通費（選填）"><div class="transport-fare-field"><el-input-number :model-value="item.transportFareAmount" :min="0" :step="1" controls-position="right" placeholder="輸入交通費" @update:model-value="setManualTransportFare($event as number | null | undefined)" /><el-button class="transport-fare-ai-button" :loading="estimatingItemFare" :disabled="estimatingItemFare || !canEstimateDraftTransportFare" @click="estimateTransportFareForForm">智能估算</el-button></div><div v-if="item.transportFareAmount" class="transport-fare-meta"><span>{{ transportFareSourceLabel(item.transportFareSource) }} {{ item.transportFareCurrency || trip.currency }} {{ new Intl.NumberFormat('zh-TW', { maximumFractionDigits: 2 }).format(item.transportFareAmount) }}</span><small v-if="item.transportFareSource && item.transportFareSource !== 'manual' && item.transportFareEstimateConfidence">{{ item.transportFareEstimateConfidence === 'high' ? '高信心' : item.transportFareEstimateConfidence === 'low' ? '低信心' : '中等信心' }}</small></div><small>{{ transportFareSourceHint(item.transportFareSource) }}</small></el-form-item>
         <el-form-item v-if="itemActivityKind !== 'free'" label="Google Maps 景點網址（選填）"><el-input v-model="item.mapUrl" placeholder="貼上 Google Maps 或 maps.app.goo.gl 分享網址" /><small>行程卡片會直接開啟此景點；既有的地點文字資料會保留。</small></el-form-item>
+        <el-form-item label="網站（選填）"><el-input v-model="item.website" placeholder="例如：https://example.com" /><small>{{ itemActivityKind === 'free' ? '可放自由活動整理頁、預約頁或相關網站。' : '可放官網、菜單、訂位頁或活動介紹頁；從旅遊收藏帶入時會自動填入。' }}</small></el-form-item>
         <el-form-item v-if="itemActivityKind !== 'free'" label="行程圖片網址（選填）"><el-input v-model="item.imageUrl" placeholder="貼上圖片網址，例如 https://..." /><div v-if="item.imageUrl" class="itinerary-form-image-preview"><img :src="item.imageUrl" alt="行程圖片預覽" /><div><strong>行程圖片預覽</strong><span>從旅遊收藏帶入或使用此網址顯示</span></div></div><small>圖片會以縮圖顯示在每日行程卡片；從旅遊收藏帶入時會自動填入。</small></el-form-item>
         <el-form-item label="備註（選填）"><el-input v-model="item.note" type="textarea" :rows="3" maxlength="240" show-word-limit placeholder="例如：預約資訊、集合地點或注意事項" /></el-form-item>
       </el-form>
