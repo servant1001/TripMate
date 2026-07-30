@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Location, MoreFilled, Picture, Plus, ShoppingBag, Switch, TopRight, User } from '@element-plus/icons-vue'
+import { Location, MoreFilled, Picture, Plus, Search, ShoppingBag, Switch, TopRight, User } from '@element-plus/icons-vue'
 import type { ShoppingItem, ShoppingPriority, ShoppingStatus, ShoppingType, Trip } from '../types'
 import type { ExchangeRateQuote } from '../services/exchangeRates'
 
@@ -12,6 +12,7 @@ const typeFilter = ref<'all' | ShoppingType>('all')
 const categoryFilter = ref('all')
 const assigneeFilter = ref('all')
 const storeFilter = ref('all')
+const keywordFilter = ref('')
 const storeMode = ref(false)
 const groupByStore = ref(true)
 const selectionMode = ref(false)
@@ -27,8 +28,27 @@ const sortedItems = computed(() => [...props.items].sort((a, b) => {
   const priorityOrder: Record<ShoppingPriority, number> = { high: 0, medium: 1, low: 2 }
   return statusOrder[a.status] - statusOrder[b.status] || priorityOrder[a.priority] - priorityOrder[b.priority] || (a.plannedDate || '9999-12-31').localeCompare(b.plannedDate || '9999-12-31') || b.createdAt - a.createdAt
 }))
-const filteredItems = computed(() => sortedItems.value.filter((item) => (statusFilter.value === 'all' || item.status === statusFilter.value) && (typeFilter.value === 'all' || item.shoppingType === typeFilter.value) && (categoryFilter.value === 'all' || item.category === categoryFilter.value) && (assigneeFilter.value === 'all' || (assigneeFilter.value === 'unassigned' ? !item.assignedTo : item.assignedTo === assigneeFilter.value)) && (storeFilter.value === 'all' || item.storeName === storeFilter.value)))
-const storeModeAllItems = computed(() => storeFilter.value === 'all' ? [] : props.items.filter((item) => item.storeName?.trim() === storeFilter.value && item.status !== 'cancelled'))
+function itemMatchesKeyword(item: ShoppingItem) {
+  const keyword = keywordFilter.value.trim().toLocaleLowerCase()
+  if (!keyword) return true
+  return [
+    item.name,
+    item.description,
+    item.category,
+    item.storeName,
+    item.storeBranch,
+    item.location,
+    item.address,
+    item.note,
+    item.requestedBy,
+    item.giftRecipient,
+    item.assignedTo ? props.memberName(item.assignedTo) : '',
+  ]
+    .filter((value): value is string => Boolean(value))
+    .some((value) => value.toLocaleLowerCase().includes(keyword))
+}
+const filteredItems = computed(() => sortedItems.value.filter((item) => itemMatchesKeyword(item) && (statusFilter.value === 'all' || item.status === statusFilter.value) && (typeFilter.value === 'all' || item.shoppingType === typeFilter.value) && (categoryFilter.value === 'all' || item.category === categoryFilter.value) && (assigneeFilter.value === 'all' || (assigneeFilter.value === 'unassigned' ? !item.assignedTo : item.assignedTo === assigneeFilter.value)) && (storeFilter.value === 'all' || item.storeName === storeFilter.value)))
+const storeModeAllItems = computed(() => storeFilter.value === 'all' ? [] : props.items.filter((item) => itemMatchesKeyword(item) && item.storeName?.trim() === storeFilter.value && item.status !== 'cancelled'))
 const storeModePendingItems = computed(() => storeModeAllItems.value.filter((item) => item.status !== 'purchased'))
 const storeModePurchasedCount = computed(() => storeModeAllItems.value.filter((item) => item.status === 'purchased').length)
 const storeModeEstimatedTotal = computed(() => storeModePendingItems.value.reduce((sum, item) => sum + (Number(item.estimatedTotalPrice) || (Number(item.estimatedUnitPrice) || 0) * item.quantity), 0))
@@ -130,6 +150,19 @@ function primaryAmountLabel(item: ShoppingItem) { return item.status === 'purcha
       </div>
     </div>
 
+    <div class="shopping-search-bar">
+      <el-input
+        v-model="keywordFilter"
+        clearable
+        placeholder="搜尋商品名稱、店家、分類、地點或備註"
+        aria-label="搜尋購物商品"
+      >
+        <template #prefix>
+          <el-icon><Search /></el-icon>
+        </template>
+      </el-input>
+    </div>
+
     <div v-if="storeMode" class="shopping-store-mode-panel"><div class="shopping-store-mode-top"><div><span>目前店家</span><strong>{{ storeFilter }}</strong><small>只顯示尚未完成的採買項目</small></div><div class="shopping-store-switch"><el-button text circle aria-label="上一間店" title="上一間店" @click="changeStore(-1)">‹</el-button><el-select v-model="storeFilter" aria-label="選擇到店店家"><el-option v-for="store in stores" :key="store" :label="store" :value="store" /></el-select><el-button text circle aria-label="下一間店" title="下一間店" @click="changeStore(1)">›</el-button></div></div><div class="shopping-store-progress"><div><span>採買進度</span><strong>{{ storeModePurchasedCount }} / {{ storeModeAllItems.length }} 已購買</strong></div><el-progress :percentage="storeModeProgress" :stroke-width="8" :show-text="false" /><p><span>尚待購買 {{ storeModePendingItems.length }} 項</span><strong>{{ trip.currency }} {{ storeModeEstimatedTotal.toLocaleString() }}</strong></p></div></div>
     <div v-else class="shopping-filters"><el-select v-model="statusFilter" aria-label="依狀態篩選"><el-option label="全部狀態" value="all" /><el-option v-for="(label, status) in statusLabels" :key="status" :label="label" :value="status" /></el-select><el-select v-model="typeFilter" aria-label="依購物類型篩選"><el-option label="全部類型" value="all" /><el-option v-for="(label, type) in typeLabels" :key="type" :label="label" :value="type" /></el-select><el-select v-model="categoryFilter" aria-label="依分類篩選"><el-option label="全部分類" value="all" /><el-option v-for="category in categories" :key="category" :label="category" :value="category" /></el-select><el-select v-model="assigneeFilter" aria-label="依負責人篩選"><el-option label="全部負責人" value="all" /><el-option label="尚未分派" value="unassigned" /><el-option v-for="member in trip.members" :key="member.id" :label="member.name" :value="member.id" /></el-select><el-select v-if="stores.length" v-model="storeFilter" aria-label="依店家篩選"><el-option label="全部店家" value="all" /><el-option v-for="store in stores" :key="store" :label="store" :value="store" /></el-select><el-button class="shopping-group-button" text @click="groupByStore = !groupByStore">{{ groupByStore ? '依店家顯示中' : '依清單顯示中' }}</el-button></div>
     <div v-if="selectionMode" class="shopping-selection-bar"><span>已選取 {{ selectedItemIds.length }} 項商品</span><el-button type="primary" :disabled="!selectedItemIds.length" @click="linkSelectedItems">加入關聯行程</el-button></div>
@@ -205,6 +238,9 @@ function primaryAmountLabel(item: ShoppingItem) { return item.status === 'purcha
 .shopping-summary span{color:#71827c;font-size:12px}
 .shopping-summary strong{overflow:hidden;color:#173d37;font-size:14px;text-overflow:ellipsis;white-space:nowrap}
 .shopping-summary-twd{color:#9aa9a3;font-size:11px;font-weight:700;line-height:1.4}
+.shopping-search-bar{margin-top:14px}
+.shopping-search-bar :deep(.el-input__wrapper){min-height:42px;border-radius:10px;box-shadow:0 0 0 1px #d7e4de inset}
+.shopping-search-bar :deep(.el-input__wrapper.is-focus){box-shadow:0 0 0 1px #8db8aa inset}
 .shopping-filters{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
 .shopping-filters :deep(.el-select){width:145px}
 .shopping-group-button{min-height:36px;color:#2f7d70;font-weight:700}
@@ -320,6 +356,7 @@ function primaryAmountLabel(item: ShoppingItem) { return item.status === 'purcha
   .shopping-heading-actions .el-button{flex:1}
   .shopping-heading-actions .shopping-select-button{flex:1}
   .shopping-summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+  .shopping-search-bar{margin-top:12px}
   .shopping-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
   .shopping-filters :deep(.el-select){width:100%}
   .shopping-group-button{grid-column:1/-1}
