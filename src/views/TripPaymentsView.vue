@@ -159,26 +159,30 @@ async function savePaymentTool() {
     ? props.tools.find((item) => item.id === editingPaymentToolId.value)
     : undefined
   const ownerUserId = existing?.ownerUserId || props.userId || props.trip.ownerId
-  await store.savePaymentTool({
-    ...(existing ? { id: existing.id, createdAt: existing.createdAt } : {}),
-    tripId: props.trip.id,
-    ownerUserId,
-    type: paymentTool.type,
-    name: paymentTool.name.trim(),
-    issuer: paymentTool.issuer.trim() || undefined,
-    lastFourDigits: paymentTool.lastFourDigits || undefined,
-    network: existing?.network || 'visa',
-    defaultCurrency: existing?.defaultCurrency || props.trip.currency,
-    settlementCurrency: paymentTool.settlementCurrency,
-    foreignTransactionFeeRate: Math.max(0, Number(paymentTool.foreignTransactionFeeRatePercent) || 0) / 100,
-    imageUrl: paymentToolImageUrl.value.trim() || undefined,
-    visibility: paymentTool.visibility,
-    isActive: existing?.isActive ?? true,
-    note: paymentTool.note.trim() || undefined,
-    createdBy: existing?.createdBy || ownerUserId,
-  })
-  showPaymentTool.value = false
-  ElMessage.success('支付工具已儲存。')
+  try {
+    await store.savePaymentTool({
+      ...(existing ? { id: existing.id, createdAt: existing.createdAt } : {}),
+      tripId: props.trip.id,
+      ownerUserId,
+      type: paymentTool.type,
+      name: paymentTool.name.trim(),
+      issuer: paymentTool.issuer.trim() || undefined,
+      lastFourDigits: paymentTool.lastFourDigits || undefined,
+      network: existing?.network || 'visa',
+      defaultCurrency: existing?.defaultCurrency || props.trip.currency,
+      settlementCurrency: paymentTool.settlementCurrency,
+      foreignTransactionFeeRate: Math.max(0, Number(paymentTool.foreignTransactionFeeRatePercent) || 0) / 100,
+      imageUrl: paymentToolImageUrl.value.trim() || undefined,
+      visibility: paymentTool.visibility,
+      isActive: existing?.isActive ?? true,
+      note: paymentTool.note.trim() || undefined,
+      createdBy: existing?.createdBy || ownerUserId,
+    }, { previousVisibility: existing?.visibility })
+    showPaymentTool.value = false
+    ElMessage.success('支付工具已儲存。')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '無法儲存支付工具。')
+  }
 }
 
 async function removePaymentTool(tool: PaymentTool) {
@@ -194,8 +198,12 @@ async function removePaymentTool(tool: PaymentTool) {
 }
 
 async function togglePaymentTool(tool: PaymentTool) {
-  await store.savePaymentTool({ ...tool, isActive: !tool.isActive })
-  ElMessage.success(tool.isActive ? '支付工具已停用。' : '支付工具已啟用。')
+  try {
+    await store.savePaymentTool({ ...tool, isActive: !tool.isActive }, { previousVisibility: tool.visibility })
+    ElMessage.success(tool.isActive ? '支付工具已停用。' : '支付工具已啟用。')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '無法更新支付工具狀態。')
+  }
 }
 
 function openRewardRuleForm(tool?: PaymentTool, rule?: RewardRule) {
@@ -271,38 +279,42 @@ async function saveRewardRule() {
     : undefined
   const baseRate = Math.max(0, Number(rewardRule.baseRatePercent) || 0) / 100
   const bonusRate = Math.max(0, Number(rewardRule.bonusRatePercent) || 0) / 100
-  await store.saveRewardRule({
-    ...(existing ? { id: existing.id, createdAt: existing.createdAt } : {}),
-    tripId: props.trip.id,
-    paymentToolId: rewardRule.paymentToolId,
-    name: rewardRule.name.trim(),
-    rewardType: rewardRule.rewardType,
-    baseRate,
-    bonusRate,
-    totalRate: baseRate + bonusRate,
-    baseRewardCap: Number(rewardRule.baseRewardCap) || undefined,
-    bonusRewardCap: Number(rewardRule.bonusRewardCap) || undefined,
-    rewardCap: Number(rewardRule.rewardCap) || undefined,
-    maximumEligibleSpend: Number(rewardRule.maximumEligibleSpend) || undefined,
-    minimumSpend: Number(rewardRule.minimumSpend) || undefined,
-    applicableCurrencies: splitRewardConditions(rewardRule.applicableCurrencies),
-    applicableCategories: splitRewardConditions(rewardRule.applicableCategories),
-    applicableMerchants: splitRewardConditions(rewardRule.applicableMerchants),
-    applicablePaymentMethods: rewardRule.applicablePaymentMethods,
-    excludedCategories: splitRewardConditions(rewardRule.excludedCategories),
-    excludedMerchants: splitRewardConditions(rewardRule.excludedMerchants),
-    capPeriod: rewardRule.capPeriod,
-    periodStartAt: start,
-    periodEndAt: end,
-    requiresRegistration: rewardRule.requiresRegistration,
-    registrationCompleted: rewardRule.registrationCompleted,
-    priority: Number(rewardRule.priority) || 1,
-    isActive: existing?.isActive ?? true,
-    note: rewardRule.note.trim() || undefined,
-    createdBy: existing?.createdBy || props.userId || props.trip.ownerId,
-  })
-  showRewardRule.value = false
-  ElMessage.success('回饋規則已儲存。')
+  try {
+    await store.saveRewardRule({
+      ...(existing ? { id: existing.id, createdAt: existing.createdAt } : {}),
+      tripId: props.trip.id,
+      paymentToolId: rewardRule.paymentToolId,
+      name: rewardRule.name.trim(),
+      rewardType: rewardRule.rewardType,
+      baseRate,
+      bonusRate,
+      totalRate: baseRate + bonusRate,
+      baseRewardCap: Number(rewardRule.baseRewardCap) || undefined,
+      bonusRewardCap: Number(rewardRule.bonusRewardCap) || undefined,
+      rewardCap: Number(rewardRule.rewardCap) || undefined,
+      maximumEligibleSpend: Number(rewardRule.maximumEligibleSpend) || undefined,
+      minimumSpend: Number(rewardRule.minimumSpend) || undefined,
+      applicableCurrencies: splitRewardConditions(rewardRule.applicableCurrencies),
+      applicableCategories: splitRewardConditions(rewardRule.applicableCategories),
+      applicableMerchants: splitRewardConditions(rewardRule.applicableMerchants),
+      applicablePaymentMethods: rewardRule.applicablePaymentMethods,
+      excludedCategories: splitRewardConditions(rewardRule.excludedCategories),
+      excludedMerchants: splitRewardConditions(rewardRule.excludedMerchants),
+      capPeriod: rewardRule.capPeriod,
+      periodStartAt: start,
+      periodEndAt: end,
+      requiresRegistration: rewardRule.requiresRegistration,
+      registrationCompleted: rewardRule.registrationCompleted,
+      priority: Number(rewardRule.priority) || 1,
+      isActive: existing?.isActive ?? true,
+      note: rewardRule.note.trim() || undefined,
+      createdBy: existing?.createdBy || props.userId || props.trip.ownerId,
+    })
+    showRewardRule.value = false
+    ElMessage.success('回饋規則已儲存。')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '無法儲存回饋規則。')
+  }
 }
 
 async function removeRewardRule(rule: RewardRule) {
@@ -428,41 +440,45 @@ async function savePaymentTransaction() {
     })
     expenseId = expense.id
   }
-  await store.savePaymentTransaction({
-    ...(existing ? { id: existing.id, createdAt: existing.createdAt } : {}),
-    tripId: props.trip.id,
-    paymentToolId: tool.id,
-    ownerUserId: tool.ownerUserId,
-    title: paymentTransaction.title.trim(),
-    merchant: paymentTransaction.merchant.trim() || undefined,
-    category: paymentTransaction.category.trim() || undefined,
-    transactionDate: paymentTransaction.transactionDate,
-    transactionTime: paymentTransaction.transactionTime || undefined,
-    transactionType: paymentTransaction.transactionType,
-    status: paymentTransaction.status,
-    paymentMethod: paymentTransaction.paymentMethod,
-    originalAmount: Number(paymentTransaction.originalAmount),
-    originalCurrency: paymentTransaction.originalCurrency,
-    exchangeRate: Number(paymentTransaction.exchangeRate),
-    convertedAmount,
-    settlementCurrency: tool.settlementCurrency || props.trip.currency,
-    foreignTransactionFeeRate: tool.foreignTransactionFeeRate || 0,
-    foreignTransactionFee: calculation.foreignTransactionFee,
-    eligibleAmount: calculation.eligibleAmount,
-    appliedRewardRuleId: rule?.id,
-    estimatedRewardRate: rule?.totalRate || 0,
-    estimatedBaseRewardAmount: calculation.estimatedBaseRewardAmount,
-    estimatedBonusRewardAmount: calculation.estimatedBonusRewardAmount,
-    estimatedRewardAmount: calculation.estimatedRewardAmount,
-    estimatedNetRewardAmount: calculation.estimatedNetRewardAmount,
-    estimatedNetRewardRate: calculation.estimatedNetRewardRate,
-    refundedAmount: Number(paymentTransaction.refundedAmount) || undefined,
-    expenseId: expenseId || undefined,
-    note: paymentTransaction.note.trim() || undefined,
-    createdBy: existing?.createdBy || props.userId || props.trip.ownerId,
-  })
-  showPaymentTransaction.value = false
-  ElMessage.success('付款紀錄已儲存。')
+  try {
+    await store.savePaymentTransaction({
+      ...(existing ? { id: existing.id, createdAt: existing.createdAt } : {}),
+      tripId: props.trip.id,
+      paymentToolId: tool.id,
+      ownerUserId: tool.ownerUserId,
+      title: paymentTransaction.title.trim(),
+      merchant: paymentTransaction.merchant.trim() || undefined,
+      category: paymentTransaction.category.trim() || undefined,
+      transactionDate: paymentTransaction.transactionDate,
+      transactionTime: paymentTransaction.transactionTime || undefined,
+      transactionType: paymentTransaction.transactionType,
+      status: paymentTransaction.status,
+      paymentMethod: paymentTransaction.paymentMethod,
+      originalAmount: Number(paymentTransaction.originalAmount),
+      originalCurrency: paymentTransaction.originalCurrency,
+      exchangeRate: Number(paymentTransaction.exchangeRate),
+      convertedAmount,
+      settlementCurrency: tool.settlementCurrency || props.trip.currency,
+      foreignTransactionFeeRate: tool.foreignTransactionFeeRate || 0,
+      foreignTransactionFee: calculation.foreignTransactionFee,
+      eligibleAmount: calculation.eligibleAmount,
+      appliedRewardRuleId: rule?.id,
+      estimatedRewardRate: rule?.totalRate || 0,
+      estimatedBaseRewardAmount: calculation.estimatedBaseRewardAmount,
+      estimatedBonusRewardAmount: calculation.estimatedBonusRewardAmount,
+      estimatedRewardAmount: calculation.estimatedRewardAmount,
+      estimatedNetRewardAmount: calculation.estimatedNetRewardAmount,
+      estimatedNetRewardRate: calculation.estimatedNetRewardRate,
+      refundedAmount: Number(paymentTransaction.refundedAmount) || undefined,
+      expenseId: expenseId || undefined,
+      note: paymentTransaction.note.trim() || undefined,
+      createdBy: existing?.createdBy || props.userId || props.trip.ownerId,
+    })
+    showPaymentTransaction.value = false
+    ElMessage.success('付款紀錄已儲存。')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '無法儲存付款紀錄。')
+  }
 }
 
 async function removePaymentTransaction(transaction: PaymentTransaction) {
@@ -490,9 +506,13 @@ async function saveStoredBalance() {
   if (!tool) return
   const balance = storedValueBalance(tool, props.transactions, Number(storedBalance.initialBalance) || 0)
   balance.currency = storedBalance.currency
-  await store.saveStoredValueBalance(balance)
-  showStoredBalance.value = false
-  ElMessage.success('儲值工具餘額已更新。')
+  try {
+    await store.saveStoredValueBalance(balance)
+    showStoredBalance.value = false
+    ElMessage.success('儲值工具餘額已更新。')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '無法更新儲值工具餘額。')
+  }
 }
 </script>
 

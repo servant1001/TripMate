@@ -13,6 +13,7 @@ import type {
   TravelInsurance,
   InsuranceStatusSummary,
   PaymentTool,
+  PaymentToolVisibility,
   PaymentToolSummary,
   PaymentTransaction,
   RewardRule,
@@ -384,8 +385,8 @@ export const useTripStore = defineStore("trips", {
       this.insurances = this.insurances.filter((item) => !(item.tripId === insurance.tripId && item.userId === insurance.userId));
       if (this.insuranceStatuses[insurance.tripId]) delete this.insuranceStatuses[insurance.tripId][insurance.userId];
     },
-    async savePaymentTool(input: Omit<PaymentTool, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<PaymentTool, 'id' | 'createdAt'>>) { const tool = await repository.savePaymentTool(input); const index = this.paymentTools.findIndex((item) => item.id === tool.id); if (index >= 0) this.paymentTools.splice(index, 1, tool); else this.paymentTools.push(tool); return tool },
-    async deletePaymentTool(tool: PaymentTool) { await repository.deletePaymentTool(tool); this.paymentTools = this.paymentTools.filter((item) => item.id !== tool.id); this.rewardRules = this.rewardRules.filter((item) => item.paymentToolId !== tool.id); this.storedValueBalances = this.storedValueBalances.filter((item) => item.paymentToolId !== tool.id) },
+    async savePaymentTool(input: Omit<PaymentTool, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<PaymentTool, 'id' | 'createdAt'>>, options?: { previousVisibility?: PaymentToolVisibility }) { const tool = await repository.savePaymentTool(input, options); const index = this.paymentTools.findIndex((item) => item.id === tool.id); if (index >= 0) this.paymentTools.splice(index, 1, tool); else this.paymentTools.push(tool); return tool },
+    async deletePaymentTool(tool: PaymentTool) { const hadSummary = tool.visibility === 'summary' || tool.visibility === 'trip_members'; const rewardRuleIds = this.rewardRules.filter((item) => item.paymentToolId === tool.id && item.createdBy === tool.ownerUserId).map((item) => item.id); await repository.deletePaymentTool(tool, { hadSummary, rewardRuleIds }); this.paymentTools = this.paymentTools.filter((item) => item.id !== tool.id); this.paymentToolSummaries = this.paymentToolSummaries.filter((item) => item.id !== tool.id); this.rewardRules = this.rewardRules.filter((item) => item.paymentToolId !== tool.id); this.storedValueBalances = this.storedValueBalances.filter((item) => item.paymentToolId !== tool.id) },
     async saveRewardRule(input: Omit<RewardRule, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<RewardRule, 'id' | 'createdAt'>>) { const rule = await repository.saveRewardRule(input); const index = this.rewardRules.findIndex((item) => item.id === rule.id); if (index >= 0) this.rewardRules.splice(index, 1, rule); else this.rewardRules.push(rule); return rule },
     async deleteRewardRule(rule: RewardRule) { await repository.deleteRewardRule(rule); this.rewardRules = this.rewardRules.filter((item) => item.id !== rule.id) },
     async savePaymentTransaction(input: Omit<PaymentTransaction, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<PaymentTransaction, 'id' | 'createdAt'>>) { const transaction = await repository.savePaymentTransaction(input); const index = this.paymentTransactions.findIndex((item) => item.id === transaction.id); if (index >= 0) this.paymentTransactions.splice(index, 1, transaction); else this.paymentTransactions.push(transaction); return transaction },
