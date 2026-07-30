@@ -44,6 +44,7 @@ const currentTodos = computed(() => store.tripTodos(activeId.value))
 const currentPackingItems = computed(() => store.tripPackingItems(activeId.value))
 const currentBookings = computed(() => store.tripBookings(activeId.value))
 const currentFavorites = computed(() => store.tripFavorites(activeId.value))
+const currentAlbumFolders = computed(() => store.tripAlbumFolders(activeId.value))
 const currentAlbumPhotos = computed(() => store.tripAlbumPhotos(activeId.value))
 const currentShoppingItems = computed(() => store.tripShoppingItems(activeId.value))
 const currentSettlements = computed(() => store.tripSettlements(activeId.value))
@@ -394,6 +395,7 @@ const workspaceContext: TripWorkspaceContext = {
   currentPackingItems,
   currentBookings,
   currentFavorites,
+  currentAlbumFolders,
   currentAlbumPhotos,
   currentShoppingItems,
   currentSettlements,

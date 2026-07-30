@@ -56,6 +56,7 @@ function patchEmptyStore(store: ReturnType<typeof useTripStore>) {
     packingItems: [],
     bookings: [],
     favorites: [],
+    albumFolders: [],
     albumPhotos: [],
     shoppingItems: [],
     categoryBudgets: {},

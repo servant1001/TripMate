@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
 import type {
+  AlbumFolder,
   AlbumPhoto,
   Booking,
   Expense,
@@ -32,6 +33,7 @@ export const useTripStore = defineStore("trips", {
     packingItems: [] as PackingItem[],
     bookings: [] as Booking[],
     favorites: [] as Favorite[],
+    albumFolders: [] as AlbumFolder[],
     albumPhotos: [] as AlbumPhoto[],
     shoppingItems: [] as ShoppingItem[],
     categoryBudgets: {} as Record<string, Record<string, number>>,
@@ -57,6 +59,8 @@ export const useTripStore = defineStore("trips", {
       s.favorites.filter((x) => x.tripId === id),
     tripAlbumPhotos: (s) => (id: string) =>
       s.albumPhotos.filter((x) => x.tripId === id),
+    tripAlbumFolders: (s) => (id: string) =>
+      s.albumFolders.filter((x) => x.tripId === id),
     tripShoppingItems: (s) => (id: string) =>
       s.shoppingItems.filter((x) => x.tripId === id),
     tripCategoryBudgets: (s) => (id: string) => s.categoryBudgets[id] || {},
@@ -110,6 +114,9 @@ export const useTripStore = defineStore("trips", {
       );
       this.bookings = this.bookings.filter((item) => item.tripId !== trip.id);
       this.favorites = this.favorites.filter((item) => item.tripId !== trip.id);
+      this.albumFolders = this.albumFolders.filter(
+        (item) => item.tripId !== trip.id,
+      );
       this.albumPhotos = this.albumPhotos.filter(
         (item) => item.tripId !== trip.id,
       );
@@ -270,16 +277,74 @@ export const useTripStore = defineStore("trips", {
         (entry) => entry.id !== favorite.id,
       );
     },
+    async addAlbumFolder(input: Omit<AlbumFolder, "id" | "createdAt" | "updatedAt">) {
+      const folder = await repository.addAlbumFolder(input);
+      this.albumFolders.push(folder);
+      return folder;
+    },
+    async updateAlbumFolder(folder: AlbumFolder) {
+      const updated = await repository.updateAlbumFolder(folder);
+      const index = this.albumFolders.findIndex((entry) => entry.id === folder.id);
+      if (index >= 0) this.albumFolders.splice(index, 1, updated);
+      return updated;
+    },
+    async reorderAlbumFolders(folders: AlbumFolder[]) {
+      const previousOrders = new Map(
+        this.albumFolders.map((folder) => [folder.id, folder.order]),
+      );
+      folders.forEach((folder, order) => {
+        folder.order = order;
+      });
+      try {
+        await repository.reorderAlbumFolders(folders);
+      } catch (error) {
+        this.albumFolders.forEach((folder) => {
+          folder.order = previousOrders.get(folder.id);
+        });
+        throw error;
+      }
+    },
+    async deleteAlbumFolder(folder: AlbumFolder) {
+      await repository.deleteAlbumFolder(folder);
+      this.albumFolders = this.albumFolders.filter((entry) => entry.id !== folder.id);
+      this.albumPhotos = this.albumPhotos.map((entry) =>
+        entry.folderId === folder.id ? { ...entry, folderId: undefined } : entry,
+      );
+    },
     async addAlbumPhoto(input: Omit<AlbumPhoto, "id" | "createdAt">) {
       const photo = await repository.addAlbumPhoto(input);
       this.albumPhotos.push(photo);
+      return photo;
     },
     async updateAlbumPhoto(photo: AlbumPhoto) {
-      await repository.updateAlbumPhoto(photo);
+      const updated = await repository.updateAlbumPhoto(photo);
       const index = this.albumPhotos.findIndex(
         (entry) => entry.id === photo.id,
       );
-      if (index >= 0) this.albumPhotos.splice(index, 1, photo);
+      if (index >= 0) this.albumPhotos.splice(index, 1, updated);
+      return updated;
+    },
+    async reorderAlbumPhotos(photos: AlbumPhoto[]) {
+      const previousState = new Map(
+        this.albumPhotos.map((photo) => [
+          photo.id,
+          { order: photo.order, folderId: photo.folderId },
+        ]),
+      );
+      photos.forEach((photo, order) => {
+        photo.order = order;
+      });
+      try {
+        await repository.reorderAlbumPhotos(photos);
+      } catch (error) {
+        this.albumPhotos.forEach((photo) => {
+          const previous = previousState.get(photo.id);
+          if (!previous) return;
+          photo.order = previous.order;
+          photo.folderId = previous.folderId;
+        });
+        throw error;
+      }
     },
     async deleteAlbumPhoto(photo: AlbumPhoto) {
       await repository.deleteAlbumPhoto(photo);

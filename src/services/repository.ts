@@ -1,4 +1,5 @@
 import type {
+  AlbumFolder,
   AlbumPhoto,
   Booking,
   Expense,
@@ -31,6 +32,7 @@ type Data = {
   packingItems: PackingItem[];
   bookings: Booking[];
   favorites: Favorite[];
+  albumFolders: AlbumFolder[];
   albumPhotos: AlbumPhoto[];
   shoppingItems: ShoppingItem[];
   categoryBudgets: Record<string, Record<string, number>>;
@@ -52,6 +54,7 @@ const seed: Data = {
   packingItems: [],
   bookings: [],
   favorites: [],
+  albumFolders: [],
   albumPhotos: [],
   shoppingItems: [],
   categoryBudgets: {},
@@ -189,13 +192,20 @@ export const repository = {
               addedToItinerary: Boolean((value as Favorite).addedToItinerary),
             }),
           ),
-          albumPhotos: Object.entries(albumSnapshot.val() || {}).map(
-            ([id, value]) => ({
+          albumFolders: Object.entries(
+            ((albumSnapshot.val() || {}).__folders as Record<string, Omit<AlbumFolder, "id" | "tripId">>) || {},
+          ).map(([id, value]) => ({
+            id,
+            ...(value as Omit<AlbumFolder, "id" | "tripId">),
+            tripId,
+          })),
+          albumPhotos: Object.entries(albumSnapshot.val() || {})
+            .filter(([id]) => id !== "__folders")
+            .map(([id, value]) => ({
               id,
               ...(value as Omit<AlbumPhoto, "id" | "tripId">),
               tripId,
-            }),
-          ),
+            })),
           shoppingItems: Object.entries(shoppingSnapshot.val() || {}).map(
             ([id, value]) => ({
               id,
@@ -236,6 +246,7 @@ export const repository = {
           packingItems: [...data.packingItems, ...row.packingItems],
           bookings: [...data.bookings, ...row.bookings],
           favorites: [...data.favorites, ...row.favorites],
+          albumFolders: [...data.albumFolders, ...row.albumFolders],
           albumPhotos: [...data.albumPhotos, ...row.albumPhotos],
           shoppingItems: [...data.shoppingItems, ...row.shoppingItems],
           categoryBudgets: { ...data.categoryBudgets, ...row.categoryBudgets },
@@ -362,6 +373,7 @@ export const repository = {
     d.packingItems = d.packingItems.filter((x) => x.tripId !== trip.id);
     d.bookings = d.bookings.filter((x) => x.tripId !== trip.id);
     d.favorites = d.favorites.filter((x) => x.tripId !== trip.id);
+    d.albumFolders = d.albumFolders.filter((x) => x.tripId !== trip.id);
     d.albumPhotos = d.albumPhotos.filter((x) => x.tripId !== trip.id);
     d.shoppingItems = d.shoppingItems.filter((x) => x.tripId !== trip.id);
     d.insurances = d.insurances.filter((x) => x.tripId !== trip.id);
@@ -689,12 +701,86 @@ export const repository = {
     d.favorites = d.favorites.filter((entry) => entry.id !== favorite.id);
     write(d);
   },
+  async addAlbumFolder(input: Omit<AlbumFolder, "id" | "createdAt" | "updatedAt">) {
+    const folder = {
+      ...input,
+      id: id(),
+      order: input.order ?? Date.now(),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    const db = database;
+    if (firebaseEnabled && db) {
+      const { id: folderId, tripId, ...data } = folder;
+      await set(ref(db, `albums/${tripId}/__folders/${folderId}`), withoutUndefined(data));
+      return folder;
+    }
+    const d = read();
+    d.albumFolders.push(folder);
+    write(d);
+    return folder;
+  },
+  async updateAlbumFolder(folder: AlbumFolder) {
+    const updated = { ...folder, updatedAt: Date.now() };
+    const db = database;
+    if (firebaseEnabled && db) {
+      const { id: folderId, tripId, ...data } = updated;
+      await set(ref(db, `albums/${tripId}/__folders/${folderId}`), withoutUndefined(data));
+      return updated;
+    }
+    const d = read();
+    d.albumFolders = d.albumFolders.map((entry) =>
+      entry.id === updated.id ? updated : entry,
+    );
+    write(d);
+    return updated;
+  },
+  async reorderAlbumFolders(folders: AlbumFolder[]) {
+    if (!folders.length) return;
+    const db = database;
+    if (firebaseEnabled && db) {
+      const updates: Record<string, number> = {};
+      folders.forEach((folder, order) => {
+        updates[`albums/${folder.tripId}/__folders/${folder.id}/order`] = order;
+      });
+      await update(ref(db), updates);
+      return;
+    }
+    const orders = new Map(folders.map((folder, order) => [folder.id, order]));
+    const d = read();
+    d.albumFolders = d.albumFolders.map((folder) =>
+      orders.has(folder.id) ? { ...folder, order: orders.get(folder.id) } : folder,
+    );
+    write(d);
+  },
+  async deleteAlbumFolder(folder: AlbumFolder) {
+    const db = database;
+    if (firebaseEnabled && db) {
+      const updates: Record<string, unknown> = {
+        [`albums/${folder.tripId}/__folders/${folder.id}`]: null,
+      };
+      const snapshot = await get(ref(db, `albums/${folder.tripId}`));
+      Object.entries(snapshot.val() || {})
+        .filter(([id, value]) => id !== "__folders" && (value as AlbumPhoto).folderId === folder.id)
+        .forEach(([photoId]) => {
+          updates[`albums/${folder.tripId}/${photoId}/folderId`] = null;
+        });
+      await update(ref(db), updates);
+      return;
+    }
+    const d = read();
+    d.albumFolders = d.albumFolders.filter((entry) => entry.id !== folder.id);
+    d.albumPhotos = d.albumPhotos.map((entry) =>
+      entry.folderId === folder.id ? { ...entry, folderId: undefined } : entry,
+    );
+    write(d);
+  },
   async addAlbumPhoto(input: Omit<AlbumPhoto, "id" | "createdAt">) {
-    const photo = { ...input, id: id(), createdAt: Date.now() };
+    const photo = { ...input, id: id(), order: input.order ?? Date.now(), createdAt: Date.now() };
     const db = database;
     if (firebaseEnabled && db) {
       const { id: photoId, tripId, ...data } = photo;
-      await set(ref(db, `albums/${tripId}/${photoId}`), data);
+      await set(ref(db, `albums/${tripId}/${photoId}`), withoutUndefined(data));
       return photo;
     }
     const d = read();
@@ -703,15 +789,44 @@ export const repository = {
     return photo;
   },
   async updateAlbumPhoto(photo: AlbumPhoto) {
+    const updated = { ...photo };
     const db = database;
     if (firebaseEnabled && db) {
-      const { id: photoId, tripId, ...data } = photo;
-      await set(ref(db, `albums/${tripId}/${photoId}`), data);
-      return;
+      const { id: photoId, tripId, ...data } = updated;
+      await set(ref(db, `albums/${tripId}/${photoId}`), withoutUndefined(data));
+      return updated;
     }
     const d = read();
     d.albumPhotos = d.albumPhotos.map((entry) =>
-      entry.id === photo.id ? photo : entry,
+      entry.id === updated.id ? updated : entry,
+    );
+    write(d);
+    return updated;
+  },
+  async reorderAlbumPhotos(photos: AlbumPhoto[]) {
+    if (!photos.length) return;
+    const db = database;
+    if (firebaseEnabled && db) {
+      const updates: Record<string, unknown> = {};
+      photos.forEach((photo, order) => {
+        updates[`albums/${photo.tripId}/${photo.id}/order`] = order;
+        updates[`albums/${photo.tripId}/${photo.id}/folderId`] = photo.folderId ?? null;
+      });
+      await update(ref(db), updates);
+      return;
+    }
+    const nextState = new Map(
+      photos.map((photo, order) => [photo.id, { order, folderId: photo.folderId }]),
+    );
+    const d = read();
+    d.albumPhotos = d.albumPhotos.map((photo) =>
+      nextState.has(photo.id)
+        ? {
+            ...photo,
+            order: nextState.get(photo.id)?.order,
+            folderId: nextState.get(photo.id)?.folderId,
+          }
+        : photo,
     );
     write(d);
   },

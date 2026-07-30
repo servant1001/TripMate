@@ -1,5 +1,6 @@
 import { inject, provide, type ComputedRef, type InjectionKey, type Ref } from 'vue'
 import type {
+  AlbumFolder,
   Expense,
   Favorite,
   InsuranceStatusSummary,
@@ -37,6 +38,7 @@ export type TripWorkspaceContext = {
   currentPackingItems: ComputedRef<PackingItem[]>
   currentBookings: ComputedRef<Booking[]>
   currentFavorites: ComputedRef<Favorite[]>
+  currentAlbumFolders: ComputedRef<AlbumFolder[]>
   currentAlbumPhotos: ComputedRef<AlbumPhoto[]>
   currentShoppingItems: ComputedRef<ShoppingItem[]>
   currentSettlements: ComputedRef<Settlement[]>

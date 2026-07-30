@@ -17,7 +17,8 @@ export type BookingType = 'flight' | 'hotel' | 'transport' | 'ticket' | 'restaur
 export interface Booking { id: string; tripId: string; type: BookingType; title: string; startDate: string; endDate?: string; location?: string; bookingNumber?: string; bookedBy?: string; contact?: string; website?: string; note?: string; createdBy: string; createdAt: number }
 export type FavoriteType = 'attraction' | 'restaurant' | 'transport' | 'stay' | 'shop' | 'cafe' | 'alternative' | 'other'
 export interface Favorite { id: string; tripId: string; name: string; type: FavoriteType; location?: string; mapUrl?: string; website?: string; imageUrl?: string; estimatedCost?: number; recommendedBy?: string; note?: string; order?: number; addedToItinerary: boolean; createdBy: string; createdAt: number; updatedBy?: string; updatedAt?: number }
-export interface AlbumPhoto { id: string; tripId: string; imageUrl: string; caption?: string; tripDate?: string; itineraryItemId?: string; uploadedBy: string; createdAt: number }
+export interface AlbumFolder { id: string; tripId: string; name: string; order?: number; createdBy: string; createdAt: number; updatedAt?: number }
+export interface AlbumPhoto { id: string; tripId: string; imageUrl: string; caption?: string; tripDate?: string; itineraryItemId?: string; folderId?: string; order?: number; uploadedBy: string; createdAt: number }
 export type ShoppingType = 'personal' | 'proxy' | 'shared' | 'gift'
 export type ShoppingPriority = 'low' | 'medium' | 'high'
 export type ShoppingStatus = 'wishlist' | 'planned' | 'purchased' | 'unavailable' | 'cancelled'
