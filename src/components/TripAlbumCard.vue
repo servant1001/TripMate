@@ -4,11 +4,13 @@ import Sortable from 'sortablejs'
 import type { SortableEvent } from 'sortablejs'
 import {
   Calendar,
+  Delete,
   Folder,
   FolderAdd,
   MoreFilled,
   Picture,
   Plus,
+  Rank,
   Select,
   Upload,
   User,
@@ -38,11 +40,25 @@ const emit = defineEmits<{
   selectAll: []
   clearSelection: []
   bulkMove: [folderId?: string]
+  bulkDelete: []
+  reorderFolders: [folders: AlbumFolder[]]
   reorderPhotos: [photos: AlbumPhoto[]]
 }>()
 
 const sortableElements = new Map<string, HTMLElement>()
+const folderStackElement = computedRootRef()
 const sortableInstances = new Map<string, Sortable>()
+let folderSortableInstance: Sortable | undefined
+
+function computedRootRef() {
+  let element: HTMLElement | null = null
+  return computed({
+    get: () => element,
+    set: (value: HTMLElement | null) => {
+      element = value
+    },
+  })
+}
 
 function normalizeFolderId(folderId?: string | null) {
   return folderId || undefined
@@ -104,9 +120,15 @@ function registerSortableList(key: string, element: Element | null) {
   else sortableElements.delete(key)
 }
 
+function registerFolderStack(element: Element | null) {
+  folderStackElement.value = element instanceof HTMLElement ? element : null
+}
+
 function destroySortables() {
   sortableInstances.forEach((instance) => instance.destroy())
   sortableInstances.clear()
+  folderSortableInstance?.destroy()
+  folderSortableInstance = undefined
 }
 
 function handleSortableEnd(event: SortableEvent) {
@@ -159,6 +181,21 @@ function handleSortableEnd(event: SortableEvent) {
   ])
 }
 
+function handleFolderSortableEnd(event: SortableEvent) {
+  if (event.oldIndex == null || event.newIndex == null || event.oldIndex === event.newIndex) return
+  const reordered = [...sortedFolders.value]
+  const [moved] = reordered.splice(event.oldIndex, 1)
+  if (!moved) return
+  reordered.splice(event.newIndex, 0, moved)
+  emit(
+    'reorderFolders',
+    reordered.map((folder, index) => ({
+      ...folder,
+      order: index,
+    })),
+  )
+}
+
 async function syncSortables() {
   await nextTick()
   destroySortables()
@@ -180,6 +217,19 @@ async function syncSortables() {
       }),
     )
   })
+
+  if (folderStackElement.value) {
+    folderSortableInstance = Sortable.create(folderStackElement.value, {
+      animation: 180,
+      draggable: '.album-folder-section.is-draggable',
+      handle: '.album-folder-drag-handle',
+      ghostClass: 'album-folder-section-ghost',
+      chosenClass: 'album-folder-section-chosen',
+      dragClass: 'album-folder-section-dragging',
+      fallbackOnBody: true,
+      onEnd: handleFolderSortableEnd,
+    })
+  }
 }
 
 watch(
@@ -187,7 +237,7 @@ watch(
     props.canEditTrip,
     props.selectionMode,
     props.photos.map((photo) => `${photo.id}:${photo.folderId || 'root'}:${photo.order ?? ''}`).join('|'),
-    props.folders.map((folder) => folder.id).join('|'),
+    props.folders.map((folder) => `${folder.id}:${folder.order ?? ''}`).join('|'),
   ],
   () => {
     void syncSortables()
@@ -226,10 +276,13 @@ onBeforeUnmount(destroySortables)
     <div v-if="selectionMode && canEditTrip" class="album-selection-toolbar">
       <div class="album-selection-copy">
         <strong>已選 {{ selectedCount }} 張照片</strong>
-        <span>可一次加入資料夾或移回未分類。</span>
+        <span>可一次加入資料夾、移回未分類或刪除所選照片。</span>
       </div>
       <div class="album-selection-actions">
         <el-button text @click="emit('selectAll')">全選</el-button>
+        <el-button class="album-secondary-button" :disabled="selectedCount === 0" @click="emit('bulkMove', undefined)">
+          移回未分類
+        </el-button>
         <el-dropdown trigger="click" @command="emit('bulkMove', $event || undefined)">
           <el-button class="album-secondary-button">
             加入資料夾
@@ -248,6 +301,9 @@ onBeforeUnmount(destroySortables)
             </el-dropdown-menu>
           </template>
         </el-dropdown>
+        <el-button class="album-danger-button" :disabled="selectedCount === 0" @click="emit('bulkDelete')">
+          <el-icon><Delete /></el-icon>刪除所選
+        </el-button>
         <el-button text @click="emit('clearSelection')">清空選取</el-button>
       </div>
     </div>
@@ -335,10 +391,11 @@ onBeforeUnmount(destroySortables)
         </div>
       </section>
 
+      <div class="album-folder-stack" :ref="(element) => registerFolderStack(element as Element | null)">
       <section
         v-for="folder in sortedFolders"
         :key="folder.id"
-        class="album-folder-section"
+        class="album-folder-section is-draggable"
       >
         <div class="album-folder-header">
           <div class="album-folder-copy">
@@ -349,6 +406,16 @@ onBeforeUnmount(destroySortables)
             <p>{{ folderPhotoCount(folder.id) }} 張照片 · 可把照片拖曳到這裡，或直接在資料夾內上傳。</p>
           </div>
           <div class="album-folder-actions">
+            <el-button
+              v-if="canEditTrip && !selectionMode"
+              class="album-action-button album-folder-drag-handle"
+              text
+              circle
+              aria-label="拖曳排序資料夾"
+              title="拖曳排序資料夾"
+            >
+              <el-icon><Rank /></el-icon>
+            </el-button>
             <el-button
               v-if="canEditTrip"
               class="album-folder-upload-button"
@@ -443,6 +510,7 @@ onBeforeUnmount(destroySortables)
           </div>
         </div>
       </section>
+      </div>
     </div>
 
     <div v-else class="detail-empty-state album-empty-state">
@@ -471,12 +539,15 @@ onBeforeUnmount(destroySortables)
 .album-secondary-button:hover,.album-folder-upload-button:hover,.album-secondary-button:focus-visible,.album-folder-upload-button:focus-visible{border-color:#9dc4b6;background:#f8fbf9;color:#1a5348}
 .album-add-button{display:inline-flex;gap:6px;min-height:40px;border:0;border-radius:10px;background:#123f3a;color:#fff;font-weight:700}
 .album-add-button:hover,.album-add-button:focus-visible{background:#1d5a52;color:#fff}
+.album-danger-button{display:inline-flex;gap:6px;min-height:40px;border:1px solid #f0c4be;border-radius:10px;background:#fff7f6;color:#c75144;font-weight:700}
+.album-danger-button:hover,.album-danger-button:focus-visible{border-color:#e39a90;background:#fff1ef;color:#b83f34}
 .readonly-chip{display:inline-flex;align-items:center;min-height:32px;padding:0 10px;border-radius:999px;background:#eef5f0;color:#62766f;font-size:13px;font-weight:700}
 .album-selection-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 0 4px}
 .album-selection-copy{display:grid;gap:2px}
 .album-selection-copy strong{color:#163b37;font-size:14px}
 .album-selection-copy span{color:#6b7d78;font-size:12px}
 .album-sections{display:grid;gap:18px;margin-top:18px}
+.album-folder-stack{display:grid;gap:18px}
 .album-folder-section{border:1px solid #dfe9e3;border-radius:16px;background:#fbfcfa;padding:18px}
 .album-folder-section.is-root{background:#f7faf8}
 .album-folder-header{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding-bottom:14px;border-bottom:1px solid #e7efea}
@@ -505,6 +576,8 @@ onBeforeUnmount(destroySortables)
 .album-action-button{width:36px!important;min-width:36px!important;height:36px!important;margin:0!important;border:1px solid rgba(255,255,255,.92)!important;background:rgba(255,255,255,.96)!important;color:#52756b;box-shadow:0 2px 7px rgba(18,63,58,.12)}
 .album-action-button:hover,.album-action-button:focus-visible{background:#eff6f2!important;color:#236c59}
 .album-action-button.is-folder-action{position:static}
+.album-folder-drag-handle{cursor:grab}
+.album-folder-drag-handle:active{cursor:grabbing}
 .album-photo-select{position:absolute;top:8px;left:8px;z-index:2;display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:10px;background:rgba(255,255,255,.94);box-shadow:0 4px 10px rgba(18,63,58,.12)}
 .album-photo-select :deep(.el-checkbox){margin-right:0}
 .album-folder-empty{display:grid;place-items:center;gap:8px;min-height:96px;padding:16px;border:1px dashed #d5e2dc;border-radius:12px;background:#f7faf8;color:#6f827b;text-align:center}
@@ -516,6 +589,9 @@ onBeforeUnmount(destroySortables)
 :deep(.album-photo-card-ghost){opacity:.45}
 :deep(.album-photo-card-chosen){border-color:#8ec0ae!important;box-shadow:0 10px 24px rgba(18,63,58,.12)!important}
 :deep(.album-photo-card-dragging){transform:rotate(1.5deg)}
+:deep(.album-folder-section-ghost){opacity:.45}
+:deep(.album-folder-section-chosen){box-shadow:0 12px 24px rgba(18,63,58,.12)!important}
+:deep(.album-folder-section-dragging){transform:scale(.995)}
 @media(max-width:760px){
   .detail-card-heading,.album-selection-toolbar,.album-folder-header{flex-direction:column;align-items:stretch}
   .album-panel-actions{justify-content:stretch}

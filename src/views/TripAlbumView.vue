@@ -300,6 +300,41 @@ async function moveSelectedToFolder(folderId?: string) {
   }
 }
 
+async function deleteSelectedPhotos() {
+  if (!selectedPhotoIds.value.length) {
+    ElMessage.warning('請先選擇要刪除的照片。')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `確定刪除已選的 ${selectedPhotoIds.value.length} 張照片嗎？`,
+      '刪除所選照片',
+      {
+        confirmButtonText: '刪除',
+        cancelButtonText: '取消',
+        type: 'warning',
+      },
+    )
+    const targets = props.photos.filter((photo) => selectedPhotoIds.value.includes(photo.id))
+    await Promise.all(targets.map((photo) => store.deleteAlbumPhoto(photo)))
+    selectedPhotoIds.value = []
+    selectionMode.value = false
+    ElMessage.success(`已刪除 ${targets.length} 張照片。`)
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(error instanceof Error ? error.message : '無法刪除所選照片。')
+    }
+  }
+}
+
+async function reorderFolders(folders: AlbumFolder[]) {
+  try {
+    await store.reorderAlbumFolders(folders)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '無法更新資料夾順序。')
+  }
+}
+
 async function reorderPhotos(photos: AlbumPhoto[]) {
   try {
     await store.reorderAlbumPhotos(photos)
@@ -342,6 +377,8 @@ onBeforeUnmount(clearPreview)
       @select-all="selectAllPhotos"
       @clear-selection="clearSelection"
       @bulk-move="moveSelectedToFolder"
+      @bulk-delete="deleteSelectedPhotos"
+      @reorder-folders="reorderFolders"
       @reorder-photos="reorderPhotos"
     />
 
