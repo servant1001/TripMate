@@ -87,6 +87,13 @@ const item = reactive({
 })
 const favoritePickerOptions: Array<{ value: FavoriteType | 'all'; label: string }> = [{ value: 'all', label: '全部' }, { value: 'attraction', label: '景點' }, { value: 'restaurant', label: '餐廳' }, { value: 'transport', label: '交通' }, { value: 'stay', label: '住宿' }, { value: 'shop', label: '商店' }]
 const itineraryGroupsForItem = computed(() => props.items.filter((entry) => entry.activityKind === 'group' && entry.date === item.date))
+const groupSelectableEntries = computed(() =>
+  props.items.filter(
+    (entry) =>
+      entry.date === itineraryGroup.date &&
+      (entry.activityKind || 'shared') === 'shared',
+  ),
+)
 const filteredFavoritesForPicker = computed(() => { const keyword = favoritePickerSearch.value.trim().toLowerCase(); return props.favorites.filter((entry) => { const matchesType = favoritePickerType.value === 'all' || normalizeFavoriteType(entry.type) === favoritePickerType.value; const matchesSearch = !keyword || [entry.name, entry.location, entry.note].some((value) => value?.toLowerCase().includes(keyword)); return matchesType && matchesSearch }) })
 
 function normalizeGoogleMapsUrl(value: string) {
@@ -118,8 +125,37 @@ function inferredFareSource(entry?: ItineraryItem): TransportFareSource | '' {
   if (typeof entry.transportFareEstimateAmount === 'number') return 'ai'
   return ''
 }
+function resetGroupDraft(entry?: Partial<ItineraryItem>, entries: ItineraryItem[] = []) {
+  const first = entries[0] || entry
+  const uniqueLocations = [...new Set(entries.map((item) => (item.location || '').trim()).filter(Boolean))]
+  const suggestedGroupLocation = uniqueLocations.length === 1 ? uniqueLocations[0] : ''
+  Object.assign(
+    itineraryGroup,
+    entry
+      ? {
+          date: entry.date || props.trip.startDate || '',
+          time: entry.time || '',
+          endTime: entry.endTime || '',
+          title: entry.title || '',
+          location: entry.location || '',
+          mapUrl: entry.mapUrl || '',
+          website: entry.website || '',
+          note: entry.note || '',
+        }
+      : {
+          date: first?.date || props.trip.startDate || '',
+          time: '',
+          endTime: '',
+          title: '',
+          location: suggestedGroupLocation,
+          mapUrl: '',
+          website: '',
+          note: '',
+        },
+  )
+}
 function resetItem(entry?: ItineraryItem, favoriteId?: string) { const linkedFavoriteId = favoriteId || entry?.favoriteId || ''; pendingFavoriteId.value = linkedFavoriteId || null; itemFavoriteId.value = linkedFavoriteId; itemItineraryGroupId.value = entry?.itineraryGroupId || ''; editingItemId.value = entry?.id || null; Object.assign(item, entry ? { date: entry.date, time: entry.time, endTime: entry.endTime || '', title: entry.title, location: entry.location, mapUrl: entry.mapUrl || '', website: entry.website || '', imageUrl: entry.imageUrl || '', note: entry.note || '', type: entry.type, transportDestinationFavoriteId: entry.transportDestinationFavoriteId || '', transportDestinationName: entry.transportDestinationName || '', transportDestinationLocation: entry.transportDestinationLocation || '', transportDestinationMapUrl: entry.transportDestinationMapUrl || '', transportFareAmount: entry.transportFareAmount ?? entry.transportFareEstimateAmount, transportFareCurrency: entry.transportFareCurrency || entry.transportFareEstimateCurrency || props.trip.currency, transportFareSource: inferredFareSource(entry), transportFareEstimateConfidence: entry.transportFareEstimateConfidence, transportFareEstimateReasoning: entry.transportFareEstimateReasoning || '', transportFareEstimateAssumptions: entry.transportFareEstimateAssumptions || [], transportFareEstimatedAt: entry.transportFareEstimatedAt, transportFareEstimateModel: entry.transportFareEstimateModel || '' } : { date: '', time: '', endTime: '', title: '', location: '', mapUrl: '', website: '', imageUrl: '', note: '', type: '景點', transportDestinationFavoriteId: '', transportDestinationName: '', transportDestinationLocation: '', transportDestinationMapUrl: '', transportFareAmount: undefined, transportFareCurrency: props.trip.currency, transportFareSource: '', transportFareEstimateConfidence: undefined, transportFareEstimateReasoning: '', transportFareEstimateAssumptions: [], transportFareEstimatedAt: undefined, transportFareEstimateModel: '' }) }
-function openNewItemForm() { if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。'); itemActivityKind.value = 'shared'; personalActivityParentId.value = ''; insertAfterItemId.value = null; resetItem(); showItem.value = true }
+function openNewItemForm() { if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。'); itemActivityKind.value = 'shared'; personalActivityParentId.value = ''; insertAfterItemId.value = null; editingGroupId.value = null; groupMemberIds.value = []; resetItem(); resetGroupDraft(); showItem.value = true }
 function openItemFormForEdit(entry: ItineraryItem) { if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。'); itemActivityKind.value = entry.activityKind || 'shared'; personalActivityParentId.value = entry.parentFreeActivityId || ''; insertAfterItemId.value = null; resetItem(entry); showItem.value = true }
 function openPersonalItemForm(group: ItineraryItem) { if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。'); itemActivityKind.value = 'personal'; personalActivityParentId.value = group.id; insertAfterItemId.value = null; resetItem(); item.date = group.date; item.type = '個人行程'; showItem.value = true }
 function openItemFormAfter(entry: ItineraryItem) { if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。'); itemActivityKind.value = 'shared'; personalActivityParentId.value = ''; insertAfterItemId.value = entry.id; resetItem(); itemItineraryGroupId.value = entry.itineraryGroupId || ''; item.date = entry.date; showItem.value = true }
@@ -199,6 +235,10 @@ async function estimateTransportFareForForm() {
 async function saveItem() {
   if (savingItem.value) return
   if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。')
+  if (itemActivityKind.value === 'group') {
+    await saveGroup({ closeItemDialog: true })
+    return
+  }
   if (!item.title.trim() || !item.date) return ElMessage.warning('請填寫行程名稱與日期。')
   if (item.endTime && item.time && item.endTime <= item.time) return ElMessage.warning('結束時間必須晚於開始時間。')
   const kind = itemActivityKind.value
@@ -275,6 +315,16 @@ async function saveItem() {
   }
 }
 watch(() => props.favoriteRequestId, (favoriteId) => { if (!favoriteId) return; openNewItemForm(); item.date = props.trip.startDate; applyFavoriteToItem(favoriteId); emit('favoriteRequestConsumed') }, { immediate: true })
+watch(itemActivityKind, (kind) => {
+  if (kind !== 'group') return
+  resetGroupDraft()
+  itineraryGroup.date = item.date || itineraryGroup.date || props.trip.startDate || ''
+  itineraryGroup.title = item.title.trim() || itineraryGroup.title
+  itineraryGroup.location = item.location.trim() || itineraryGroup.location
+  itineraryGroup.mapUrl = item.mapUrl.trim() || itineraryGroup.mapUrl
+  itineraryGroup.website = item.website.trim() || itineraryGroup.website
+  itineraryGroup.note = item.note.trim() || itineraryGroup.note
+})
 
 function fareEstimateRouteSummary(entry: ItineraryItem) {
   return `${entry.location || entry.title} → ${entry.transportDestinationLocation || entry.transportDestinationName || '未設定抵達地'}`
@@ -352,37 +402,11 @@ function openGroupForm(entries: ItineraryItem[] = [], existing?: ItineraryItem) 
   groupMemberIds.value = existing
     ? props.items.filter((item) => item.itineraryGroupId === existing.id).map((item) => item.id)
     : entries.map((item) => item.id)
-  const first = entries[0] || existing
-  const uniqueLocations = [...new Set(entries.map((item) => (item.location || '').trim()).filter(Boolean))]
-  const suggestedGroupLocation = uniqueLocations.length === 1 ? uniqueLocations[0] : ''
-  Object.assign(
-    itineraryGroup,
-    existing
-      ? {
-          date: existing.date,
-          time: existing.time || '',
-          endTime: existing.endTime || '',
-          title: existing.title,
-          location: existing.location || '',
-          mapUrl: existing.mapUrl || '',
-          website: existing.website || '',
-          note: existing.note || '',
-        }
-      : {
-          date: first?.date || props.trip.startDate || '',
-          time: '',
-          endTime: '',
-          title: '',
-          location: suggestedGroupLocation,
-          mapUrl: '',
-          website: '',
-          note: '',
-        },
-  )
+  resetGroupDraft(existing, entries)
   showGroupForm.value = true
 }
 
-async function saveGroup() {
+async function saveGroup(options?: { closeItemDialog?: boolean }) {
   if (!itineraryGroup.title.trim() || !itineraryGroup.date) {
     ElMessage.warning('請填寫群組名稱與日期。')
     return
@@ -432,8 +456,17 @@ async function saveGroup() {
         .map((item) => store.updateItem({ ...item, itineraryGroupId: selected.has(item.id) ? group.id : '' })),
     )
     showGroupForm.value = false
+    if (options?.closeItemDialog) {
+      showItem.value = false
+      resetItem()
+      itemActivityKind.value = 'shared'
+      personalActivityParentId.value = ''
+      insertAfterItemId.value = null
+      pendingFavoriteId.value = null
+    }
     editingGroupId.value = null
     groupMemberIds.value = []
+    resetGroupDraft()
     ElMessage.success(existing ? '地點群組已更新。' : '已建立地點群組。')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '無法儲存地點群組。')
@@ -568,12 +601,35 @@ async function bulkRemoveEntries(entries: ItineraryItem[]) {
       <template #footer><el-button @click="showGroupForm = false">取消</el-button><el-button type="primary" @click="saveGroup">儲存群組</el-button></template>
     </el-dialog>
 
-    <el-dialog v-model="showItem" :title="editingItemId ? `編輯${itemActivityKind === 'free' ? '自由活動' : itemActivityKind === 'personal' ? '我的行程' : '行程'}` : itemActivityKind === 'personal' ? '新增我的行程' : '新增行程'" class="itinerary-dialog" width="min(92vw, 520px)">
+    <el-dialog v-model="showItem" :title="editingItemId ? `編輯${itemActivityKind === 'free' ? '自由活動' : itemActivityKind === 'group' ? '地點群組' : itemActivityKind === 'personal' ? '我的行程' : '行程'}` : itemActivityKind === 'personal' ? '新增我的行程' : itemActivityKind === 'group' ? '新增地點群組' : '新增行程'" class="itinerary-dialog" width="min(92vw, 520px)">
       <el-form class="itinerary-form" label-position="top">
         <el-form-item v-if="!editingItemId && itemActivityKind !== 'personal'" label="行程安排方式">
-          <el-radio-group v-model="itemActivityKind" class="itinerary-activity-kind"><el-radio-button label="shared">共用行程</el-radio-button><el-radio-button label="free">自由活動</el-radio-button></el-radio-group>
-          <small>{{ itemActivityKind === 'free' ? '自由活動會建立一張所有旅伴都看得到的群組卡片；每位旅伴可在其中安排自己的個人行程。' : '共用行程會顯示給所有旅伴，並可從旅遊收藏快速帶入。' }}</small>
+          <el-radio-group v-model="itemActivityKind" class="itinerary-activity-kind"><el-radio-button label="shared">共用行程</el-radio-button><el-radio-button label="free">自由活動</el-radio-button><el-radio-button label="group">地點群組</el-radio-button></el-radio-group>
+          <small>{{ itemActivityKind === 'free' ? '自由活動會建立一張所有旅伴都看得到的群組卡片；每位旅伴可在其中安排自己的個人行程。' : itemActivityKind === 'group' ? '地點群組可整理同一區域的多筆共用行程，之後也能繼續拖曳移入、移出或調整順序。' : '共用行程會顯示給所有旅伴，並可從旅遊收藏快速帶入。' }}</small>
         </el-form-item>
+        <template v-if="itemActivityKind === 'group'">
+          <div class="two-col">
+            <el-form-item label="群組名稱"><el-input v-model="itineraryGroup.title" placeholder="例如：築地市場探索" /></el-form-item>
+            <el-form-item label="區域／地點"><el-input v-model="itineraryGroup.location" placeholder="例如：築地市場" /></el-form-item>
+          </div>
+          <div class="three-col">
+            <el-form-item label="日期"><el-date-picker v-model="itineraryGroup.date" type="date" value-format="YYYY-MM-DD" placeholder="選擇日期" /></el-form-item>
+            <el-form-item label="固定開始時間（選填）"><el-time-picker v-model="itineraryGroup.time" value-format="HH:mm" format="HH:mm" placeholder="未排時間" /></el-form-item>
+            <el-form-item label="結束時間（選填）"><el-time-picker v-model="itineraryGroup.endTime" value-format="HH:mm" format="HH:mm" placeholder="選填" /></el-form-item>
+          </div>
+          <el-form-item label="Google Maps 區域連結（選填）"><el-input v-model="itineraryGroup.mapUrl" placeholder="貼上 Google Maps 區域或地點網址" /></el-form-item>
+          <el-form-item label="群組網站（選填）"><el-input v-model="itineraryGroup.website" placeholder="例如：https://example.com" /><small>可放商圈官網、區域整理頁、店鋪總覽或行前攻略。</small></el-form-item>
+          <el-form-item label="群組備註（選填）"><el-input v-model="itineraryGroup.note" type="textarea" :rows="3" maxlength="200" show-word-limit placeholder="例如：這區主要安排早餐與採買，建議步行移動" /></el-form-item>
+          <el-form-item label="群組內行程">
+            <el-checkbox-group v-model="groupMemberIds" class="itinerary-group-member-selector">
+              <el-checkbox v-for="entry in groupSelectableEntries" :key="entry.id" :label="entry.id">
+                {{ entry.title }}<small>{{ entry.time || '未排時間' }}・{{ entry.type }}</small>
+              </el-checkbox>
+            </el-checkbox-group>
+            <small>可直接勾選要收進這個地點群組的共用行程；之後也能再從卡片拖曳調整。</small>
+          </el-form-item>
+        </template>
+        <template v-else>
         <el-form-item v-if="favorites.length && itemActivityKind !== 'free'" label="從旅遊收藏快速帶入">
           <div class="itinerary-favorite-picker-control"><div class="itinerary-favorite-picker-copy"><strong>{{ itemFavoriteId ? '已選擇旅遊收藏' : '尚未選擇收藏' }}</strong><span>{{ itemFavoriteId ? (favorites.find((entry) => entry.id === itemFavoriteId)?.name || '已選擇項目') : '可從收藏清單帶入名稱、類型、地點與圖片' }}</span></div><el-button class="itinerary-favorite-picker-button" @click="openFavoritePicker()">{{ itemFavoriteId ? '更換收藏' : '選擇收藏' }}</el-button></div>
           <small>{{ itemActivityKind === 'personal' ? '會帶入收藏的名稱、地點、Google Maps 與圖片；日期已依自由活動群組設定。' : '日期與時間不會自動設定，請依實際行程選擇。' }}</small>
@@ -589,8 +645,9 @@ async function bulkRemoveEntries(entries: ItineraryItem[]) {
         <el-form-item label="網站（選填）"><el-input v-model="item.website" placeholder="例如：https://example.com" /><small>{{ itemActivityKind === 'free' ? '可放自由活動整理頁、預約頁或相關網站。' : '可放官網、菜單、訂位頁或活動介紹頁；從旅遊收藏帶入時會自動填入。' }}</small></el-form-item>
         <el-form-item v-if="itemActivityKind !== 'free'" label="行程圖片網址（選填）"><el-input v-model="item.imageUrl" placeholder="貼上圖片網址，例如 https://..." /><div v-if="item.imageUrl" class="itinerary-form-image-preview"><img :src="item.imageUrl" alt="行程圖片預覽" /><div><strong>行程圖片預覽</strong><span>從旅遊收藏帶入或使用此網址顯示</span></div></div><small>圖片會以縮圖顯示在每日行程卡片；從旅遊收藏帶入時會自動填入。</small></el-form-item>
         <el-form-item label="備註（選填）"><el-input v-model="item.note" type="textarea" :rows="3" maxlength="240" show-word-limit placeholder="例如：預約資訊、集合地點或注意事項" /></el-form-item>
+        </template>
       </el-form>
-      <template #footer><el-button :disabled="savingItem" @click="showItem = false">取消</el-button><el-button type="primary" :loading="savingItem" :disabled="savingItem" @click="saveItem">儲存行程</el-button></template>
+      <template #footer><el-button :disabled="savingItem" @click="showItem = false">取消</el-button><el-button type="primary" :loading="savingItem" :disabled="savingItem" @click="saveItem">{{ itemActivityKind === 'group' ? '儲存群組' : '儲存行程' }}</el-button></template>
     </el-dialog>
 
     <el-dialog v-model="showFavoritePicker" :title="favoritePickerTarget === 'destination' ? '選擇抵達站／目的地' : '選擇旅遊收藏'" class="favorite-picker-dialog" width="min(92vw, 660px)" append-to-body>
