@@ -130,6 +130,34 @@ function dayNumber(date: string) {
 function activityKind(entry: ItineraryItem) {
   return entry.activityKind || "shared";
 }
+function normalizeHexColor(value?: string) {
+  const raw = (value || "").trim();
+  if (!raw) return "";
+  const normalized = raw.startsWith("#") ? raw : `#${raw}`;
+  return /^#[0-9a-fA-F]{6}$/.test(normalized) ? normalized.toUpperCase() : "";
+}
+function hexToRgb(value: string) {
+  const normalized = normalizeHexColor(value);
+  if (!normalized) return null;
+  const red = Number.parseInt(normalized.slice(1, 3), 16);
+  const green = Number.parseInt(normalized.slice(3, 5), 16);
+  const blue = Number.parseInt(normalized.slice(5, 7), 16);
+  return { red, green, blue };
+}
+function mixColor(base: string, target: string, weight: number) {
+  const baseRgb = hexToRgb(base);
+  const targetRgb = hexToRgb(target);
+  if (!baseRgb || !targetRgb) return "";
+  const clamp = Math.min(1, Math.max(0, weight));
+  const channel = (baseValue: number, targetValue: number) =>
+    Math.round(baseValue * (1 - clamp) + targetValue * clamp);
+  return `rgb(${channel(baseRgb.red, targetRgb.red)} ${channel(baseRgb.green, targetRgb.green)} ${channel(baseRgb.blue, targetRgb.blue)})`;
+}
+function alphaColor(base: string, alpha: number) {
+  const rgb = hexToRgb(base);
+  if (!rgb) return "";
+  return `rgba(${rgb.red}, ${rgb.green}, ${rgb.blue}, ${alpha})`;
+}
 function isGroupContainer(entry: ItineraryItem) {
   return isItineraryGroup(entry);
 }
@@ -537,6 +565,28 @@ function handleEntryAction(
 function sharedLabel(entry: ItineraryItem) {
   return isItineraryGroup(entry) ? "群組卡" : "共用行程";
 }
+function groupCardStyle(entry: ItineraryItem) {
+  if (!isItineraryGroup(entry)) return undefined;
+  const base = normalizeHexColor(entry.groupColor);
+  if (!base) return undefined;
+  return {
+    "--group-card-border": alphaColor(base, 0.42),
+    "--group-card-bg": `linear-gradient(180deg, ${alphaColor(base, 0.14)} 0%, ${alphaColor(base, 0.08)} 100%)`,
+    "--group-dot-border": base,
+    "--group-dot-bg": alphaColor(base, 0.14),
+    "--group-tag-bg": alphaColor(base, 0.16),
+    "--group-tag-color": mixColor(base, "#123F3A", 0.45),
+    "--group-title-color": mixColor(base, "#123F3A", 0.4),
+    "--group-summary-border": alphaColor(base, 0.22),
+    "--group-summary-text": mixColor(base, "#5F716C", 0.5),
+    "--group-summary-strong": mixColor(base, "#123F3A", 0.36),
+    "--group-link-color": mixColor(base, "#2F7D70", 0.25),
+    "--group-member-border": alphaColor(base, 0.18),
+    "--group-member-bg": alphaColor(base, 0.04),
+    "--group-member-placeholder-bg": alphaColor(base, 0.14),
+    "--group-member-placeholder-color": mixColor(base, "#2F6D78", 0.3),
+  } as Record<string, string>;
+}
 function toggleCardVisibilityLabel(entry: ItineraryItem) {
   return cardVisibility(entry) === "private" ? "改為所有旅伴可見" : "改為僅自己可見";
 }
@@ -695,6 +745,7 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
                   ? 'is-itinerary-group-card'
                   : itineraryTypeClass(entry.type),
               ]"
+              :style="groupCardStyle(entry)"
               >
               <div class="itinerary-card-header">
                 <img
@@ -1930,6 +1981,6 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
 @media(max-width:720px){.itinerary-group-member{position:relative;grid-template-columns:40px minmax(0,1fr) 34px;padding:8px}.itinerary-group-member>:first-child{position:absolute;z-index:2;top:9px;left:9px;margin:0;padding:0;border-radius:4px;background:rgba(255,255,255,.88)}.itinerary-group-member>img,.itinerary-group-member>.itinerary-group-member-placeholder{grid-column:1;grid-row:1;margin-top:0}.itinerary-group-member-copy{grid-column:2;grid-row:1;padding-top:3px}.itinerary-group-member :deep(.el-dropdown){grid-column:3;grid-row:1}.itinerary-group-member-detail{grid-column:1 / -1;padding-top:1px}}
 @media(max-width:720px){.itinerary-group-member :deep(.el-checkbox){position:absolute!important;z-index:3;top:8px;left:8px;width:18px;height:18px;margin:0!important;padding:0!important;border-radius:4px;background:rgba(255,255,255,.92);line-height:18px}.itinerary-group-member :deep(.el-checkbox__input){display:grid;width:18px;height:18px;place-items:center}.itinerary-group-member :deep(.el-checkbox__inner){width:14px;height:14px}}
 @media(max-width:720px){.itinerary-card.is-itinerary-group-card .itinerary-card-header{grid-template-columns:minmax(0,1fr);gap:0}.itinerary-card.is-itinerary-group-card .itinerary-card-heading{grid-column:1;grid-row:1 / span 2}.itinerary-card.is-itinerary-group-card .itinerary-card-tags{margin-right:74px}}
-.itinerary-card.is-itinerary-group-card{border-color:#a9cdd2;background:#f1f7f8}.is-itinerary-group .itinerary-dot{border-color:#5e9da7;background:#eff8f8}.itinerary-card.is-itinerary-group-card .itinerary-scope-tag{background:#ddeff1;color:#2f6d78}.itinerary-card.is-itinerary-group-card .itinerary-card-heading strong{color:#244f57}.itinerary-card.is-itinerary-group-card .itinerary-group-summary{border-bottom-color:#cfe2e5}.itinerary-card.is-itinerary-group-card .itinerary-group-summary p{color:#517980}.itinerary-card.is-itinerary-group-card .itinerary-group-summary p strong{color:#2f5f69}.itinerary-card.is-itinerary-group-card .itinerary-group-summary a{color:#347b86}.itinerary-card.is-itinerary-group-card .itinerary-group-member{border-color:#d2e3e5;background:#fff}.itinerary-card.is-itinerary-group-card .itinerary-group-member-placeholder{background:#e5f1f3;color:#2f6d78}
+.itinerary-card.is-itinerary-group-card{border-color:var(--group-card-border,#a9cdd2);background:var(--group-card-bg,#f1f7f8)}.is-itinerary-group .itinerary-dot{border-color:var(--group-dot-border,#5e9da7);background:var(--group-dot-bg,#eff8f8)}.itinerary-card.is-itinerary-group-card .itinerary-scope-tag{background:var(--group-tag-bg,#ddeff1);color:var(--group-tag-color,#2f6d78)}.itinerary-card.is-itinerary-group-card .itinerary-card-heading strong{color:var(--group-title-color,#244f57)}.itinerary-card.is-itinerary-group-card .itinerary-group-summary{border-bottom-color:var(--group-summary-border,#cfe2e5)}.itinerary-card.is-itinerary-group-card .itinerary-group-summary p{color:var(--group-summary-text,#517980)}.itinerary-card.is-itinerary-group-card .itinerary-group-summary p strong{color:var(--group-summary-strong,#2f5f69)}.itinerary-card.is-itinerary-group-card .itinerary-group-summary a{color:var(--group-link-color,#347b86)}.itinerary-card.is-itinerary-group-card .itinerary-group-member{border-color:var(--group-member-border,#d2e3e5);background:var(--group-member-bg,#fff)}.itinerary-card.is-itinerary-group-card .itinerary-group-member-placeholder{background:var(--group-member-placeholder-bg,#e5f1f3);color:var(--group-member-placeholder-color,#2f6d78)}
 .group-drag-handle{display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;margin:-4px 2px -4px -5px;border-radius:6px;color:#4c8c96;cursor:grab;touch-action:none}.group-drag-handle:hover{background:#e6f2f3;color:#286d78}.group-drag-handle:active{cursor:grabbing}.itinerary-group-member.is-sortable-enabled{cursor:grab}.itinerary-group-member.is-sortable-enabled:active{cursor:grabbing}@media(max-width:720px){.group-drag-handle{position:absolute;top:5px;right:38px;width:30px;height:30px;margin:0;background:rgba(255,255,255,.88)}}
 </style>

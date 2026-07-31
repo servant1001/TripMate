@@ -37,10 +37,18 @@ const emit = defineEmits<{
 }>()
 
 const store = useTripStore()
+const groupColorOptions = [
+  { label: '預設霧藍綠', value: '#8FBFC6' },
+  { label: '森林綠', value: '#7FAF93' },
+  { label: '暖杏黃', value: '#E2B96E' },
+  { label: '柔霧紫', value: '#B8A4D6' },
+  { label: '珊瑚橘', value: '#E99B86' },
+  { label: '海鹽藍', value: '#8FB4D9' },
+] as const
 const showGroupForm = ref(false)
 const editingGroupId = ref<string | null>(null)
 const groupMemberIds = ref<string[]>([])
-const itineraryGroup = reactive({ date: '', time: '', endTime: '', title: '', location: '', mapUrl: '', website: '', note: '', cardVisibility: 'shared' as ItineraryVisibility, childVisibility: 'shared' as ItineraryVisibility })
+const itineraryGroup = reactive({ date: '', time: '', endTime: '', title: '', location: '', mapUrl: '', website: '', note: '', cardVisibility: 'shared' as ItineraryVisibility, childVisibility: 'shared' as ItineraryVisibility, groupColor: '' })
 const showItem = ref(false)
 const savingItem = ref(false)
 const editingItemId = ref<string | null>(null)
@@ -145,6 +153,12 @@ function normalizeGoogleMapsUrl(value: string) {
     throw new Error('請貼上有效的 Google Maps 景點網址。')
   }
 }
+function normalizeHexColor(value: string) {
+  const raw = value.trim()
+  if (!raw) return ''
+  const normalized = raw.startsWith('#') ? raw : `#${raw}`
+  return /^#[0-9a-fA-F]{6}$/.test(normalized) ? normalized.toUpperCase() : ''
+}
 function normalizeUrl(value: string) {
   const raw = value.trim()
   return raw && !/^https?:\/\//i.test(raw) ? `https://${raw}` : raw
@@ -159,6 +173,16 @@ function inferredFareSource(entry?: ItineraryItem): TransportFareSource | '' {
   if (entry.transportFareEstimateModel?.startsWith('official-rule:')) return 'rule'
   if (typeof entry.transportFareEstimateAmount === 'number') return 'ai'
   return ''
+}
+function groupColorPreviewStyle(color = itineraryGroup.groupColor) {
+  const normalized = normalizeHexColor(color)
+  return normalized
+    ? {
+        background: `linear-gradient(135deg, ${normalized}1A 0%, ${normalized}12 100%)`,
+        borderColor: `${normalized}4D`,
+        color: normalized,
+      }
+    : {}
 }
 function resetGroupDraft(entry?: Partial<ItineraryItem>, entries: ItineraryItem[] = []) {
   const first = entries[0] || entry
@@ -178,6 +202,7 @@ function resetGroupDraft(entry?: Partial<ItineraryItem>, entries: ItineraryItem[
           note: entry.note || '',
           cardVisibility: entry.cardVisibility || 'shared',
           childVisibility: entry.childVisibility || 'shared',
+          groupColor: normalizeHexColor(entry.groupColor || ''),
         }
       : {
           date: first?.date || props.trip.startDate || '',
@@ -190,6 +215,7 @@ function resetGroupDraft(entry?: Partial<ItineraryItem>, entries: ItineraryItem[
           note: '',
           cardVisibility: 'shared',
           childVisibility: 'shared',
+          groupColor: '',
         },
   )
 }
@@ -473,6 +499,7 @@ async function saveGroup(options?: { closeItemDialog?: boolean }) {
       activityKind: 'group' as const,
       cardVisibility: itineraryGroup.cardVisibility,
       childVisibility: itineraryGroup.childVisibility,
+      groupColor: normalizeHexColor(itineraryGroup.groupColor),
       ownerId: props.userId || props.trip.ownerId,
     }
     const group = existing
@@ -701,6 +728,44 @@ async function bulkRemoveEntries(entries: ItineraryItem[]) {
             </template>
           </el-form-item>
         </div>
+        <el-form-item label="群組卡顏色（選填）">
+          <div class="itinerary-group-color-field">
+            <div class="itinerary-group-color-swatches" role="list" aria-label="選擇群組卡顏色">
+              <button
+                v-for="option in groupColorOptions"
+                :key="option.value"
+                type="button"
+                class="itinerary-group-color-swatch"
+                :class="{ 'is-active': normalizeHexColor(itineraryGroup.groupColor) === option.value }"
+                :style="{ '--swatch-color': option.value }"
+                :title="option.label"
+                @click="itineraryGroup.groupColor = option.value"
+              >
+                <span class="itinerary-group-color-swatch-dot" aria-hidden="true"></span>
+                <span>{{ option.label }}</span>
+              </button>
+              <button
+                type="button"
+                class="itinerary-group-color-swatch is-default"
+                :class="{ 'is-active': !normalizeHexColor(itineraryGroup.groupColor) }"
+                title="使用系統預設群組色"
+                @click="itineraryGroup.groupColor = ''"
+              >
+                <span class="itinerary-group-color-swatch-dot" aria-hidden="true"></span>
+                <span>系統預設</span>
+              </button>
+            </div>
+            <div class="itinerary-group-color-tools">
+              <el-color-picker v-model="itineraryGroup.groupColor" color-format="hex" />
+              <small>可直接選色；留白則沿用目前群組卡預設色。</small>
+            </div>
+            <div class="itinerary-group-color-preview" :style="groupColorPreviewStyle()">
+              <span class="itinerary-group-color-preview-tag">群組卡預覽</span>
+              <strong>{{ itineraryGroup.title || '群組卡名稱預覽' }}</strong>
+              <p>{{ itineraryGroup.location || '未設定區域' }}</p>
+            </div>
+          </div>
+        </el-form-item>
         <el-form-item label="Google Maps 區域連結（選填）"><el-input v-model="itineraryGroup.mapUrl" placeholder="貼上 Google Maps 區域或地點網址" /></el-form-item>
         <el-form-item label="群組網站（選填）"><el-input v-model="itineraryGroup.website" placeholder="例如：https://example.com" /><small>可放區域介紹、商圈官網或整理頁面，會顯示在群組卡片上。</small></el-form-item>
         <el-form-item label="群組備註（選填）"><el-input v-model="itineraryGroup.note" type="textarea" :rows="2" maxlength="200" show-word-limit /></el-form-item>
@@ -789,6 +854,44 @@ async function bulkRemoveEntries(entries: ItineraryItem[]) {
               </template>
             </el-form-item>
           </div>
+          <el-form-item label="群組卡顏色（選填）">
+            <div class="itinerary-group-color-field">
+              <div class="itinerary-group-color-swatches" role="list" aria-label="選擇群組卡顏色">
+                <button
+                  v-for="option in groupColorOptions"
+                  :key="option.value"
+                  type="button"
+                  class="itinerary-group-color-swatch"
+                  :class="{ 'is-active': normalizeHexColor(itineraryGroup.groupColor) === option.value }"
+                  :style="{ '--swatch-color': option.value }"
+                  :title="option.label"
+                  @click="itineraryGroup.groupColor = option.value"
+                >
+                  <span class="itinerary-group-color-swatch-dot" aria-hidden="true"></span>
+                  <span>{{ option.label }}</span>
+                </button>
+                <button
+                  type="button"
+                  class="itinerary-group-color-swatch is-default"
+                  :class="{ 'is-active': !normalizeHexColor(itineraryGroup.groupColor) }"
+                  title="使用系統預設群組色"
+                  @click="itineraryGroup.groupColor = ''"
+                >
+                  <span class="itinerary-group-color-swatch-dot" aria-hidden="true"></span>
+                  <span>系統預設</span>
+                </button>
+              </div>
+              <div class="itinerary-group-color-tools">
+                <el-color-picker v-model="itineraryGroup.groupColor" color-format="hex" />
+                <small>可直接選色；留白則沿用目前群組卡預設色。</small>
+              </div>
+              <div class="itinerary-group-color-preview" :style="groupColorPreviewStyle()">
+                <span class="itinerary-group-color-preview-tag">群組卡預覽</span>
+                <strong>{{ itineraryGroup.title || '群組卡名稱預覽' }}</strong>
+                <p>{{ itineraryGroup.location || '未設定區域' }}</p>
+              </div>
+            </div>
+          </el-form-item>
           <el-form-item label="Google Maps 區域連結（選填）"><el-input v-model="itineraryGroup.mapUrl" placeholder="貼上 Google Maps 區域或地點網址" /></el-form-item>
           <el-form-item label="群組網站（選填）"><el-input v-model="itineraryGroup.website" placeholder="例如：https://example.com" /><small>可放商圈官網、區域整理頁、店鋪總覽或行前攻略。</small></el-form-item>
           <el-form-item label="群組備註（選填）"><el-input v-model="itineraryGroup.note" type="textarea" :rows="3" maxlength="200" show-word-limit placeholder="例如：這區主要安排早餐與採買，建議步行移動" /></el-form-item>
@@ -872,6 +975,7 @@ async function bulkRemoveEntries(entries: ItineraryItem[]) {
 
 <style scoped>
 .trip-itinerary-view{display:grid;min-width:0}.two-col,.three-col,.itinerary-time-grid{display:grid;gap:12px}.two-col,.itinerary-time-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.three-col{grid-template-columns:repeat(3,minmax(0,1fr))}.three-col :deep(.el-date-editor),.three-col :deep(.el-time-picker),.itinerary-time-grid :deep(.el-time-picker),.itinerary-form :deep(.el-date-editor),.itinerary-form :deep(.el-select){width:100%}.itinerary-form small{display:block;margin-top:5px;color:#71827c;font-size:12px;line-height:1.5}.itinerary-activity-kind{display:grid;grid-template-columns:1fr;gap:12px}.itinerary-activity-card{display:grid;gap:10px;min-width:0;padding:16px;border:1px solid #dce8e2;border-radius:14px;background:#fff;text-align:left;transition:border-color .18s ease,box-shadow .18s ease,background-color .18s ease}.itinerary-activity-card:hover,.itinerary-activity-card:focus-visible{border-color:#93b9aa;box-shadow:0 8px 20px rgba(18,63,58,.06);outline:none}.itinerary-activity-card.is-active{border-color:#123f3a;background:#eef5f0;box-shadow:0 10px 22px rgba(18,63,58,.08)}.itinerary-activity-card-top{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:12px}.itinerary-activity-card-heading{display:flex;align-items:center;gap:12px;min-width:0}.itinerary-activity-card-icon{display:grid;flex:0 0 38px;width:38px;height:38px;place-items:center;border-radius:12px;background:#f3f7f5;color:#467266}.itinerary-activity-card.is-active .itinerary-activity-card-icon{background:#dcece5;color:#145247}.itinerary-activity-card strong{color:#163b37;font-size:16px;line-height:1.4;overflow-wrap:anywhere}.itinerary-activity-card-meta{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex:0 0 auto}.itinerary-activity-card-tag{display:inline-flex;align-items:center;min-height:24px;padding:0 8px;border-radius:999px;background:#f4f7f5;color:#5f7971;font-size:11px;font-weight:800;white-space:nowrap}.itinerary-activity-card.is-active .itinerary-activity-card-tag{background:#dcece5;color:#1f5e52}.itinerary-activity-card-check{display:grid;flex:0 0 22px;width:22px;height:22px;place-items:center;border-radius:999px;background:#123f3a;color:#fff;box-shadow:0 4px 10px rgba(18,63,58,.16)}.itinerary-activity-card-description{color:#6b7d78;font-size:13px;line-height:1.65}.itinerary-group-mode-summary{display:grid;gap:4px;padding:13px 14px;border:1px solid #dce8e2;border-radius:14px;background:linear-gradient(180deg,#fbfcfa 0%,#f4f8f6 100%)}.itinerary-group-mode-summary.is-inline{margin-bottom:2px}.itinerary-group-mode-kicker{display:inline-flex;align-items:center;width:max-content;min-height:24px;padding:0 8px;border-radius:999px;background:#eef5f0;color:#2f7d70;font-size:11px;font-weight:800;letter-spacing:.04em}.itinerary-group-mode-summary strong{color:#163b37;font-size:14px;line-height:1.45}.itinerary-group-mode-summary p{margin:0;color:#5f716c;font-size:13px;line-height:1.6}.itinerary-group-mode-summary small{margin:0;color:#2f7d70;font-size:12px;font-weight:700;line-height:1.55}.itinerary-group-visibility-panel{display:grid;gap:12px;padding:12px;border:1px solid #dce8e2;border-radius:14px;background:#fbfcfa}.itinerary-group-visibility-row{display:grid;gap:8px}.itinerary-group-visibility-row>span{color:#244a43;font-size:13px;font-weight:700}.itinerary-group-visibility-lock{display:grid;gap:4px;padding:10px 12px;border:1px dashed #cfe0d9;border-radius:12px;background:#f3f8f5}.itinerary-group-visibility-lock strong{color:#123f3a;font-size:13px}.itinerary-group-visibility-lock small{margin:0;color:#6b7d78;font-size:12px;line-height:1.55}.itinerary-favorite-picker-control{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid #dce8e2;border-radius:10px;background:#fbfdfc}.itinerary-favorite-picker-copy{display:grid;min-width:0;gap:2px}.itinerary-favorite-picker-copy strong,.itinerary-favorite-picker-copy span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.itinerary-favorite-picker-copy strong{color:#244a43;font-size:13px}.itinerary-favorite-picker-copy span{color:#71827c;font-size:12px}.itinerary-favorite-picker-button{flex:0 0 auto;min-height:36px;border-color:#bfd7cd;color:#236c59;font-weight:700}.transport-destination-actions{display:flex;flex:0 0 auto;align-items:center;gap:4px}.transport-destination-clear{color:#a96a50}.itinerary-form-image-preview{display:flex;align-items:center;gap:10px;margin-top:9px;padding:8px;border:1px solid #e1e8e3;border-radius:10px;background:#fbfcfa}.itinerary-form-image-preview img{width:52px;height:52px;border-radius:8px;object-fit:cover}.itinerary-form-image-preview div{display:grid;gap:2px}.itinerary-form-image-preview strong{color:#244a43;font-size:13px}.itinerary-form-image-preview span{color:#71827c;font-size:12px}.itinerary-group-member-selector{display:grid;gap:7px}.itinerary-group-member-selector :deep(.el-checkbox){height:auto;margin-right:0;white-space:normal}.itinerary-group-member-selector small{display:block;margin:2px 0 0;color:#71827c;font-size:12px}.favorite-picker-toolbar{display:grid;gap:12px}.favorite-picker-filters{display:flex;flex-wrap:wrap;gap:7px}.favorite-picker-filter{min-height:34px;margin:0;border-color:#d9e6e0;color:#477168}.favorite-picker-filter.is-active{border-color:#123f3a;background:#123f3a;color:#fff}.favorite-picker-filter small{margin-left:4px;font-size:11px}.favorite-picker-list{display:grid;gap:9px;max-height:52vh;margin-top:14px;overflow:auto}.favorite-picker-row{display:grid;grid-template-columns:48px minmax(0,1fr) auto;align-items:center;gap:10px;width:100%;padding:9px;border:1px solid #e1e8e3;border-radius:12px;background:#fff;text-align:left;cursor:pointer}.favorite-picker-row:hover,.favorite-picker-row.is-selected{border-color:#9fc8b8;background:#f5faf7}.favorite-picker-row img,.favorite-picker-placeholder{display:grid;width:48px;height:48px;place-items:center;border-radius:9px;background:#eef5f0;color:#347965;object-fit:cover;font-weight:800}.favorite-picker-row-copy{display:grid;min-width:0;gap:3px}.favorite-picker-row-copy strong,.favorite-picker-row-copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.favorite-picker-row-copy strong{color:#244a43;font-size:14px}.favorite-picker-row-copy small{color:#71827c;font-size:12px}.favorite-picker-type{width:max-content;padding:2px 6px;border-radius:999px;background:#eaf4ef;color:#3b7868;font-size:11px;font-weight:700}.favorite-picker-select{color:#2f7d70;font-size:13px;font-weight:800;white-space:nowrap}.favorite-picker-empty{padding:30px 10px;text-align:center;color:#71827c}.favorite-picker-empty strong{color:#244a43}.favorite-picker-empty p{margin:5px 0 0;font-size:13px}.fare-estimate-content{display:grid;gap:14px}.fare-estimate-summary{display:grid;gap:4px;padding:14px;border:1px solid #e1e8e3;border-radius:14px;background:#fbfcfa}.fare-estimate-summary strong{color:#163b37;font-size:16px}.fare-estimate-summary p{margin:0;color:#6b7d78;font-size:13px;line-height:1.6}.fare-estimate-kicker,.fare-estimate-label,.fare-estimate-block span{color:#2f7d70;font-size:12px;font-weight:800;letter-spacing:.08em}.fare-estimate-result-card{display:grid;gap:4px;padding:16px;border-radius:16px;background:#eef5f0}.fare-estimate-result-card strong{color:#123f3a;font-size:28px;line-height:1.1}.fare-estimate-result-card small{color:#5e746d;font-size:12px}.fare-estimate-block{display:grid;gap:6px}.fare-estimate-block p,.fare-estimate-block ul{margin:0;color:#405651;font-size:14px;line-height:1.65}.fare-estimate-block ul{padding-left:18px}.fare-estimate-disclaimer{margin:0;color:#6b7d78;font-size:12px;line-height:1.6}@media(max-width:600px){.two-col,.three-col,.itinerary-time-grid,.itinerary-activity-kind{grid-template-columns:1fr}.itinerary-group-dialog :deep(.el-dialog__body),.itinerary-dialog :deep(.el-dialog__body),.favorite-picker-dialog :deep(.el-dialog__body),.fare-estimate-dialog :deep(.el-dialog__body){padding:16px}.itinerary-group-dialog :deep(.el-dialog__footer),.itinerary-dialog :deep(.el-dialog__footer),.favorite-picker-dialog :deep(.el-dialog__footer),.fare-estimate-dialog :deep(.el-dialog__footer){padding:12px 16px 18px}.itinerary-activity-card-top{align-items:center}.itinerary-group-mode-summary{padding:12px}.itinerary-group-visibility-panel{padding:10px}.itinerary-favorite-picker-control{align-items:stretch;flex-direction:column}.itinerary-favorite-picker-button{width:100%}.transport-destination-actions{display:grid;grid-template-columns:1fr 1fr}.favorite-picker-row{grid-template-columns:44px minmax(0,1fr)}.favorite-picker-row img,.favorite-picker-placeholder{width:44px;height:44px}.favorite-picker-select{grid-column:2;justify-self:start}.fare-estimate-result-card strong{font-size:24px}}
+.trip-itinerary-view{display:grid;min-width:0}.two-col,.three-col,.itinerary-time-grid{display:grid;gap:12px}.two-col,.itinerary-time-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.three-col{grid-template-columns:repeat(3,minmax(0,1fr))}.three-col :deep(.el-date-editor),.three-col :deep(.el-time-picker),.itinerary-time-grid :deep(.el-time-picker),.itinerary-form :deep(.el-date-editor),.itinerary-form :deep(.el-select){width:100%}.itinerary-form small{display:block;margin-top:5px;color:#71827c;font-size:12px;line-height:1.5}.itinerary-activity-kind{display:grid;grid-template-columns:1fr;gap:12px}.itinerary-activity-card{display:grid;gap:10px;min-width:0;padding:16px;border:1px solid #dce8e2;border-radius:14px;background:#fff;text-align:left;transition:border-color .18s ease,box-shadow .18s ease,background-color .18s ease}.itinerary-activity-card:hover,.itinerary-activity-card:focus-visible{border-color:#93b9aa;box-shadow:0 8px 20px rgba(18,63,58,.06);outline:none}.itinerary-activity-card.is-active{border-color:#123f3a;background:#eef5f0;box-shadow:0 10px 22px rgba(18,63,58,.08)}.itinerary-activity-card-top{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:12px}.itinerary-activity-card-heading{display:flex;align-items:center;gap:12px;min-width:0}.itinerary-activity-card-icon{display:grid;flex:0 0 38px;width:38px;height:38px;place-items:center;border-radius:12px;background:#f3f7f5;color:#467266}.itinerary-activity-card.is-active .itinerary-activity-card-icon{background:#dcece5;color:#145247}.itinerary-activity-card strong{color:#163b37;font-size:16px;line-height:1.4;overflow-wrap:anywhere}.itinerary-activity-card-meta{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex:0 0 auto}.itinerary-activity-card-tag{display:inline-flex;align-items:center;min-height:24px;padding:0 8px;border-radius:999px;background:#f4f7f5;color:#5f7971;font-size:11px;font-weight:800;white-space:nowrap}.itinerary-activity-card.is-active .itinerary-activity-card-tag{background:#dcece5;color:#1f5e52}.itinerary-activity-card-check{display:grid;flex:0 0 22px;width:22px;height:22px;place-items:center;border-radius:999px;background:#123f3a;color:#fff;box-shadow:0 4px 10px rgba(18,63,58,.16)}.itinerary-activity-card-description{color:#6b7d78;font-size:13px;line-height:1.65}.itinerary-group-mode-summary{display:grid;gap:4px;padding:13px 14px;border:1px solid #dce8e2;border-radius:14px;background:linear-gradient(180deg,#fbfcfa 0%,#f4f8f6 100%)}.itinerary-group-mode-summary.is-inline{margin-bottom:2px}.itinerary-group-mode-kicker{display:inline-flex;align-items:center;width:max-content;min-height:24px;padding:0 8px;border-radius:999px;background:#eef5f0;color:#2f7d70;font-size:11px;font-weight:800;letter-spacing:.04em}.itinerary-group-mode-summary strong{color:#163b37;font-size:14px;line-height:1.45}.itinerary-group-mode-summary p{margin:0;color:#5f716c;font-size:13px;line-height:1.6}.itinerary-group-mode-summary small{margin:0;color:#2f7d70;font-size:12px;font-weight:700;line-height:1.55}.itinerary-group-visibility-panel{display:grid;gap:12px;padding:12px;border:1px solid #dce8e2;border-radius:14px;background:#fbfcfa}.itinerary-group-visibility-row{display:grid;gap:8px}.itinerary-group-visibility-row>span{color:#244a43;font-size:13px;font-weight:700}.itinerary-group-visibility-lock{display:grid;gap:4px;padding:10px 12px;border:1px dashed #cfe0d9;border-radius:12px;background:#f3f8f5}.itinerary-group-visibility-lock strong{color:#123f3a;font-size:13px}.itinerary-group-visibility-lock small{margin:0;color:#6b7d78;font-size:12px;line-height:1.55}.itinerary-group-color-field{display:grid;gap:10px}.itinerary-group-color-swatches{display:flex;flex-wrap:wrap;gap:8px}.itinerary-group-color-swatch{display:inline-flex;align-items:center;gap:8px;min-height:38px;padding:0 12px;border:1px solid #d8e5df;border-radius:999px;background:#fff;color:#355b54;font-size:12px;font-weight:700;white-space:nowrap;transition:border-color .18s ease,box-shadow .18s ease,background-color .18s ease}.itinerary-group-color-swatch:hover,.itinerary-group-color-swatch:focus-visible{border-color:#91b8ab;background:#f7fbf9;outline:none}.itinerary-group-color-swatch.is-active{border-color:var(--swatch-color,#123f3a);background:color-mix(in srgb,var(--swatch-color,#123f3a) 10%,#fff);box-shadow:0 6px 14px rgba(18,63,58,.08)}.itinerary-group-color-swatch-dot{display:grid;flex:0 0 16px;width:16px;height:16px;border:1px solid rgba(18,63,58,.12);border-radius:999px;background:var(--swatch-color,#dce8e2)}.itinerary-group-color-swatch.is-default .itinerary-group-color-swatch-dot{background:linear-gradient(135deg,#8fbfc6 0%,#f1f7f8 100%)}.itinerary-group-color-tools{display:flex;align-items:center;gap:10px}.itinerary-group-color-tools :deep(.el-color-picker__trigger){border-radius:10px}.itinerary-group-color-preview{display:grid;gap:2px;padding:12px 14px;border:1px solid #dce8e2;border-radius:14px;background:#f5faf9}.itinerary-group-color-preview-tag{display:inline-flex;align-items:center;width:max-content;min-height:22px;padding:0 8px;border-radius:999px;background:rgba(255,255,255,.72);color:inherit;font-size:11px;font-weight:800;letter-spacing:.04em}.itinerary-group-color-preview strong{color:#244a43;font-size:14px;line-height:1.45}.itinerary-group-color-preview p{margin:0;color:#5f716c;font-size:12px;line-height:1.5}.itinerary-favorite-picker-control{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid #dce8e2;border-radius:10px;background:#fbfdfc}.itinerary-favorite-picker-copy{display:grid;min-width:0;gap:2px}.itinerary-favorite-picker-copy strong,.itinerary-favorite-picker-copy span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.itinerary-favorite-picker-copy strong{color:#244a43;font-size:13px}.itinerary-favorite-picker-copy span{color:#71827c;font-size:12px}.itinerary-favorite-picker-button{flex:0 0 auto;min-height:36px;border-color:#bfd7cd;color:#236c59;font-weight:700}.transport-destination-actions{display:flex;flex:0 0 auto;align-items:center;gap:4px}.transport-destination-clear{color:#a96a50}.itinerary-form-image-preview{display:flex;align-items:center;gap:10px;margin-top:9px;padding:8px;border:1px solid #e1e8e3;border-radius:10px;background:#fbfcfa}.itinerary-form-image-preview img{width:52px;height:52px;border-radius:8px;object-fit:cover}.itinerary-form-image-preview div{display:grid;gap:2px}.itinerary-form-image-preview strong{color:#244a43;font-size:13px}.itinerary-form-image-preview span{color:#71827c;font-size:12px}.itinerary-group-member-selector{display:grid;gap:7px}.itinerary-group-member-selector :deep(.el-checkbox){height:auto;margin-right:0;white-space:normal}.itinerary-group-member-selector small{display:block;margin:2px 0 0;color:#71827c;font-size:12px}.favorite-picker-toolbar{display:grid;gap:12px}.favorite-picker-filters{display:flex;flex-wrap:wrap;gap:7px}.favorite-picker-filter{min-height:34px;margin:0;border-color:#d9e6e0;color:#477168}.favorite-picker-filter.is-active{border-color:#123f3a;background:#123f3a;color:#fff}.favorite-picker-filter small{margin-left:4px;font-size:11px}.favorite-picker-list{display:grid;gap:9px;max-height:52vh;margin-top:14px;overflow:auto}.favorite-picker-row{display:grid;grid-template-columns:48px minmax(0,1fr) auto;align-items:center;gap:10px;width:100%;padding:9px;border:1px solid #e1e8e3;border-radius:12px;background:#fff;text-align:left;cursor:pointer}.favorite-picker-row:hover,.favorite-picker-row.is-selected{border-color:#9fc8b8;background:#f5faf7}.favorite-picker-row img,.favorite-picker-placeholder{display:grid;width:48px;height:48px;place-items:center;border-radius:9px;background:#eef5f0;color:#347965;object-fit:cover;font-weight:800}.favorite-picker-row-copy{display:grid;min-width:0;gap:3px}.favorite-picker-row-copy strong,.favorite-picker-row-copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.favorite-picker-row-copy strong{color:#244a43;font-size:14px}.favorite-picker-row-copy small{color:#71827c;font-size:12px}.favorite-picker-type{width:max-content;padding:2px 6px;border-radius:999px;background:#eaf4ef;color:#3b7868;font-size:11px;font-weight:700}.favorite-picker-select{color:#2f7d70;font-size:13px;font-weight:800;white-space:nowrap}.favorite-picker-empty{padding:30px 10px;text-align:center;color:#71827c}.favorite-picker-empty strong{color:#244a43}.favorite-picker-empty p{margin:5px 0 0;font-size:13px}.fare-estimate-content{display:grid;gap:14px}.fare-estimate-summary{display:grid;gap:4px;padding:14px;border:1px solid #e1e8e3;border-radius:14px;background:#fbfcfa}.fare-estimate-summary strong{color:#163b37;font-size:16px}.fare-estimate-summary p{margin:0;color:#6b7d78;font-size:13px;line-height:1.6}.fare-estimate-kicker,.fare-estimate-label,.fare-estimate-block span{color:#2f7d70;font-size:12px;font-weight:800;letter-spacing:.08em}.fare-estimate-result-card{display:grid;gap:4px;padding:16px;border-radius:16px;background:#eef5f0}.fare-estimate-result-card strong{color:#123f3a;font-size:28px;line-height:1.1}.fare-estimate-result-card small{color:#5e746d;font-size:12px}.fare-estimate-block{display:grid;gap:6px}.fare-estimate-block p,.fare-estimate-block ul{margin:0;color:#405651;font-size:14px;line-height:1.65}.fare-estimate-block ul{padding-left:18px}.fare-estimate-disclaimer{margin:0;color:#6b7d78;font-size:12px;line-height:1.6}@media(max-width:600px){.two-col,.three-col,.itinerary-time-grid,.itinerary-activity-kind{grid-template-columns:1fr}.itinerary-group-dialog :deep(.el-dialog__body),.itinerary-dialog :deep(.el-dialog__body),.favorite-picker-dialog :deep(.el-dialog__body),.fare-estimate-dialog :deep(.el-dialog__body){padding:16px}.itinerary-group-dialog :deep(.el-dialog__footer),.itinerary-dialog :deep(.el-dialog__footer),.favorite-picker-dialog :deep(.el-dialog__footer),.fare-estimate-dialog :deep(.el-dialog__footer){padding:12px 16px 18px}.itinerary-activity-card-top{align-items:center}.itinerary-group-mode-summary{padding:12px}.itinerary-group-visibility-panel{padding:10px}.itinerary-group-color-tools{align-items:flex-start;flex-direction:column}.itinerary-group-color-swatch{width:100%;justify-content:flex-start}.itinerary-favorite-picker-control{align-items:stretch;flex-direction:column}.itinerary-favorite-picker-button{width:100%}.transport-destination-actions{display:grid;grid-template-columns:1fr 1fr}.favorite-picker-row{grid-template-columns:44px minmax(0,1fr)}.favorite-picker-row img,.favorite-picker-placeholder{width:44px;height:44px}.favorite-picker-select{grid-column:2;justify-self:start}.fare-estimate-result-card strong{font-size:24px}}
 </style>
 
 <style scoped>
