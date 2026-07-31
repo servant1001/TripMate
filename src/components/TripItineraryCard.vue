@@ -636,6 +636,9 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
             ><span class="itinerary-add-short">新增</span></el-button
           ><el-button class="itinerary-group-toggle" :class="{ 'is-active': groupingMode }" @click="toggleGroupingMode">{{ groupingMode ? '取消多選' : '多選操作' }}</el-button
           ><div class="itinerary-mobile-toolbar" role="group" aria-label="行程操作">
+            <el-button class="itinerary-group-toggle itinerary-mobile-group-toggle" :class="{ 'is-active': groupingMode }" @click="toggleGroupingMode"
+              ><span>{{ groupingMode ? "取消多選" : "多選操作" }}</span></el-button
+            >
             <el-button
               class="itinerary-mobile-expand-toggle"
               :aria-label="allEntriesExpanded ? '收合全部行程' : '展開全部行程'"
@@ -1999,6 +2002,56 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
   .coral-button{
     height:var(--tripmate-mobile-page-button-height);
     min-height:var(--tripmate-mobile-page-button-height);
+  }
+
+  .itinerary-heading-actions{
+    display:grid;
+    gap:8px;
+    width:100%;
+  }
+
+  .itinerary-heading-actions>.itinerary-group-toggle{
+    display:none!important;
+  }
+
+  .itinerary-mobile-toolbar{
+    display:grid!important;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+    width:100%;
+    align-items:stretch;
+  }
+
+  .itinerary-mobile-toolbar :deep(.el-button){
+    width:100%;
+    min-width:0;
+    justify-content:center;
+    padding:0 12px;
+  }
+
+  .itinerary-mobile-group-toggle,
+  .itinerary-mobile-expand-toggle{
+    border-color:#d3e3dc;
+    background:#f8fbf9;
+    color:#416d62;
+  }
+
+  .itinerary-mobile-group-toggle.is-active{
+    border-color:#b88125;
+    background:#fff4d9;
+    color:#80540f;
+  }
+
+  .itinerary-mobile-group-toggle span,
+  .itinerary-mobile-expand-toggle span{
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+
+  .itinerary-mobile-sort,
+  .itinerary-mobile-add{
+    min-width:0;
   }
 }
 </style>
