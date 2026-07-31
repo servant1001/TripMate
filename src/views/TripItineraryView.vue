@@ -213,6 +213,7 @@ function resetItem(entry?: ItineraryItem, favoriteId?: string) { const linkedFav
 function openNewItemForm() { if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。'); itemActivityKind.value = 'shared'; personalActivityParentId.value = ''; insertAfterItemId.value = null; editingGroupId.value = null; groupMemberIds.value = []; resetItem(); resetGroupDraft(); showItem.value = true }
 function openItemFormForEdit(entry: ItineraryItem) { if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。'); itemActivityKind.value = entry.activityKind || 'shared'; personalActivityParentId.value = entry.parentFreeActivityId || ''; insertAfterItemId.value = null; resetItem(entry); if (entry.activityKind === 'free' || entry.activityKind === 'group') resetGroupDraft(entry); showItem.value = true }
 function openPersonalItemForm(group: ItineraryItem) { if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。'); itemActivityKind.value = 'personal'; personalActivityParentId.value = group.id; insertAfterItemId.value = null; resetItem(); item.date = group.date; item.type = '個人行程'; showItem.value = true }
+function openGroupItemForm(group: ItineraryItem) { if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。'); itemActivityKind.value = 'shared'; personalActivityParentId.value = ''; insertAfterItemId.value = null; resetItem(); item.date = group.date; itemItineraryGroupId.value = group.id; showItem.value = true }
 function openItemFormAfter(entry: ItineraryItem) { if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。'); itemActivityKind.value = 'shared'; personalActivityParentId.value = ''; insertAfterItemId.value = entry.id; resetItem(); itemItineraryGroupId.value = entry.itineraryGroupId || ''; item.date = entry.date; showItem.value = true }
 function openFavoritePicker(target: 'source' | 'destination' = 'source') { favoritePickerTarget.value = target; favoritePickerSearch.value = ''; favoritePickerType.value = 'all'; showFavoritePicker.value = true }
 function applyFavoriteToItem(favoriteId: string) { const selected = props.favorites.find((entry) => entry.id === favoriteId); if (!selected) return; const type = favoriteToItineraryType(selected.type); itemFavoriteId.value = selected.id; pendingFavoriteId.value = selected.id; Object.assign(item, { title: selected.name, location: selected.location || '', mapUrl: selected.mapUrl || '', website: selected.website || '', imageUrl: selected.imageUrl || '', type }); if (type !== '交通') Object.assign(item, { transportDestinationFavoriteId: '', transportDestinationName: '', transportDestinationLocation: '', transportDestinationMapUrl: '' }) }
@@ -674,6 +675,7 @@ async function bulkRemoveEntries(entries: ItineraryItem[]) {
       @add="openNewItemForm"
       @add-after="openItemFormAfter"
       @add-personal="openPersonalItemForm"
+      @add-group-item="openGroupItemForm"
       @toggle="emit('toggle', $event)"
       @edit="openItemFormForEdit"
       @remove="emit('remove', $event)"
