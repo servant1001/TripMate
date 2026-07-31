@@ -926,7 +926,8 @@ onBeforeUnmount(destroySortables)
   .shopping-panel{padding:18px}
   .detail-card-heading{flex-direction:column}
   .shopping-heading-actions{width:100%;justify-content:stretch}
-  .shopping-heading-actions .el-button{flex:1;margin-left:0!important}
+  .shopping-heading-actions .el-button{flex:1;height:var(--tripmate-mobile-page-button-height);min-height:var(--tripmate-mobile-page-button-height);margin-left:0!important}
+  .shopping-selection-bar .el-button{height:var(--tripmate-mobile-page-button-height);min-height:var(--tripmate-mobile-page-button-height)}
   .shopping-summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
   .shopping-search-bar{margin-top:12px}
   .shopping-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}

@@ -38,6 +38,7 @@ description: 將 TripMate 完整且溫暖的旅行產品設計系統套用到 Vu
 - 保留破壞性操作前的確認步驟。保留既有成功後的 toast 訊息。
 - 尊重 `prefers-reduced-motion`；hover 位移與 transition 控制在 150–200ms，modal 動畫不超過 250ms。
 - 允許長標題與地點名稱安全地換行或截斷。375px 寬度下不可引入橫向捲動。
+- 手機版頁面層級按鈕（卡片標題區操作、頁面工具列、空狀態 CTA）高度需統一比照「支付與回饋」頁的 `新增支付工具` 基準，使用共用變數 `--tripmate-mobile-page-button-height`（目前為 32px）。不要在不同頁面混用 40 / 42 / 44px。
 
 ### 清單項目的更多操作
 

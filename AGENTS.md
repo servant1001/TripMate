@@ -8,6 +8,7 @@
 - 對於行程、購物、行李、收藏與支付清單，項目層級操作請放進 `更多操作` 選單，畫面上保留清楚可見的主要按鈕給頁面層級操作。
 - 破壞性操作請保留確認 dialog 與成功 / 失敗 toast。
 - 手機版排版在 375px 以下應避免橫向捲動；空間緊湊時優先使用堆疊式卡片、可換行的 metadata 與全寬操作按鈕。
+- 手機版頁面層級按鈕高度要統一比照支付與回饋頁的 `新增支付工具` 基準，使用共用變數 `--tripmate-mobile-page-button-height`（目前為 32px）。這條規則適用於卡片標題列按鈕、頁面工具列按鈕與空狀態 CTA，不適用於卡片內 icon-only 操作或 dialog footer。
 - 需要接入第三方資料來源時，優先透過既有 Cloudflare Worker API 代理，不要直接在前端暴露第三方 API key、secret 或可被濫用的 endpoint。
 - 針對每日行程相關工作：
   - 保留 timeline 模型、shared / personal / group activity kinds，以及既有拖曳排序行為。

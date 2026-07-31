@@ -258,14 +258,14 @@ onBeforeUnmount(destroySortables)
       </div>
       <div class="album-panel-actions">
         <template v-if="canEditTrip">
-          <el-button class="album-secondary-button" @click="emit('toggleSelectionMode')">
+          <el-button class="album-secondary-button album-selection-toggle-button" @click="emit('toggleSelectionMode')">
             <el-icon><Select /></el-icon>
             {{ selectionMode ? '取消多選' : '多選加入' }}
           </el-button>
-          <el-button class="album-secondary-button" @click="emit('createFolder')">
+          <el-button class="album-secondary-button album-create-folder-button" @click="emit('createFolder')">
             <el-icon><FolderAdd /></el-icon>建立資料夾
           </el-button>
-          <el-button class="album-add-button" @click="emit('add')">
+          <el-button class="album-add-button album-upload-button" @click="emit('add')">
             <el-icon><Plus /></el-icon>上傳照片
           </el-button>
         </template>
@@ -595,8 +595,12 @@ onBeforeUnmount(destroySortables)
 :deep(.album-folder-section-dragging){transform:scale(.995)}
 @media(max-width:760px){
   .detail-card-heading,.album-selection-toolbar,.album-folder-header{flex-direction:column;align-items:stretch}
-  .album-panel-actions{justify-content:stretch}
+  .album-panel-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));justify-content:stretch}
+  .album-empty-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));justify-content:stretch}
+  .album-selection-toggle-button{grid-column:1/-1}
   .album-panel-actions>.el-button,.album-selection-actions>.el-button,.album-selection-actions>.el-dropdown,.album-selection-actions>.el-dropdown>.el-tooltip__trigger,.album-folder-actions>.el-button{width:100%;margin-left:0!important}
+  .album-panel-actions>.el-button{height:var(--tripmate-mobile-page-button-height);min-height:var(--tripmate-mobile-page-button-height);padding:0 12px}
+  .album-empty-actions>.el-button{width:100%;height:var(--tripmate-mobile-page-button-height);min-height:var(--tripmate-mobile-page-button-height);margin-left:0!important;padding:0 12px}
   .album-selection-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 }
 @media(max-width:600px){

@@ -786,7 +786,7 @@ function clearTransactionFilters() {
 @media(max-width:600px){
   .payment-page{padding:16px}
   .payment-heading{align-items:stretch;flex-direction:column}
-  .payment-heading>div:last-child>*{flex:1 1 calc(50% - 4px);margin-left:0!important}
+  .payment-heading>div:last-child>*{flex:1 1 calc(50% - 4px);height:var(--tripmate-mobile-page-button-height);min-height:var(--tripmate-mobile-page-button-height);margin-left:0!important}
   .payment-summary{grid-template-columns:repeat(2,1fr)}
   .tool-grid,.transaction-filters{grid-template-columns:1fr}
   .payment-section-title{align-items:flex-start;gap:8px;flex-direction:column}
