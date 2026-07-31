@@ -535,6 +535,7 @@ onBeforeUnmount(destroySortables)
 .detail-card-heading h2{margin:0;color:#163b37;font-size:20px;line-height:1.35}
 .album-summary{margin:4px 0 0;color:#6b7d78;font-size:13px;line-height:1.5}
 .album-panel-actions,.album-selection-actions,.album-folder-actions,.album-empty-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.album-panel-actions :deep(.el-button + .el-button),.album-empty-actions :deep(.el-button + .el-button),.album-folder-actions :deep(.el-button + .el-button),.album-selection-actions :deep(.el-button + .el-button){margin-left:0}
 .album-secondary-button,.album-folder-upload-button{display:inline-flex;gap:6px;min-height:40px;border:1px solid #cfe0d7;border-radius:10px;background:#fff;color:#24584d;font-weight:700}
 .album-secondary-button:hover,.album-folder-upload-button:hover,.album-secondary-button:focus-visible,.album-folder-upload-button:focus-visible{border-color:#9dc4b6;background:#f8fbf9;color:#1a5348}
 .album-add-button{display:inline-flex;gap:6px;min-height:40px;border:0;border-radius:10px;background:#123f3a;color:#fff;font-weight:700}
@@ -595,7 +596,7 @@ onBeforeUnmount(destroySortables)
 @media(max-width:760px){
   .detail-card-heading,.album-selection-toolbar,.album-folder-header{flex-direction:column;align-items:stretch}
   .album-panel-actions{justify-content:stretch}
-  .album-panel-actions>.el-button,.album-selection-actions>.el-button,.album-selection-actions>.el-dropdown,.album-selection-actions>.el-dropdown>.el-tooltip__trigger,.album-folder-actions>.el-button{width:100%}
+  .album-panel-actions>.el-button,.album-selection-actions>.el-button,.album-selection-actions>.el-dropdown,.album-selection-actions>.el-dropdown>.el-tooltip__trigger,.album-folder-actions>.el-button{width:100%;margin-left:0!important}
   .album-selection-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 }
 @media(max-width:600px){

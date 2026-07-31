@@ -716,6 +716,7 @@ function clearTransactionFilters() {
 .payment-heading p{margin:0;color:#df765f;font-size:11px;font-weight:800;letter-spacing:1px}
 .payment-heading h2{margin:3px 0;color:#163b37}
 .payment-heading>div:last-child{gap:8px;flex-wrap:wrap}
+.payment-heading>div:last-child :deep(.el-button + .el-button){margin-left:0}
 .payment-summary,.tool-grid{display:grid;gap:10px}
 .payment-summary{grid-template-columns:repeat(4,1fr);margin:18px 0}
 .payment-summary article,.tool-card,.transaction-list,.payment-empty{border:1px solid #e1e8e3;border-radius:12px;background:#fff}
@@ -785,7 +786,7 @@ function clearTransactionFilters() {
 @media(max-width:600px){
   .payment-page{padding:16px}
   .payment-heading{align-items:stretch;flex-direction:column}
-  .payment-heading>div:last-child>*{flex:1 1 calc(50% - 4px)}
+  .payment-heading>div:last-child>*{flex:1 1 calc(50% - 4px);margin-left:0!important}
   .payment-summary{grid-template-columns:repeat(2,1fr)}
   .tool-grid,.transaction-filters{grid-template-columns:1fr}
   .payment-section-title{align-items:flex-start;gap:8px;flex-direction:column}
