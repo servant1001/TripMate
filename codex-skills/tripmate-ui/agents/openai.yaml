@@ -1,5 +1,5 @@
 interface:
   display_name: "TripMate UI 設計系統"
-  short_description: "TripMate 旅行規劃產品的統一 UI 與購物比價設計系統"
+  short_description: "TripMate 旅行規劃產品的統一 UI、群組卡配色與購物比價設計系統"
   brand_color: "#FF735C"
-  default_prompt: "使用 $tripmate-ui 調整 TripMate 的旅行詳情或購物比價介面，同時保留 Firebase、Cloudflare Worker API 與既有使用流程。"
+  default_prompt: "使用 $tripmate-ui 調整 TripMate 的旅行詳情、每日行程群組卡配色或購物比價介面，同時保留 Firebase、Cloudflare Worker API 與既有使用流程。"

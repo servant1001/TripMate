@@ -10,8 +10,10 @@
 - 手機版排版在 375px 以下應避免橫向捲動；空間緊湊時優先使用堆疊式卡片、可換行的 metadata 與全寬操作按鈕。
 - 需要接入第三方資料來源時，優先透過既有 Cloudflare Worker API 代理，不要直接在前端暴露第三方 API key、secret 或可被濫用的 endpoint。
 - 針對每日行程相關工作：
-  - 保留 timeline 模型、shared / free / personal / group activity kinds，以及既有拖曳排序行為。
+  - 保留 timeline 模型、shared / personal / group activity kinds，以及既有拖曳排序行為。
   - `景點 / 餐廳 / 交通 / 住宿 / 商店` 的類型顏色系統應在所有行程相關介面中一致重用。
+  - 群組卡 (`activityKind: group`) 的視覺樣式應保留可自訂顏色能力；若未設定 `groupColor`，必須安全回退到系統預設色，不可讓舊資料失去樣式。
+  - 群組卡顏色設定維持「預設色票 + 自訂選色器 + 即時預覽」模式；新增或編輯群組卡時若調整顏色，卡片本體、標籤、邊框與摘要區要同步使用同一組色系變數。
   - 多選操作應集中在上方的選取操作列，而不是把額外刪除按鈕分散塞進各張卡片。
 - 針對支付與回饋相關工作：
   - 保留 payment tools、reward rules、payment transactions 三者的分層。
