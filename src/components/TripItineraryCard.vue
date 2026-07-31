@@ -147,14 +147,15 @@ function cardVisibility(entry: ItineraryItem) {
   return entry.cardVisibility || "shared";
 }
 function childVisibility(entry: ItineraryItem) {
+  if (cardVisibility(entry) === "private") return "private";
   return isFreeActivity(entry) ? "private" : entry.childVisibility || "shared";
 }
 function cardVisibilityLabel(entry: ItineraryItem) {
-  return cardVisibility(entry) === "private" ? "私人卡片" : "公開卡片";
+  return cardVisibility(entry) === "private" ? "僅自己可見" : "所有人可見";
 }
 function childVisibilityLabel(entry: ItineraryItem) {
-  if (isFreeActivity(entry)) return "底下僅自己可見";
-  return childVisibility(entry) === "private" ? "底下私人" : "底下共用";
+  if (isFreeActivity(entry)) return "底下行程私人";
+  return childVisibility(entry) === "private" ? "底下行程私人" : "底下行程公開";
 }
 function groupVisibilitySummary(entry: ItineraryItem) {
   return `${cardVisibilityLabel(entry)}・${childVisibilityLabel(entry)}`;
@@ -807,8 +808,8 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
                         v-if="isGroupContainer(entry)"
                         class="itinerary-visibility-tag"
                         :class="{
-                          'is-private': cardVisibility(entry) === 'private',
-                          'is-shared': cardVisibility(entry) !== 'private',
+                          'is-card-private': cardVisibility(entry) === 'private',
+                          'is-card-shared': cardVisibility(entry) !== 'private',
                         }"
                         >{{ cardVisibilityLabel(entry) }}</span
                       >
@@ -816,8 +817,8 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
                         v-if="isGroupContainer(entry)"
                         class="itinerary-visibility-tag is-child"
                         :class="{
-                          'is-private': childVisibility(entry) === 'private',
-                          'is-shared': childVisibility(entry) !== 'private',
+                          'is-child-private': childVisibility(entry) === 'private',
+                          'is-child-shared': childVisibility(entry) !== 'private',
                         }"
                         >{{ childVisibilityLabel(entry) }}</span
                       >
@@ -1711,23 +1712,32 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
   align-items: center;
   padding: 2px 7px;
   border-radius: 999px;
+  border: 1px solid transparent;
   background: #eef5f0;
   color: #486a62;
   font-size: 11px;
   font-weight: 700;
   line-height: 1.4;
 }
-.itinerary-visibility-tag.is-private {
+.itinerary-visibility-tag.is-card-shared {
+  background: #eaf4ef;
+  border-color: #d5e5dd;
+  color: #2f6f60;
+}
+.itinerary-visibility-tag.is-card-private {
   background: #fff3d8;
+  border-color: #f2ddb0;
   color: #8b6620;
 }
-.itinerary-visibility-tag.is-shared {
-  background: #eef5f0;
-  color: #35685c;
+.itinerary-visibility-tag.is-child-shared {
+  background: #edf4fa;
+  border-color: #d9e7f3;
+  color: #4d718c;
 }
-.itinerary-visibility-tag.is-child {
-  background: #f3f7f5;
-  color: #607772;
+.itinerary-visibility-tag.is-child-private {
+  background: #fdf0ec;
+  border-color: #f3d4cb;
+  color: #a55c4d;
 }
 .itinerary-card-controls {
   display: flex;

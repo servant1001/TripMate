@@ -27,6 +27,7 @@ export function useTripWorkspaceItinerary({
   }
 
   function itemChildVisibility(entry: ItineraryItem) {
+    if (itemCardVisibility(entry) === 'private') return 'private'
     if (entry.activityKind === 'free') return 'private'
     return entry.childVisibility || 'shared'
   }

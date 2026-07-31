@@ -126,7 +126,8 @@ const groupSelectableEntries = computed(() =>
       (entry.activityKind || 'shared') === 'shared',
   ),
 )
-const groupChildVisibilityLabel = computed(() => itineraryGroup.childVisibility === 'private' ? '僅自己可見' : '所有旅伴可見')
+const groupChildVisibilityLocked = computed(() => itineraryGroup.cardVisibility === 'private')
+const groupChildVisibilityLabel = computed(() => itineraryGroup.cardVisibility === 'private' || itineraryGroup.childVisibility === 'private' ? '僅自己可見' : '所有旅伴可見')
 const groupCardTypeLabel = computed(() => itemActivityKind.value === 'free' ? '自由活動群組' : itemActivityKind.value === 'group' ? '地點群組卡' : '群組卡片')
 const groupCardModeDescription = computed(() => {
   if (itemActivityKind.value === 'free') {
@@ -141,7 +142,7 @@ const groupCardVisibilitySummary = computed(() => {
   const cardText = itineraryGroup.cardVisibility === 'private' ? '卡片僅自己可見' : '卡片所有旅伴可見'
   const childText = itemActivityKind.value === 'free'
     ? '底下個人行程固定僅自己可見'
-    : itineraryGroup.childVisibility === 'private'
+    : itineraryGroup.cardVisibility === 'private' || itineraryGroup.childVisibility === 'private'
       ? '底下行程僅自己可見'
       : '底下行程所有旅伴可見'
   return `${cardText}・${childText}`
@@ -716,11 +717,19 @@ async function bulkRemoveEntries(entries: ItineraryItem[]) {
             <small>控制整張群組卡誰看得到；若設為僅自己可見，其他旅伴不會看到這張群組卡。</small>
           </el-form-item>
           <el-form-item label="群組內行程可見性">
-            <el-radio-group v-model="itineraryGroup.childVisibility">
-              <el-radio-button label="shared">所有旅伴可見</el-radio-button>
-              <el-radio-button label="private">僅自己可見</el-radio-button>
-            </el-radio-group>
-            <small>控制群組底下子行程的可見範圍；設為私人時，群組內共用行程會只顯示給你。</small>
+            <template v-if="groupChildVisibilityLocked">
+              <div class="itinerary-group-visibility-lock">
+                <strong>{{ groupChildVisibilityLabel }}</strong>
+                <small>因為整張群組卡已設為僅自己可見，底下行程會自動跟著維持私人顯示。</small>
+              </div>
+            </template>
+            <template v-else>
+              <el-radio-group v-model="itineraryGroup.childVisibility">
+                <el-radio-button label="shared">所有旅伴可見</el-radio-button>
+                <el-radio-button label="private">僅自己可見</el-radio-button>
+              </el-radio-group>
+              <small>控制群組底下子行程的可見範圍；設為私人時，群組內共用行程會只顯示給你。</small>
+            </template>
           </el-form-item>
         </div>
         <el-form-item label="Google Maps 區域連結（選填）"><el-input v-model="itineraryGroup.mapUrl" placeholder="貼上 Google Maps 區域或地點網址" /></el-form-item>
@@ -796,11 +805,19 @@ async function bulkRemoveEntries(entries: ItineraryItem[]) {
               <small>控制整張群組卡誰看得到；若設為僅自己可見，其他旅伴不會看到這張群組卡。</small>
             </el-form-item>
             <el-form-item label="群組內行程可見性">
-              <el-radio-group v-model="itineraryGroup.childVisibility">
-                <el-radio-button label="shared">所有旅伴可見</el-radio-button>
-                <el-radio-button label="private">僅自己可見</el-radio-button>
-              </el-radio-group>
-              <small>控制群組底下子行程的可見範圍；設為私人時，群組內共用行程會只顯示給你。</small>
+              <template v-if="groupChildVisibilityLocked">
+                <div class="itinerary-group-visibility-lock">
+                  <strong>{{ groupChildVisibilityLabel }}</strong>
+                  <small>因為整張群組卡已設為僅自己可見，底下行程會自動跟著維持私人顯示。</small>
+                </div>
+              </template>
+              <template v-else>
+                <el-radio-group v-model="itineraryGroup.childVisibility">
+                  <el-radio-button label="shared">所有旅伴可見</el-radio-button>
+                  <el-radio-button label="private">僅自己可見</el-radio-button>
+                </el-radio-group>
+                <small>控制群組底下子行程的可見範圍；設為私人時，群組內共用行程會只顯示給你。</small>
+              </template>
             </el-form-item>
           </div>
           <el-form-item label="Google Maps 區域連結（選填）"><el-input v-model="itineraryGroup.mapUrl" placeholder="貼上 Google Maps 區域或地點網址" /></el-form-item>
