@@ -32,6 +32,7 @@ const props = defineProps<{
   days: ItineraryDay[];
   personalItems: ItineraryItem[];
   shoppingItems: ShoppingItem[];
+  currentUserId: string;
   canEditTrip: boolean;
   sortingEnabled: boolean;
   formatDate: (date: string) => string;
@@ -136,14 +137,23 @@ function dayNumber(date: string) {
 function activityKind(entry: ItineraryItem) {
   return entry.activityKind || "shared";
 }
+function cardVisibility(entry: ItineraryItem) {
+  return entry.cardVisibility || "shared";
+}
+function childVisibility(entry: ItineraryItem) {
+  return isFreeActivity(entry) ? "private" : entry.childVisibility || "shared";
+}
+function canSeeEntry(entry: ItineraryItem) {
+  return cardVisibility(entry) !== "private" || !entry.ownerId || entry.ownerId === props.currentUserId;
+}
 function isFreeActivity(entry: ItineraryItem) {
   return activityKind(entry) === "free";
 }
 function isItineraryGroup(entry: ItineraryItem) { return activityKind(entry) === "group"; }
-function visibleDayEntries(day: ItineraryDay) { return day.entries.filter((entry) => !entry.itineraryGroupId); }
+function visibleDayEntries(day: ItineraryDay) { return day.entries.filter((entry) => !entry.itineraryGroupId && canSeeEntry(entry)); }
 function timeToMinutes(value?: string) { if (!value) return Number.NaN; const [hourText, minuteText = "0"] = value.split(":"); const hour = Number(hourText); const minute = Number(minuteText); if (!Number.isFinite(hour) || !Number.isFinite(minute)) return Number.NaN; return hour * 60 + minute; }
 function compareEntryTime(a: ItineraryItem, b: ItineraryItem) { const aMinutes = timeToMinutes(a.time); const bMinutes = timeToMinutes(b.time); const aHasTime = Number.isFinite(aMinutes); const bHasTime = Number.isFinite(bMinutes); if (aHasTime && bHasTime && aMinutes !== bMinutes) return aMinutes - bMinutes; if (aHasTime && !bHasTime) return -1; if (!aHasTime && bHasTime) return 1; return 0; }
-function groupMembers(day: ItineraryDay, group: ItineraryItem) { return day.entries.filter((entry) => entry.itineraryGroupId === group.id).sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || compareEntryTime(a, b)); }
+function groupMembers(day: ItineraryDay, group: ItineraryItem) { return day.entries.filter((entry) => entry.itineraryGroupId === group.id && (childVisibility(group) !== "private" || !entry.ownerId || entry.ownerId === props.currentUserId)).sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || compareEntryTime(a, b)); }
 function groupTypeSummary(day: ItineraryDay, group: ItineraryItem) { const counts = groupMembers(day, group).reduce<Record<string, number>>((all, item) => { all[item.type || "其他"] = (all[item.type || "其他"] || 0) + 1; return all }, {}); return Object.entries(counts).map(([type, count]) => `${type} ${count}`).join("、"); }
 function normalizedGroupArea(value?: string) {
   const text = (value || "").trim();

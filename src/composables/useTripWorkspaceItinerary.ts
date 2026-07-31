@@ -22,6 +22,29 @@ export function useTripWorkspaceItinerary({
 }) {
   const favoriteItineraryRequestId = ref('')
 
+  function itemCardVisibility(entry: ItineraryItem) {
+    return entry.cardVisibility || 'shared'
+  }
+
+  function itemChildVisibility(entry: ItineraryItem) {
+    if (entry.activityKind === 'free') return 'private'
+    return entry.childVisibility || 'shared'
+  }
+
+  function canSeeTopLevelEntry(entry: ItineraryItem) {
+    return itemCardVisibility(entry) !== 'private' || !firebaseEnabled || entry.ownerId === user.value?.uid
+  }
+
+  function visibleGroupItems(groupId: string) {
+    const parent = items.value.find((entry) => entry.id === groupId)
+    const onlyOwner = parent && itemChildVisibility(parent) === 'private'
+    return items.value.filter(
+      (entry) =>
+        entry.itineraryGroupId === groupId &&
+        (!onlyOwner || !firebaseEnabled || entry.ownerId === user.value?.uid),
+    )
+  }
+
   const currentPersonalItems = computed(() =>
     items.value.filter(
       (entry) =>
@@ -65,7 +88,11 @@ export function useTripWorkspaceItinerary({
   const itineraryDays = computed(() =>
     Object.entries(
       items.value
-        .filter((entry) => (entry.activityKind || 'shared') !== 'personal')
+        .filter(
+          (entry) =>
+            (entry.activityKind || 'shared') !== 'personal' &&
+            canSeeTopLevelEntry(entry),
+        )
         .reduce<Record<string, ItineraryItem[]>>((days, entry) => {
           ;(days[entry.date] ||= []).push(entry)
           return days
@@ -222,7 +249,7 @@ export function useTripWorkspaceItinerary({
     newIndex: number
   }) {
     const entries = items.value
-      .filter((entry) => entry.itineraryGroupId === groupId)
+      .filter((entry) => visibleGroupItems(groupId).some((item) => item.id === entry.id))
       .sort(
         (a, b) =>
           (a.order ?? Number.MAX_SAFE_INTEGER) -
@@ -300,7 +327,9 @@ export function useTripWorkspaceItinerary({
             .sort(byOrder)
         : scope.startsWith('group:')
           ? items.value
-              .filter((item) => item.itineraryGroupId === scope.slice('group:'.length))
+              .filter((item) =>
+                visibleGroupItems(scope.slice('group:'.length)).some((entry) => entry.id === item.id),
+              )
               .sort(byOrder)
           : (itineraryDays.value.find((day) => day.date === scope.slice('day:'.length))?.entries || [])
               .filter((item) => !item.itineraryGroupId)
@@ -320,6 +349,8 @@ export function useTripWorkspaceItinerary({
       moved = {
         ...entry,
         activityKind: 'personal',
+        cardVisibility: 'shared',
+        childVisibility: 'private',
         ownerId: user.value.uid,
         parentFreeActivityId,
         itineraryGroupId: '',
@@ -335,9 +366,11 @@ export function useTripWorkspaceItinerary({
       moved = {
         ...sharedEntry,
         activityKind: 'shared',
-        ownerId: '',
+        ownerId: itemChildVisibility(placeGroup) === 'private' ? (user.value?.uid || placeGroup.ownerId || '') : '',
         parentFreeActivityId: '',
         itineraryGroupId,
+        cardVisibility: 'shared',
+        childVisibility: 'shared',
         date: placeGroup.date,
       }
     } else {
@@ -349,6 +382,8 @@ export function useTripWorkspaceItinerary({
         ownerId: '',
         parentFreeActivityId: '',
         itineraryGroupId: '',
+        cardVisibility: 'shared',
+        childVisibility: 'shared',
         date,
       }
     }
