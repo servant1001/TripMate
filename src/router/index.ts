@@ -25,6 +25,7 @@ const TripShoppingTabRoute = () => import('../views/TripShoppingTabRoute.vue')
 const TripInsuranceTabRoute = () => import('../views/TripInsuranceTabRoute.vue')
 const TripPaymentsTabRoute = () => import('../views/TripPaymentsTabRoute.vue')
 const TripMembersTabRoute = () => import('../views/TripMembersTabRoute.vue')
+const CHUNK_RELOAD_KEY = 'tripmate:chunk-reload-target'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -68,6 +69,36 @@ router.beforeEach(async (to) => {
   if (!to.meta.public && !user) return { name: 'login', query: { redirect: to.fullPath } }
   if (to.meta.public && user) return { name: 'trips' }
   return true
+})
+
+router.afterEach((to) => {
+  if (typeof window === 'undefined') return
+  const pendingReloadTarget = window.sessionStorage.getItem(CHUNK_RELOAD_KEY)
+  if (pendingReloadTarget && pendingReloadTarget === to.fullPath) {
+    window.sessionStorage.removeItem(CHUNK_RELOAD_KEY)
+  }
+})
+
+router.onError((error, to) => {
+  if (typeof window === 'undefined') return
+  const message = error instanceof Error ? error.message : String(error)
+  const isChunkLoadError =
+    message.includes('Failed to fetch dynamically imported module') ||
+    message.includes('Importing a module script failed') ||
+    message.includes('Unable to preload CSS')
+
+  if (!isChunkLoadError) return
+
+  const targetPath = typeof to === 'object' && 'fullPath' in to ? to.fullPath : window.location.pathname + window.location.search + window.location.hash
+  const previousAttempt = window.sessionStorage.getItem(CHUNK_RELOAD_KEY)
+
+  if (previousAttempt !== targetPath) {
+    window.sessionStorage.setItem(CHUNK_RELOAD_KEY, targetPath)
+    window.location.assign(targetPath)
+    return
+  }
+
+  window.sessionStorage.removeItem(CHUNK_RELOAD_KEY)
 })
 
 export default router
