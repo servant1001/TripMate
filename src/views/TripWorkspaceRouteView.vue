@@ -175,7 +175,6 @@ const itinerarySortingEnabled = shell.itinerarySortingEnabled
 
 const favoriteItineraryRequestId = itinerary.favoriteItineraryRequestId
 const itineraryDays = itinerary.itineraryDays
-const currentPersonalItems = itinerary.currentPersonalItems
 const favoritesWithItineraryStatus = itinerary.favoritesWithItineraryStatus
 
 const total = expenseState.total
@@ -335,25 +334,6 @@ async function sortGroupItineraryItems(payload: {
   }
 }
 
-async function sortPersonalItineraryItems(payload: {
-  parentId: string
-  oldIndex: number
-  newIndex: number
-}) {
-  if (
-    !shell.canEditTrip.value ||
-    !shell.itinerarySortingEnabled.value ||
-    payload.oldIndex === payload.newIndex
-  ) {
-    return
-  }
-  try {
-    await itinerary.sortPersonalItineraryItems(payload)
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '無法更新個人行程順序。')
-  }
-}
-
 async function moveItineraryItem(payload: {
   itemId: string
   from: string
@@ -372,15 +352,12 @@ async function moveItineraryItem(payload: {
     await itinerary.moveItineraryItem(payload)
     const targetIsGroup = payload.to.startsWith('group:')
     const sourceIsGroup = payload.from.startsWith('group:')
-    const targetIsPersonal = payload.to.startsWith('personal:')
     ElMessage.success(
       targetIsGroup
-        ? '已移入地點群組。'
+        ? '已移入群組卡。'
         : sourceIsGroup && payload.to.startsWith('day:')
-          ? '已移出地點群組。'
-          : targetIsPersonal
-            ? '已移入自由活動，僅自己可見。'
-            : '已移動行程。',
+          ? '已移出群組卡。'
+          : '已移動行程。',
     )
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '無法移動行程。')
@@ -407,7 +384,6 @@ const workspaceContext: TripWorkspaceContext = {
   currentStoredBalances,
   currentPaymentToolSummaries,
   currentMember,
-  currentPersonalItems,
   favoritesWithItineraryStatus,
   itineraryDays,
   activeMemberId,
@@ -448,7 +424,6 @@ const workspaceContext: TripWorkspaceContext = {
   toggleItinerarySorting,
   sortItineraryItems,
   sortGroupItineraryItems,
-  sortPersonalItineraryItems,
   moveItineraryItem,
 }
 

@@ -258,25 +258,6 @@ export const repository = {
         seed,
       );
   },
-  async getPrivateItinerary(tripIds: string[], userId: string) {
-    const db = database;
-    if (!firebaseEnabled || !db || !userId) return [];
-    const rows = await Promise.all(
-      tripIds.map(async (tripId) => {
-        const snapshot = await get(
-          ref(db, `privateItineraryItems/${tripId}/${userId}`),
-        );
-        return Object.entries(snapshot.val() || {}).map(([id, value]) => ({
-          id,
-          ...(value as Omit<ItineraryItem, "id" | "tripId">),
-          tripId,
-          activityKind: "personal" as const,
-          ownerId: userId,
-        }));
-      }),
-    );
-    return rows.flat();
-  },
   async addTrip(input: Omit<Trip, "id" | "inviteCode">, userId?: string) {
     const trip = {
       ...input,
@@ -915,11 +896,7 @@ export const repository = {
     const db = database;
     if (firebaseEnabled && db) {
       const { id: itemId, tripId, ...data } = item;
-      const path =
-        item.activityKind === "personal" && item.ownerId
-          ? `privateItineraryItems/${tripId}/${item.ownerId}/${itemId}`
-          : `itineraryItems/${tripId}/${itemId}`;
-      await set(ref(db, path), withoutUndefined(data));
+      await set(ref(db, `itineraryItems/${tripId}/${itemId}`), withoutUndefined(data));
       return item;
     }
     const d = read();
@@ -931,11 +908,7 @@ export const repository = {
     const db = database;
     if (firebaseEnabled && db) {
       const { id: itemId, tripId, ...data } = item;
-      const path =
-        item.activityKind === "personal" && item.ownerId
-          ? `privateItineraryItems/${tripId}/${item.ownerId}/${itemId}`
-          : `itineraryItems/${tripId}/${itemId}`;
-      await set(ref(db, path), withoutUndefined(data));
+      await set(ref(db, `itineraryItems/${tripId}/${itemId}`), withoutUndefined(data));
       return;
     }
     const d = read();
@@ -947,12 +920,8 @@ export const repository = {
   async moveItinerary(item: ItineraryItem, previous: ItineraryItem) {
     const db = database;
     if (firebaseEnabled && db) {
-      const pathFor = (entry: ItineraryItem) =>
-        entry.activityKind === "personal" && entry.ownerId
-          ? `privateItineraryItems/${entry.tripId}/${entry.ownerId}/${entry.id}`
-          : `itineraryItems/${entry.tripId}/${entry.id}`;
-      const previousPath = pathFor(previous);
-      const nextPath = pathFor(item);
+      const previousPath = `itineraryItems/${previous.tripId}/${previous.id}`;
+      const nextPath = `itineraryItems/${item.tripId}/${item.id}`;
       const { id: _itemId, tripId: _tripId, ...data } = item;
       const nextData = withoutUndefined(data);
 
@@ -978,11 +947,7 @@ export const repository = {
     if (firebaseEnabled && db) {
       const updates: Record<string, number> = {};
       items.forEach((item, order) => {
-        const path =
-          item.activityKind === "personal" && item.ownerId
-            ? `privateItineraryItems/${item.tripId}/${item.ownerId}/${item.id}/order`
-            : `itineraryItems/${item.tripId}/${item.id}/order`;
-        updates[path] = order;
+        updates[`itineraryItems/${item.tripId}/${item.id}/order`] = order;
       });
       await update(ref(db), updates);
       return;
@@ -997,11 +962,7 @@ export const repository = {
   async deleteItinerary(item: ItineraryItem) {
     const db = database;
     if (firebaseEnabled && db) {
-      const path =
-        item.activityKind === "personal" && item.ownerId
-          ? `privateItineraryItems/${item.tripId}/${item.ownerId}/${item.id}`
-          : `itineraryItems/${item.tripId}/${item.id}`;
-      await set(ref(db, path), null);
+      await set(ref(db, `itineraryItems/${item.tripId}/${item.id}`), null);
       return;
     }
     const d = read();
@@ -1011,11 +972,7 @@ export const repository = {
   async toggleItinerary(itemId: string, item?: ItineraryItem) {
     const db = database;
     if (firebaseEnabled && db && item) {
-      const path =
-        item.activityKind === "personal" && item.ownerId
-          ? `privateItineraryItems/${item.tripId}/${item.ownerId}/${itemId}`
-          : `itineraryItems/${item.tripId}/${itemId}`;
-      await update(ref(db, path), { completed: !item.completed });
+      await update(ref(db, `itineraryItems/${item.tripId}/${itemId}`), { completed: !item.completed });
       return;
     }
     const d = read();

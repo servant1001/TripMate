@@ -6,7 +6,6 @@ import {
   CaretBottom,
   CaretRight,
   Link,
-  Lock,
   Location,
   MoreFilled,
   Plus,
@@ -30,7 +29,6 @@ interface ItineraryDay {
 
 const props = defineProps<{
   days: ItineraryDay[];
-  personalItems: ItineraryItem[];
   shoppingItems: ShoppingItem[];
   currentUserId: string;
   canEditTrip: boolean;
@@ -44,16 +42,12 @@ const props = defineProps<{
 const emit = defineEmits<{
   add: [];
   addAfter: [entry: ItineraryItem];
-  addPersonal: [group: ItineraryItem];
   addGroupItem: [group: ItineraryItem];
   toggle: [entry: ItineraryItem];
   edit: [entry: ItineraryItem];
   remove: [entry: ItineraryItem];
   toggleSorting: [];
   sort: [payload: { date: string; oldIndex: number; newIndex: number }];
-  sortPersonal: [
-    payload: { parentId: string; oldIndex: number; newIndex: number },
-  ];
   sortGroup: [payload: { groupId: string; oldIndex: number; newIndex: number }];
   move: [
     payload: {
@@ -90,22 +84,18 @@ const selectedGroupEntryIds = ref<string[]>([]);
 const selectableEntries = computed(() => [
   ...props.days
     .flatMap((day) => day.entries)
-    .filter((entry) => !isFreeActivity(entry) && !isItineraryGroup(entry)),
-  ...props.personalItems,
+    .filter((entry) => !isItineraryGroup(entry)),
 ]);
 const visibleSelectableEntries = computed(() => {
   const entries: ItineraryItem[] = [];
   filteredDays.value.forEach((day) => {
     const topLevelEntries = visibleDayEntries(day);
     topLevelEntries.forEach((entry) => {
-      if (!isFreeActivity(entry) && !isItineraryGroup(entry)) {
+      if (!isItineraryGroup(entry)) {
         entries.push(entry);
       }
       if (isItineraryGroup(entry)) {
         entries.push(...groupMembers(day, entry));
-      }
-      if (isFreeActivity(entry)) {
-        entries.push(...personalEntries(entry));
       }
     });
   });
@@ -141,20 +131,19 @@ function activityKind(entry: ItineraryItem) {
   return entry.activityKind || "shared";
 }
 function isGroupContainer(entry: ItineraryItem) {
-  return isFreeActivity(entry) || isItineraryGroup(entry);
+  return isItineraryGroup(entry);
 }
 function cardVisibility(entry: ItineraryItem) {
   return entry.cardVisibility || "shared";
 }
 function childVisibility(entry: ItineraryItem) {
   if (cardVisibility(entry) === "private") return "private";
-  return isFreeActivity(entry) ? "private" : entry.childVisibility || "shared";
+  return entry.childVisibility || "shared";
 }
 function cardVisibilityLabel(entry: ItineraryItem) {
   return cardVisibility(entry) === "private" ? "僅自己可見" : "所有人可見";
 }
 function childVisibilityLabel(entry: ItineraryItem) {
-  if (isFreeActivity(entry)) return "底下行程私人";
   return childVisibility(entry) === "private" ? "底下行程私人" : "底下行程公開";
 }
 function groupVisibilitySummary(entry: ItineraryItem) {
@@ -162,9 +151,6 @@ function groupVisibilitySummary(entry: ItineraryItem) {
 }
 function canSeeEntry(entry: ItineraryItem) {
   return cardVisibility(entry) !== "private" || !entry.ownerId || entry.ownerId === props.currentUserId;
-}
-function isFreeActivity(entry: ItineraryItem) {
-  return activityKind(entry) === "free";
 }
 function isItineraryGroup(entry: ItineraryItem) { return activityKind(entry) === "group"; }
 function visibleDayEntries(day: ItineraryDay) { return day.entries.filter((entry) => !entry.itineraryGroupId && canSeeEntry(entry)); }
@@ -243,7 +229,7 @@ function createGroupFromSelection() {
   }
   const dates = new Set(selected.map((entry) => entry.date));
   if (dates.size > 1) {
-    ElMessage.warning("建立地點群組時，請選擇同一天的共用行程。");
+    ElMessage.warning("建立群組卡時，請選擇同一天的共用行程。");
     return;
   }
   emit("createGroup", { entries: selected });
@@ -288,50 +274,25 @@ const allEntriesExpanded = computed(() => {
 function toggleAllEntries() {
   allEntriesExpanded.value ? collapseAll() : expandAll()
 }
-function personalEntries(group: ItineraryItem) {
-  return props.personalItems
-    .filter((entry) => entry.parentFreeActivityId === group.id)
-    .map((entry) => ({ ...entry, type: entry.type || "個人行程" }))
-    .sort(
-      (a, b) =>
-        (a.order ?? Number.MAX_SAFE_INTEGER) -
-          (b.order ?? Number.MAX_SAFE_INTEGER) ||
-        compareEntryTime(a, b),
-    );
-}
-function personalTimeGroupLabel(group: ItineraryItem) {
-  const entries = personalEntries(group)
-  return entries.every((entry) => !entry.time) ? "未排時間" : "已安排時間"
-}
 function scopeTimeWarning(
   warning: string,
-  scope:
-    | "top-level"
-    | "group-member"
-    | "personal",
+  scope: "top-level" | "group-member",
 ) {
   if (!warning) return ""
   if (warning === "開始時間早於上一筆行程") {
     return scope === "group-member"
       ? "開始時間早於群組內上一筆行程"
-      : scope === "personal"
-        ? "開始時間早於你的上一筆個人行程"
-        : "開始時間早於上一個頂層行程"
+      : "開始時間早於上一個頂層行程"
   }
   if (warning === "與上一筆行程時間重疊") {
     return scope === "group-member"
       ? "與群組內上一筆行程時間重疊"
-      : scope === "personal"
-        ? "與你的上一筆個人行程時間重疊"
-        : "與上一個頂層行程時間重疊"
+      : "與上一個頂層行程時間重疊"
   }
   return warning
 }
 function groupTimeWarning(day: ItineraryDay, group: ItineraryItem, index: number) {
   return scopeTimeWarning(props.timeWarning(groupMembers(day, group), index), "group-member");
-}
-function personalTimeWarning(group: ItineraryItem, index: number) {
-  return scopeTimeWarning(props.timeWarning(personalEntries(group), index), "personal");
 }
 function topLevelTimeWarning(day: ItineraryDay, index: number) {
   return scopeTimeWarning(props.timeWarning(visibleDayEntries(day), index), "top-level");
@@ -346,7 +307,6 @@ function shoppingItemsFor(entry: ItineraryItem) {
 function canEstimateTransitFare(entry: ItineraryItem) {
   return (
     !isItineraryGroup(entry) &&
-    !isFreeActivity(entry) &&
     entry.type === "交通" &&
     Boolean(
       (entry.location || entry.title).trim() &&
@@ -432,12 +392,6 @@ function handleSortableEnd(
       emit("sort", { date: sourceScope.slice(4), oldIndex, newIndex });
     } else if (sourceScope.startsWith("group:")) {
       emit("sortGroup", { groupId: sourceScope.slice("group:".length), oldIndex, newIndex });
-    } else {
-      emit("sortPersonal", {
-        parentId: sourceScope.slice("personal:".length),
-        oldIndex,
-        newIndex,
-      });
     }
     return;
   }
@@ -450,17 +404,10 @@ function handleSortableEnd(
   });
 }
 
-const sortableGroup = {
-  name: "trip-itinerary",
-  pull: (_to: Sortable, _from: Sortable, dragged: HTMLElement) =>
-    !dragged.classList.contains("is-free-activity"),
-  put: (_to: Sortable, _from: Sortable, dragged: HTMLElement) =>
-    !dragged.classList.contains("is-free-activity"),
-};
 const sharedSortableGroup = {
   name: "trip-itinerary-shared",
-  pull: (_to: Sortable, _from: Sortable, dragged: HTMLElement) => !dragged.classList.contains("is-free-activity") && !dragged.classList.contains("is-itinerary-group"),
-  put: (_to: Sortable, _from: Sortable, dragged: HTMLElement) => !dragged.classList.contains("is-free-activity") && !dragged.classList.contains("is-itinerary-group"),
+  pull: (_to: Sortable, _from: Sortable, dragged: HTMLElement) => !dragged.classList.contains("is-itinerary-group"),
+  put: (_to: Sortable, _from: Sortable, dragged: HTMLElement) => !dragged.classList.contains("is-itinerary-group"),
 };
 
 async function syncSortables() {
@@ -513,33 +460,6 @@ async function syncSortables() {
       onEnd: (event) => handleSortableEnd(key, event),
     }));
   });
-  props.days
-    .flatMap((day) => day.entries.filter(isFreeActivity))
-    .forEach((group) => {
-      if (isCollapsed(group)) return;
-      const key = `personal:${group.id}`;
-      const list = sortableLists.get(key);
-      if (!list) return;
-      sortableInstances.set(
-        key,
-        Sortable.create(list, {
-        animation: 180,
-        easing: "cubic-bezier(.2,.8,.2,1)",
-        group: sortableGroup,
-        handle: ".personal-drag-handle",
-          draggable: ".personal-itinerary-entry",
-          delay: 160,
-          delayOnTouchOnly: true,
-          touchStartThreshold: 5,
-          forceFallback: true,
-          fallbackTolerance: 4,
-          ghostClass: "itinerary-sort-ghost",
-          chosenClass: "itinerary-sort-chosen",
-          dragClass: "itinerary-sort-drag",
-          onEnd: (event) => handleSortableEnd(key, event),
-        }),
-      );
-    });
 }
 
 watch(
@@ -551,9 +471,6 @@ watch(
         (day) =>
           `${day.date}:${day.entries.map((entry) => `${entry.id}:${entry.itineraryGroupId || ''}`).join(",")}`,
       )
-      .join("|"),
-    props.personalItems
-      .map((entry) => `${entry.id}:${entry.parentFreeActivityId}`)
       .join("|"),
     selectedDayFilter.value,
     [...collapsedIds.value].join(","),
@@ -618,7 +535,7 @@ function handleEntryAction(
   if (command === "delete-group") emit("deleteGroup", entry);
 }
 function sharedLabel(entry: ItineraryItem) {
-  return isItineraryGroup(entry) ? "地點群組" : isFreeActivity(entry) ? "自由活動" : "共用行程";
+  return isItineraryGroup(entry) ? "群組卡" : "共用行程";
 }
 function toggleCardVisibilityLabel(entry: ItineraryItem) {
   return cardVisibility(entry) === "private" ? "改為所有旅伴可見" : "改為僅自己可見";
@@ -739,20 +656,19 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
               {
                 'is-completed': entry.completed,
                 'is-sortable-enabled': sortingEnabled && canEditTrip,
-                'is-free-activity': isFreeActivity(entry),
                 'is-itinerary-group': isItineraryGroup(entry),
               },
             ]"
           >
             <div class="itinerary-checkbox">
               <el-checkbox
-                v-if="!isFreeActivity(entry) && !isItineraryGroup(entry) && !groupingMode"
+                v-if="!isItineraryGroup(entry) && !groupingMode"
                 :model-value="entry.completed"
                 :disabled="!canEditTrip"
                 :aria-label="`將「${entry.title}」標示為${entry.completed ? '未完成' : '已完成'}`"
                 @change="emit('toggle', entry)"
-              /><el-checkbox v-else-if="groupingMode && !isFreeActivity(entry) && !isItineraryGroup(entry)" :model-value="isEntrySelected(entry)" :aria-label="`選取「${entry.title}」進行多選操作`" @change="toggleGroupEntry(entry, Boolean($event))"
-              /><span v-else class="free-activity-marker" aria-hidden="true"
+              /><el-checkbox v-else-if="groupingMode && !isItineraryGroup(entry)" :model-value="isEntrySelected(entry)" :aria-label="`選取「${entry.title}」進行多選操作`" @change="toggleGroupEntry(entry, Boolean($event))"
+              /><span v-else class="itinerary-group-marker" aria-hidden="true"
                 >✦</span
               >
             </div>
@@ -775,16 +691,14 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
             <div
               class="itinerary-card"
               :class="[
-                isFreeActivity(entry)
-                  ? 'is-free-card'
-                  : isItineraryGroup(entry)
-                    ? 'is-itinerary-group-card'
+                isItineraryGroup(entry)
+                  ? 'is-itinerary-group-card'
                   : itineraryTypeClass(entry.type),
               ]"
               >
               <div class="itinerary-card-header">
                 <img
-                  v-if="entry.imageUrl && !isFreeActivity(entry)"
+                  v-if="entry.imageUrl && !isItineraryGroup(entry)"
                   class="itinerary-card-image"
                   :src="entry.imageUrl"
                   :alt="`${entry.title} 圖片`"
@@ -799,11 +713,7 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
                   ></el-tooltip>
                   <div>
                     <div class="itinerary-card-tags">
-                      <span
-                        class="itinerary-scope-tag"
-                        :class="{ 'is-free': isFreeActivity(entry) }"
-                        >{{ sharedLabel(entry) }}</span
-                      >
+                      <span class="itinerary-scope-tag">{{ sharedLabel(entry) }}</span>
                       <span
                         v-if="isGroupContainer(entry)"
                         class="itinerary-visibility-tag"
@@ -850,19 +760,15 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
                       ><el-icon><MoreFilled /></el-icon></el-button
                     ><template #dropdown
                       ><el-dropdown-menu
-                        ><el-dropdown-item v-if="isItineraryGroup(entry)" command="edit-group">編輯群組</el-dropdown-item><el-dropdown-item v-if="isItineraryGroup(entry)" command="toggle-group-card-visibility">{{ toggleCardVisibilityLabel(entry) }}</el-dropdown-item><el-dropdown-item v-if="isItineraryGroup(entry)" command="toggle-group-child-visibility">{{ toggleChildVisibilityLabel(entry) }}</el-dropdown-item><el-dropdown-item v-if="isItineraryGroup(entry)" command="dissolve-group">解散群組</el-dropdown-item><el-dropdown-item v-if="isItineraryGroup(entry)" command="delete-group" divided class="itinerary-delete-menu-item">刪除群組</el-dropdown-item><el-dropdown-item v-if="!isItineraryGroup(entry)" command="add-after"
+                        ><el-dropdown-item v-if="isItineraryGroup(entry)" command="edit-group">編輯群組卡</el-dropdown-item><el-dropdown-item v-if="isItineraryGroup(entry)" command="toggle-group-card-visibility">{{ toggleCardVisibilityLabel(entry) }}</el-dropdown-item><el-dropdown-item v-if="isItineraryGroup(entry)" command="toggle-group-child-visibility">{{ toggleChildVisibilityLabel(entry) }}</el-dropdown-item><el-dropdown-item v-if="isItineraryGroup(entry)" command="dissolve-group">解散群組卡</el-dropdown-item><el-dropdown-item v-if="isItineraryGroup(entry)" command="delete-group" divided class="itinerary-delete-menu-item">刪除群組卡</el-dropdown-item><el-dropdown-item v-if="!isItineraryGroup(entry)" command="add-after"
                           >在此後新增行程</el-dropdown-item
-                        ><el-dropdown-item v-if="canEstimateTransitFare(entry)" command="estimate-fare">AI 估算票價</el-dropdown-item><el-dropdown-item v-if="isFreeActivity(entry)" command="toggle-group-card-visibility">{{ toggleCardVisibilityLabel(entry) }}</el-dropdown-item><el-dropdown-item v-if="!isItineraryGroup(entry)" command="edit"
-                          >編輯{{
-                            isFreeActivity(entry) ? "自由活動" : "行程"
-                          }}</el-dropdown-item
+                        ><el-dropdown-item v-if="canEstimateTransitFare(entry)" command="estimate-fare">AI 估算票價</el-dropdown-item><el-dropdown-item v-if="!isItineraryGroup(entry)" command="edit"
+                          >編輯行程</el-dropdown-item
                         ><el-dropdown-item v-if="!isItineraryGroup(entry)"
                           command="remove"
                           divided
                           class="itinerary-delete-menu-item"
-                          >刪除{{
-                            isFreeActivity(entry) ? "自由活動" : "行程"
-                          }}</el-dropdown-item
+                          >刪除行程</el-dropdown-item
                         ></el-dropdown-menu
                       ></template
                     ></el-dropdown
@@ -879,7 +785,7 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
                     <el-button v-if="canEditTrip" text @click="emit('addGroupItem', entry)">新增第一筆群組行程</el-button>
                   </div>
                 </template>
-                <template v-if="!isFreeActivity(entry) && !isItineraryGroup(entry)"
+                <template v-if="!isItineraryGroup(entry)"
                   ><p
                     v-if="entry.type || duration(entry)"
                     class="itinerary-card-meta"
@@ -1011,321 +917,6 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
                       ><TopRight /></el-icon></a
                   ></template
                 >
-                <template v-else-if="isFreeActivity(entry)"
-                  ><p
-                    v-if="entry.note"
-                    class="itinerary-note free-activity-note"
-                  >
-                    {{ entry.note }}
-                  </p><a
-                    v-if="entry.website"
-                    class="itinerary-website is-linked free-activity-website"
-                    :href="entry.website"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    :title="`開啟網站：${entry.title}`"
-                    ><el-icon><Link /></el-icon><span>開啟網站</span
-                    ><el-icon class="itinerary-external-icon"
-                      ><TopRight /></el-icon></a
-                  >
-                  <p class="free-activity-visibility-summary">{{ groupVisibilitySummary(entry) }}</p>
-                  <div class="free-activity-personal-heading">
-                    <div>
-                      <div class="free-activity-personal-title-row">
-                        <strong>我的行程</strong
-                        ><span class="free-activity-personal-count"
-                          >{{ personalEntries(entry).length }} 筆</span
-                        >
-                      </div>
-                      <span class="free-activity-personal-private"
-                        ><el-icon><Lock /></el-icon>僅自己可見</span
-                      >
-                    </div>
-                    <el-button
-                      v-if="canEditTrip"
-                      class="free-activity-add-button"
-                      @click="emit('addPersonal', entry)"
-                      ><el-icon><Plus /></el-icon>新增個人行程</el-button
-                    >
-                  </div>
-                  <div
-                    v-if="personalEntries(entry).length"
-                    class="personal-itinerary-list"
-                    :data-sort-scope="`personal:${entry.id}`"
-                    :ref="
-                      (element) =>
-                        registerSortableList(
-                          `personal:${entry.id}`,
-                          element as Element | null,
-                        )
-                    "
-                  >
-                    <div class="personal-itinerary-group-heading">
-                      <span>{{ personalTimeGroupLabel(entry) }}</span
-                      ><small>{{ personalEntries(entry).length }}</small>
-                    </div>
-                    <article
-                      v-for="(personal, personalIndex) in personalEntries(entry)"
-                      :key="personal.id"
-                      class="personal-itinerary-entry"
-                      :data-itinerary-id="personal.id"
-                      :class="{
-                        'is-completed': personal.completed,
-                        'is-sortable-enabled': sortingEnabled && canEditTrip,
-                      }"
-                    >
-                      <div class="personal-itinerary-time">
-                        <time>{{ personal.time || "未排時間" }}</time
-                        ><time v-if="personal.endTime">{{
-                          personal.endTime
-                        }}</time>
-                      </div>
-                      <span
-                        class="personal-itinerary-dot"
-                        aria-hidden="true"
-                      ></span>
-                      <div
-                        class="personal-itinerary-card"
-                        :class="itineraryTypeClass(personal.type)"
-                      >
-                        <el-checkbox
-                          v-if="!groupingMode"
-                          :model-value="personal.completed"
-                          :disabled="!canEditTrip"
-                          :aria-label="`將「${personal.title}」標示為${personal.completed ? '未完成' : '完成'}`"
-                          @change="emit('toggle', personal)"
-                        /><el-checkbox
-                          v-else
-                          :model-value="isEntrySelected(personal)"
-                          :aria-label="`選取「${personal.title}」進行多選操作`"
-                          @change="toggleGroupEntry(personal, Boolean($event))"
-                        /><img
-                          v-if="personal.imageUrl"
-                          class="personal-itinerary-image"
-                          :src="personal.imageUrl"
-                          :alt="`${personal.title} 圖片`"
-                        />
-                        <div class="personal-itinerary-copy">
-                          <div class="personal-itinerary-title">
-                            <el-tooltip
-                              v-if="sortingEnabled && canEditTrip"
-                              content="長按並拖曳排序"
-                              placement="top"
-                              ><span
-                                class="personal-drag-handle"
-                                aria-hidden="true"
-                                ><el-icon><Rank /></el-icon></span></el-tooltip
-                            ><strong>{{ personal.title }}</strong>
-                          </div>
-                          <p class="personal-itinerary-time-detail">
-                            <span v-if="personal.time"
-                              >{{ personal.time
-                              }}<template v-if="personal.endTime"
-                                >－{{ personal.endTime }}</template
-                              ></span
-                            ><span v-else>未排時間</span>
-                          </p>
-                          <p class="personal-itinerary-meta">
-                            <span
-                              v-if="personal.type"
-                              class="itinerary-type-chip"
-                              :class="itineraryTypeClass(personal.type)"
-                              >{{ personal.type }}</span
-                            ><span
-                              v-if="personal.type && duration(personal)"
-                              aria-hidden="true"
-                              >·</span
-                            ><span v-if="duration(personal)">{{
-                              duration(personal)
-                            }}</span
-                            ><template v-if="hasTransportFare(personal)"
-                              ><span
-                                v-if="personal.type || duration(personal)"
-                                aria-hidden="true"
-                                >·</span
-                              ><span class="itinerary-fare-inline"
-                                ><span class="itinerary-fare-inline-label">{{
-                                  transportFareInlineLabel(personal)
-                                }}</span
-                                >{{
-                                  transportFareEstimateAmount(personal)
-                                }}</span
-                              ><span
-                                v-if="transportFareInlineMeta(personal)"
-                                class="itinerary-fare-inline-meta"
-                                >{{ transportFareInlineMeta(personal) }}</span
-                              ></template
-                            >
-                          </p>
-                          <p
-                            v-if="personalTimeWarning(entry, personalIndex)"
-                            class="itinerary-time-warning personal-itinerary-time-warning"
-                          >
-                            <el-icon><WarningFilled /></el-icon
-                            >{{ personalTimeWarning(entry, personalIndex) }}
-                          </p>
-                          <p
-                            v-if="personal.note"
-                            class="personal-itinerary-note"
-                          >
-                            {{ personal.note }}
-                          </p>
-                          <el-button
-                            v-if="shoppingItemsFor(personal).length"
-                            class="itinerary-shopping-button personal-itinerary-shopping-button"
-                            text
-                            @click.stop="openShoppingPreview(personal)"
-                            ><el-icon><ShoppingCart /></el-icon>採購清單
-                            {{ shoppingItemsFor(personal).length }} 項</el-button
-                          >
-                          <div
-                            v-if="
-                              personal.type === '交通' &&
-                              personal.transportDestinationName
-                            "
-                            class="itinerary-transport-route personal-transport-route"
-                            aria-label="交通路線"
-                          >
-                            <a
-                              v-if="personal.mapUrl || personal.location"
-                              class="itinerary-transport-stop is-linked"
-                              :href="
-                                mapsUrl(
-                                  personal.location || personal.title,
-                                  personal.mapUrl,
-                                )
-                              "
-                              target="_blank"
-                              rel="noopener"
-                              :title="`在地圖中開啟出發站：${personal.location || personal.title}`"
-                              ><span class="itinerary-transport-stop-label"
-                                >出發</span
-                              ><strong>{{
-                                personal.location || personal.title
-                              }}</strong
-                              ><el-icon><TopRight /></el-icon
-                            ></a>
-                            <p v-else class="itinerary-transport-stop">
-                              <span class="itinerary-transport-stop-label"
-                                >出發</span
-                              ><strong>{{ personal.title }}</strong>
-                            </p>
-                            <span
-                              class="itinerary-transport-arrow"
-                              aria-hidden="true"
-                              >→</span
-                            ><a
-                              v-if="
-                                personal.transportDestinationMapUrl ||
-                                personal.transportDestinationLocation
-                              "
-                              class="itinerary-transport-stop is-linked"
-                              :href="
-                                mapsUrl(
-                                  personal.transportDestinationLocation ||
-                                    personal.transportDestinationName,
-                                  personal.transportDestinationMapUrl,
-                                )
-                              "
-                              target="_blank"
-                              rel="noopener"
-                              :title="`在地圖中開啟抵達站：${personal.transportDestinationLocation || personal.transportDestinationName}`"
-                              ><span class="itinerary-transport-stop-label"
-                                >抵達</span
-                              ><strong>{{
-                                personal.transportDestinationLocation ||
-                                personal.transportDestinationName
-                              }}</strong
-                              ><el-icon><TopRight /></el-icon
-                            ></a>
-                            <p v-else class="itinerary-transport-stop">
-                              <span class="itinerary-transport-stop-label"
-                                >抵達</span
-                              ><strong>{{
-                                personal.transportDestinationName
-                              }}</strong>
-                            </p>
-                          </div>
-                          <template v-else
-                            ><a
-                              v-if="personal.mapUrl || personal.location"
-                              class="itinerary-location is-linked personal-itinerary-location"
-                              :href="
-                                mapsUrl(
-                                  personal.location || personal.title,
-                                  personal.mapUrl,
-                                )
-                              "
-                              target="_blank"
-                              rel="noopener"
-                              :title="`在地圖中開啟：${personal.location || personal.title}`"
-                              ><el-icon><Location /></el-icon
-                              ><span>{{
-                                personal.location || "在 Google Maps 開啟"
-                              }}</span
-                              ><el-icon class="itinerary-external-icon"
-                                ><TopRight /></el-icon
-                            ></a>
-                            <p
-                              v-else
-                              class="itinerary-location is-empty personal-itinerary-location"
-                            >
-                              <el-icon><Location /></el-icon
-                              ><span>尚未設定地點</span>
-                            </p></template
-                          ><a
-                            v-if="personal.website"
-                            class="itinerary-website is-linked personal-itinerary-website"
-                            :href="personal.website"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            :title="`開啟網站：${personal.title}`"
-                            ><el-icon><Link /></el-icon><span>開啟網站</span
-                            ><el-icon class="itinerary-external-icon"
-                              ><TopRight /></el-icon></a
-                          >
-                        </div>
-                        <el-dropdown
-                          v-if="canEditTrip"
-                          trigger="click"
-                          @command="handleEntryAction($event, personal)"
-                          ><el-button
-                            class="personal-more-button"
-                            text
-                            circle
-                            aria-label="更多個人行程操作"
-                            title="更多個人行程操作"
-                            ><el-icon><MoreFilled /></el-icon></el-button
-                          ><template #dropdown
-                            ><el-dropdown-menu
-                              ><el-dropdown-item
-                                v-if="canEstimateTransitFare(personal)"
-                                command="estimate-fare"
-                                >AI 估算票價</el-dropdown-item
-                              ><el-dropdown-item command="edit"
-                                >編輯我的行程</el-dropdown-item
-                              ><el-dropdown-item
-                                command="remove"
-                                divided
-                                class="itinerary-delete-menu-item"
-                                >刪除我的行程</el-dropdown-item
-                              ></el-dropdown-menu
-                            ></template
-                          ></el-dropdown
-                        >
-                      </div>
-                    </article>
-                  </div>
-                  <div v-else class="personal-itinerary-empty">
-                    <span>你尚未安排個人行程</span
-                    ><el-button
-                      v-if="canEditTrip"
-                      text
-                      @click="emit('addPersonal', entry)"
-                      >新增第一筆個人行程</el-button
-                    >
-                  </div></template
-                >
               </div>
             </div>
           </article>
@@ -1336,7 +927,7 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
       <el-icon><Calendar /></el-icon>
       <div>
         <strong>還沒有安排行程</strong>
-        <p>先建立共用行程，或新增一段自由活動讓旅伴各自安排。</p>
+        <p>先建立共用行程，或新增一張群組卡來整理同區域的行程。</p>
       </div>
       <el-button v-if="canEditTrip" class="coral-button" @click="emit('add')"
         >新增第一筆行程</el-button
@@ -1546,8 +1137,7 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
   grid-template-columns: 34px 76px 20px minmax(0, 1fr);
   min-width: 0;
 }
-.itinerary-entry.is-sortable-enabled,
-.personal-itinerary-entry.is-sortable-enabled {
+.itinerary-entry.is-sortable-enabled {
   cursor: grab;
 }
 .itinerary-checkbox {
@@ -1564,7 +1154,7 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
   height: 17px;
   border-color: #b8cac2;
 }
-.free-activity-marker {
+.itinerary-group-marker {
   display: grid;
   width: 26px;
   height: 18px;
@@ -1622,10 +1212,6 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
   border-color: #2f7d70;
   background: #2f7d70;
 }
-.is-free-activity .itinerary-dot {
-  border-color: #c49b45;
-  background: #fff4d9;
-}
 .itinerary-card {
   min-width: 0;
   padding: 14px 15px;
@@ -1644,10 +1230,6 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
 }
 .is-completed .itinerary-card {
   opacity: 0.65;
-}
-.itinerary-card.is-free-card {
-  border-color: #ead8a8;
-  background: #fffaf0;
 }
 .itinerary-card-header {
   display: flex;
@@ -1827,10 +1409,6 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
   font-size: 12px;
   line-height: 1.4;
 }
-.personal-itinerary-time-warning {
-  color: #a86821 !important;
-  font-weight: 700;
-}
 .itinerary-note {
   margin: 6px 0;
   color: #6b7d78;
@@ -1924,9 +1502,6 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
   line-height: 1.4;
   white-space: nowrap;
 }
-.personal-itinerary-shopping-button {
-  margin-top: 2px;
-}
 @media (max-width: 720px) {
   .itinerary-fare-inline {
     gap: 3px;
@@ -1940,186 +1515,9 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
     font-size: 11px;
   }
 }
-.free-activity-note {
-  margin-bottom: 12px;
-}
-.free-activity-website {
-  margin-bottom: 12px;
-}
-.free-activity-visibility-summary {
-  margin: 0 0 12px;
-  color: #9a7b39;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.5;
-}
 .itinerary-group-visibility-copy {
   color: #6d8b8e;
   font-weight: 700;
-}
-.free-activity-personal-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 11px 0 9px;
-  border-top: 1px solid #efdfb7;
-}
-.free-activity-personal-heading > div {
-  display: grid;
-  gap: 1px;
-}
-.free-activity-personal-heading strong {
-  color: #6e5528;
-  font-size: 13px;
-}
-.free-activity-personal-heading span {
-  color: #8c7a58;
-  font-size: 12px;
-}
-.free-activity-add-button {
-  min-height: 36px;
-  border-color: #d7ba75;
-  border-radius: 8px;
-  background: #fffdf8;
-  color: #80601d;
-  font-weight: 700;
-}
-.free-activity-add-button:hover,
-.free-activity-add-button:focus-visible {
-  border-color: #b98a2b;
-  background: #fff4d9;
-  color: #654607;
-}
-.personal-itinerary-list {
-  display: grid;
-  gap: 7px;
-  padding: 2px 0 2px 12px;
-  border-left: 2px solid #ead8a8;
-}
-.personal-itinerary-entry {
-  position: relative;
-  display: grid;
-  grid-template-columns: 52px 10px minmax(0, 1fr);
-  gap: 8px;
-  align-items: start;
-}
-.personal-itinerary-time {
-  display: grid;
-  justify-items: end;
-  gap: 2px;
-  padding-top: 11px;
-  color: #8a8170;
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-.personal-itinerary-time time:first-child {
-  color: #765f36;
-  font-weight: 800;
-}
-.personal-itinerary-dot {
-  width: 8px;
-  height: 8px;
-  margin-top: 15px;
-  border: 2px solid #b58b3a;
-  border-radius: 50%;
-  background: #fffaf0;
-}
-.personal-itinerary-card {
-  display: flex;
-  align-items: flex-start;
-  gap: 7px;
-  min-width: 0;
-  padding: 9px;
-  border: 1px solid #eadfca;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.72);
-}
-.personal-itinerary-card :deep(.el-checkbox) {
-  flex: 0 0 auto;
-  margin-top: 1px;
-}
-.personal-itinerary-copy {
-  min-width: 0;
-  flex: 1;
-}
-.personal-itinerary-copy strong {
-  display: inline;
-  color: #324a43;
-  font-size: 14px;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-.personal-itinerary-copy p {
-  display: flex;
-  align-items: flex-start;
-  gap: 4px;
-  margin: 3px 0 0;
-  color: #72827d;
-  font-size: 12px;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-}
-.personal-itinerary-copy p .el-icon {
-  margin-top: 1px;
-  flex: 0 0 auto;
-}
-.personal-itinerary-copy a {
-  color: #287761;
-  text-decoration: none;
-}
-.personal-itinerary-copy a:hover {
-  text-decoration: underline;
-}
-.personal-itinerary-note {
-  color: #8a8170 !important;
-}
-.personal-drag-handle {
-  display: inline-flex;
-  width: 26px;
-  height: 26px;
-  align-items: center;
-  justify-content: center;
-  margin: -5px 2px -5px -6px;
-  border-radius: 7px;
-  color: #9b7b44;
-  cursor: grab;
-  touch-action: none;
-}
-.personal-drag-handle:hover {
-  background: #fff0cf;
-}
-.personal-more-button {
-  width: 36px !important;
-  min-width: 36px !important;
-  height: 36px !important;
-  margin: -3px -3px 0 0;
-  padding: 0 !important;
-  color: #8b7651;
-}
-.personal-more-button:hover,
-.personal-more-button:focus-visible {
-  background: #fff0cf;
-  color: #684e1c;
-}
-.personal-itinerary-entry.is-completed {
-  opacity: 0.65;
-}
-.personal-itinerary-entry.is-completed strong {
-  text-decoration: line-through;
-}
-.personal-itinerary-empty {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 14px 12px;
-  margin-left: 12px;
-  border: 1px dashed #decfae;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.52);
-  color: #81755f;
-  font-size: 13px;
 }
 .itinerary-group-empty {
   display: flex;
@@ -2138,10 +1536,6 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
   padding-right: 0;
   padding-left: 0;
   color: #2f7d70;
-  font-weight: 700;
-}
-.personal-itinerary-empty :deep(.el-button) {
-  color: #80601d;
   font-weight: 700;
 }
 .detail-empty-state {
@@ -2233,15 +1627,12 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
 :global(.itinerary-sort-ghost) {
   opacity: 0.34;
 }
-.itinerary-entry:global(.itinerary-sort-ghost) .itinerary-card,
-.personal-itinerary-entry:global(.itinerary-sort-ghost)
-  .personal-itinerary-card {
+.itinerary-entry:global(.itinerary-sort-ghost) .itinerary-card {
   border-color: #b89348;
   border-style: dashed;
   box-shadow: none;
 }
-:global(.itinerary-sort-chosen) .itinerary-card,
-:global(.itinerary-sort-chosen) .personal-itinerary-card {
+:global(.itinerary-sort-chosen) .itinerary-card {
   box-shadow: 0 12px 26px rgba(18, 63, 58, 0.14);
 }
 @media (max-width: 720px) {
@@ -2321,43 +1712,9 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
     height: 40px;
     margin: -9px 0 0 -8px;
   }
-  .free-activity-personal-heading {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-  .free-activity-add-button {
-    width: 100%;
-    min-height: 40px;
-  }
-  .personal-itinerary-list {
-    padding-left: 9px;
-  }
-  .personal-itinerary-entry {
-    grid-template-columns: 43px 8px minmax(0, 1fr);
-    gap: 6px;
-  }
-  .personal-itinerary-time {
-    font-size: 10px;
-  }
-  .personal-itinerary-card {
-    padding: 8px;
-  }
-  .personal-more-button {
-    width: 40px !important;
-    min-width: 40px !important;
-    height: 40px !important;
-  }
-  .personal-itinerary-empty {
-    align-items: flex-start;
-    flex-direction: column;
-    margin-left: 9px;
-  }
   .itinerary-group-empty {
     align-items: flex-start;
     flex-direction: column;
-  }
-  .personal-itinerary-empty :deep(.el-button) {
-    padding-left: 0;
   }
   .itinerary-group-empty :deep(.el-button) {
     padding-left: 0;
@@ -2442,78 +1799,6 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
   font-size: 18px;
   font-weight: 800;
 }
-.personal-itinerary-card {
-  transition:
-    border-color 0.18s ease,
-    box-shadow 0.18s ease,
-    opacity 0.18s ease;
-}
-.personal-itinerary-card:hover,
-.personal-itinerary-card:focus-within {
-  border-color: #b4d6ca;
-  box-shadow: 0 5px 14px rgba(18, 63, 58, 0.06);
-}
-.personal-itinerary-card.is-type-attraction {
-  border-color: #cfe5da;
-  background: #f8fcf9;
-}
-.personal-itinerary-card.is-type-food {
-  border-color: #f0d8d0;
-  background: #fffaf8;
-}
-.personal-itinerary-card.is-type-transport {
-  border-color: #cfe2ea;
-  background: #f7fbfd;
-}
-.personal-itinerary-card.is-type-stay {
-  border-color: #e3d8ef;
-  background: #fcfaff;
-}
-.personal-itinerary-card.is-type-shop {
-  border-color: #eddfb9;
-  background: #fffdf7;
-}
-.personal-itinerary-image {
-  width: 44px;
-  height: 44px;
-  flex: 0 0 44px;
-  border: 1px solid rgba(37, 86, 76, 0.12);
-  border-radius: 8px;
-  object-fit: cover;
-}
-.personal-itinerary-title {
-  display: flex;
-  align-items: flex-start;
-  min-width: 0;
-}
-.personal-itinerary-title strong {
-  display: block;
-  min-width: 0;
-  flex: 1;
-}
-.personal-itinerary-meta {
-  display: flex !important;
-  flex-wrap: wrap;
-  align-items: center !important;
-  gap: 4px !important;
-  margin-top: 4px !important;
-  color: #7f918b !important;
-}
-.personal-itinerary-meta .itinerary-type-chip {
-  font-size: 10px;
-}
-.personal-itinerary-location {
-  margin-top: 6px !important;
-}
-.personal-itinerary-website {
-  margin-top: 6px !important;
-}
-.personal-transport-route {
-  margin-top: 7px;
-}
-.personal-transport-route .itinerary-transport-stop {
-  background: rgba(255, 255, 255, 0.82);
-}
 @media (max-width: 720px) {
   .itinerary-transport-route {
     grid-template-columns: minmax(0, 1fr) 17px minmax(0, 1fr);
@@ -2528,21 +1813,6 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
   .itinerary-transport-arrow {
     font-size: 16px;
   }
-  .personal-itinerary-image {
-    width: 40px;
-    height: 40px;
-    flex-basis: 40px;
-  }
-  .personal-itinerary-card {
-    gap: 6px;
-  }
-  .personal-itinerary-title strong {
-    font-size: 13px;
-  }
-  .personal-itinerary-location,
-  .personal-itinerary-website {
-    font-size: 12px;
-  }
 }
 @media (max-width: 390px) {
   .itinerary-transport-stop-label {
@@ -2550,11 +1820,6 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
   }
   .itinerary-transport-stop strong {
     font-size: 10px;
-  }
-  .personal-itinerary-image {
-    width: 36px;
-    height: 36px;
-    flex-basis: 36px;
   }
 }
 .itinerary-entry {
@@ -2592,9 +1857,6 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
     grid-row: 1;
     gap: 4px;
   }
-  .itinerary-card.is-free-card .itinerary-card-heading {
-    grid-column: 1/-1;
-  }
   .itinerary-card-controls {
     grid-column: 1/-1;
     grid-row: 2;
@@ -2615,110 +1877,6 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
   }
 }
 @media (max-width: 720px) {
-  .itinerary-card.is-free-card {
-    padding: 12px;
-  }
-  .free-activity-personal-heading {
-    gap: 8px;
-    padding: 12px 0;
-  }
-  .personal-itinerary-list {
-    padding-left: 7px;
-  }
-  .personal-itinerary-entry {
-    grid-template-columns: 34px 8px minmax(0, 1fr);
-    gap: 5px;
-  }
-  .personal-itinerary-time {
-    padding-top: 13px;
-    font-size: 11px;
-  }
-  .personal-itinerary-dot {
-    margin-top: 17px;
-  }
-  .personal-itinerary-card {
-    display: grid;
-    grid-template-columns: 28px minmax(0, 1fr);
-    gap: 8px;
-    padding: 10px;
-  }
-  .personal-itinerary-card :deep(.el-checkbox) {
-    grid-column: 1;
-    grid-row: 1;
-    margin: 2px 0 0;
-  }
-  .personal-itinerary-image {
-    grid-column: 2;
-    width: 46px;
-    height: 46px;
-    flex-basis: 46px;
-  }
-  .personal-itinerary-copy {
-    grid-column: 2;
-    min-width: 0;
-  }
-  .personal-itinerary-card :deep(.el-dropdown) {
-    grid-column: 2;
-    justify-self: end;
-  }
-  .personal-more-button {
-    margin: 0;
-  }
-  .personal-itinerary-title strong {
-    font-size: 14px;
-    line-height: 1.48;
-  }
-  .personal-itinerary-meta {
-    margin-top: 6px !important;
-  }
-  .personal-itinerary-location {
-    margin-top: 7px !important;
-  }
-  .personal-transport-route {
-    margin-top: 8px;
-  }
-  .personal-itinerary-note {
-    margin-top: 6px !important;
-  }
-}
-@media (max-width: 720px) {
-  .itinerary-card.is-free-card { padding: 12px; }
-  .free-activity-personal-heading { gap: 10px; padding: 12px 0 10px; }
-  .free-activity-personal-heading > div { width: 100%; }
-  .free-activity-personal-title-row { display: flex; align-items:baseline; justify-content:space-between; gap:10px; }
-  .free-activity-personal-heading strong { font-size:14px; }
-  .free-activity-personal-count { flex:0 0 auto; color:#80601d!important; font-size:12px!important; font-weight:800; }
-  .free-activity-personal-private { display:inline-flex!important; align-items:center; gap:4px; margin-top:3px; color:#9a8764!important; font-size:11px!important; }
-  .free-activity-personal-private .el-icon { font-size:12px; }
-  .free-activity-add-button { width:100%; min-height:42px; }
-  .personal-itinerary-list { gap:9px; padding:0; border-left:0; }
-  .personal-itinerary-group-heading { display:flex; align-items:center; justify-content:space-between; min-width:0; padding:5px 1px 0; color:#80601d; font-size:12px; font-weight:800; }
-  .personal-itinerary-group-heading span { white-space:nowrap; }
-  .personal-itinerary-group-heading small { display:grid; width:20px; height:20px; place-items:center; border-radius:999px; background:#fff0cf; color:#8a621c; font-size:11px; }
-  .personal-itinerary-entry { display:block; min-width:0; }
-  .personal-itinerary-time, .personal-itinerary-dot { display:none; }
-  .personal-itinerary-card { position:relative; display:block; min-width:0; padding:10px; border-color:#eadfca; background:rgba(255,255,255,.92); box-shadow:0 3px 10px rgba(119,87,31,.05); }
-  .personal-itinerary-card :deep(.el-checkbox) { position:absolute; z-index:2; top:9px; left:9px; width:22px; height:22px; margin:0; padding:2px; border-radius:5px; background:rgba(255,255,255,.88); }
-  .personal-itinerary-image { position:absolute; top:10px; left:10px; width:64px; height:64px; border-radius:9px; object-fit:cover; }
-  .personal-itinerary-copy { display:block; min-width:0; min-height:64px; margin-left:74px; padding-right:30px; }
-  .personal-itinerary-title { position:static; min-width:0; }
-  .personal-itinerary-title strong { display:-webkit-box; overflow:hidden; min-width:0; color:#28473f; font-size:14px; line-height:1.45; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
-  .personal-drag-handle { position:absolute; z-index:3; top:39px; left:13px; width:22px; height:22px; margin:0; background:rgba(255,255,255,.78); color:#8d6927; }
-  .personal-itinerary-time-detail { display:block!important; margin:4px 0 0!important; color:#7b827c!important; font-size:12px!important; font-variant-numeric:tabular-nums; white-space:nowrap; }
-  .personal-itinerary-meta { display:flex!important; align-items:center!important; gap:5px!important; margin:7px 0 0!important; white-space:nowrap; }
-  .personal-itinerary-meta .itinerary-type-chip { flex:0 0 auto; }
-  .personal-itinerary-note { margin-top:6px!important; }
-  .personal-itinerary-location,
-  .personal-itinerary-website { display:inline-flex!important; max-width:100%; margin-top:7px!important; white-space:nowrap; }
-  .personal-itinerary-location span { font-size:0; }
-  .personal-itinerary-location span::after { content:'地圖'; font-size:12px; }
-  .personal-itinerary-website span { font-size:0; }
-  .personal-itinerary-website span::after { content:'網站'; font-size:12px; }
-  .personal-transport-route { width:calc(100% + 74px); margin:9px 0 0 -74px; }
-  .personal-itinerary-card :deep(.el-dropdown) { position:absolute; z-index:2; top:4px; right:3px; }
-  .personal-more-button { width:36px!important; min-width:36px!important; height:36px!important; margin:0!important; }
-}
-@media (max-width: 720px) {
   .itinerary-entry { grid-template-columns: 22px 42px 10px minmax(0, 1fr); }
   .itinerary-checkbox { padding-top:13px; }
   .itinerary-checkbox :deep(.el-checkbox) { width:24px; height:24px; margin:-3px 0 0; }
@@ -2726,38 +1884,34 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
   .itinerary-time { padding:14px 2px 0 0; font-size:12px; white-space:nowrap; }
   .itinerary-connector::after { top:18px; }
   .itinerary-dot { width:8px; height:8px; margin-top:16px; box-shadow:0 0 0 3px #fff; }
-  .itinerary-card:not(.is-free-card) { padding:12px; }
-  .itinerary-card:not(.is-free-card) .itinerary-card-header { position:relative; display:grid; grid-template-columns:52px minmax(0, 1fr); gap:9px; min-width:0; }
-  .itinerary-card:not(.is-free-card) .itinerary-card-image { grid-column:1; grid-row:1 / span 2; width:52px; height:52px; flex-basis:52px; }
-  .itinerary-card:not(.is-free-card) .itinerary-card-heading { display:grid; grid-template-columns:minmax(0, 1fr); grid-template-rows:auto auto; grid-column:2; grid-row:1 / span 2; min-width:0; padding-right:0; }
-  .itinerary-card:not(.is-free-card) .itinerary-card-heading > div { display:contents; }
-  .itinerary-card:not(.is-free-card) .itinerary-scope-tag { grid-row:1; justify-self:start; margin:0 0 4px; }
-  .itinerary-card:not(.is-free-card) .itinerary-card-heading strong { display:-webkit-box; grid-row:2; overflow:hidden; min-width:0; padding-right:0; color:#163b37; font-size:15px; line-height:1.42; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
-  .itinerary-card:not(.is-free-card) .itinerary-card-controls { position:absolute; z-index:2; top:-5px; right:-6px; display:flex; gap:0; }
-  .itinerary-card:not(.is-free-card) .itinerary-collapse-button, .itinerary-card:not(.is-free-card) .itinerary-more-button { width:36px!important; min-width:36px!important; height:36px!important; margin:0!important; }
-  .itinerary-card:not(.is-free-card) .itinerary-drag-handle { position:absolute; z-index:3; top:28px; left:-60px; width:22px; height:22px; margin:0; background:rgba(255,255,255,.8); }
-  .itinerary-card:not(.is-free-card) .itinerary-card-body { margin-top:10px; }
-  .itinerary-card:not(.is-free-card) .itinerary-card-meta { gap:4px; margin:0 0 8px; color:#81918c; font-size:12px; }
-  .itinerary-card:not(.is-free-card) .itinerary-type-chip { font-size:10px; }
-  .itinerary-card:not(.is-free-card) .itinerary-transport-route { gap:5px; margin-top:4px; }
-  .itinerary-card:not(.is-free-card) .itinerary-transport-stop { padding:7px 19px 7px 8px; border-color:#e3ece8; background:#f9fbfa; }
-  .itinerary-card:not(.is-free-card) .itinerary-transport-stop strong { display:-webkit-box; overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
-  .itinerary-card:not(.is-free-card) .itinerary-transport-arrow { color:#81a99e; font-size:15px; }
+  .itinerary-card:not(.is-itinerary-group-card) { padding:12px; }
+  .itinerary-card:not(.is-itinerary-group-card) .itinerary-card-header { position:relative; display:grid; grid-template-columns:52px minmax(0, 1fr); gap:9px; min-width:0; }
+  .itinerary-card:not(.is-itinerary-group-card) .itinerary-card-image { grid-column:1; grid-row:1 / span 2; width:52px; height:52px; flex-basis:52px; }
+  .itinerary-card:not(.is-itinerary-group-card) .itinerary-card-heading { display:grid; grid-template-columns:minmax(0, 1fr); grid-template-rows:auto auto; grid-column:2; grid-row:1 / span 2; min-width:0; padding-right:0; }
+  .itinerary-card:not(.is-itinerary-group-card) .itinerary-card-heading > div { display:contents; }
+  .itinerary-card:not(.is-itinerary-group-card) .itinerary-scope-tag { grid-row:1; justify-self:start; margin:0 0 4px; }
+  .itinerary-card:not(.is-itinerary-group-card) .itinerary-card-heading strong { display:-webkit-box; grid-row:2; overflow:hidden; min-width:0; padding-right:0; color:#163b37; font-size:15px; line-height:1.42; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
+  .itinerary-card:not(.is-itinerary-group-card) .itinerary-card-controls { position:absolute; z-index:2; top:-5px; right:-6px; display:flex; gap:0; }
+  .itinerary-card:not(.is-itinerary-group-card) .itinerary-collapse-button, .itinerary-card:not(.is-itinerary-group-card) .itinerary-more-button { width:36px!important; min-width:36px!important; height:36px!important; margin:0!important; }
+  .itinerary-card:not(.is-itinerary-group-card) .itinerary-drag-handle { position:absolute; z-index:3; top:28px; left:-60px; width:22px; height:22px; margin:0; background:rgba(255,255,255,.8); }
+  .itinerary-card:not(.is-itinerary-group-card) .itinerary-card-body { margin-top:10px; }
+  .itinerary-card:not(.is-itinerary-group-card) .itinerary-card-meta { gap:4px; margin:0 0 8px; color:#81918c; font-size:12px; }
+  .itinerary-card:not(.is-itinerary-group-card) .itinerary-type-chip { font-size:10px; }
+  .itinerary-card:not(.is-itinerary-group-card) .itinerary-transport-route { gap:5px; margin-top:4px; }
+  .itinerary-card:not(.is-itinerary-group-card) .itinerary-transport-stop { padding:7px 19px 7px 8px; border-color:#e3ece8; background:#f9fbfa; }
+  .itinerary-card:not(.is-itinerary-group-card) .itinerary-transport-stop strong { display:-webkit-box; overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
+  .itinerary-card:not(.is-itinerary-group-card) .itinerary-transport-arrow { color:#81a99e; font-size:15px; }
 }
 @media (max-width: 390px) {
   .itinerary-entry { grid-template-columns:20px 40px 9px minmax(0, 1fr); }
-  .itinerary-card:not(.is-free-card) .itinerary-card-header { grid-template-columns:48px minmax(0, 1fr); gap:8px; }
-  .itinerary-card:not(.is-free-card) .itinerary-card-image { width:48px; height:48px; flex-basis:48px; }
-  .itinerary-card:not(.is-free-card) .itinerary-transport-route { grid-template-columns:minmax(0, 1fr); gap:4px; }
-  .itinerary-card:not(.is-free-card) .itinerary-transport-arrow { transform:rotate(90deg); min-height:13px; }
+  .itinerary-card:not(.is-itinerary-group-card) .itinerary-card-header { grid-template-columns:48px minmax(0, 1fr); gap:8px; }
+  .itinerary-card:not(.is-itinerary-group-card) .itinerary-card-image { width:48px; height:48px; flex-basis:48px; }
+  .itinerary-card:not(.is-itinerary-group-card) .itinerary-transport-route { grid-template-columns:minmax(0, 1fr); gap:4px; }
+  .itinerary-card:not(.is-itinerary-group-card) .itinerary-transport-arrow { transform:rotate(90deg); min-height:13px; }
 }
 @media (max-width: 720px) {
-  .itinerary-card:not(.is-free-card) .itinerary-card-controls { position:absolute!important; top:-4px!important; right:4px!important; left:auto!important; bottom:auto!important; grid-column:auto!important; grid-row:auto!important; margin:0!important; }
-  .itinerary-card:not(.is-free-card) .itinerary-card-tags { margin-right:74px; }
-  .itinerary-card.is-free-card .itinerary-card-header { position:relative; }
-  .itinerary-card.is-free-card .itinerary-card-controls { position:absolute!important; top:-4px!important; right:-4px!important; left:auto!important; bottom:auto!important; grid-column:auto!important; grid-row:auto!important; margin:0!important; }
-  .itinerary-card.is-free-card .itinerary-card-tags { margin-right:74px; }
-  .itinerary-entry.is-free-activity .free-activity-marker { width:18px; height:18px; margin:0; font-size:14px; line-height:1; }
+  .itinerary-card:not(.is-itinerary-group-card) .itinerary-card-controls { position:absolute!important; top:-4px!important; right:4px!important; left:auto!important; bottom:auto!important; grid-column:auto!important; grid-row:auto!important; margin:0!important; }
+  .itinerary-card:not(.is-itinerary-group-card) .itinerary-card-tags { margin-right:74px; }
 }
 .itinerary-add{margin-left:0!important}.itinerary-mobile-toolbar{display:none}@media(max-width:720px){.itinerary-heading-actions>.itinerary-expand-actions,.itinerary-heading-actions>.itinerary-sort-toggle,.itinerary-heading-actions>.itinerary-add{display:none}.itinerary-mobile-toolbar{display:flex;align-items:center;gap:8px;width:100%;min-width:0;box-sizing:border-box}.itinerary-mobile-toolbar :deep(.el-button){min-height:44px;margin-left:0;padding:0 10px;border-radius:10px;font-size:14px;font-weight:700;white-space:nowrap}.itinerary-mobile-expand-toggle{flex:1;min-width:0;border-color:#d3e3dc;background:#f8fbf9;color:#416d62}.itinerary-mobile-expand-toggle span{overflow:hidden;text-overflow:ellipsis}.itinerary-mobile-sort,.itinerary-mobile-add{flex:0 0 auto}.itinerary-mobile-sort{min-width:68px;border-color:#bfd7cd;color:#2f7d70}.itinerary-mobile-add{min-width:66px}.itinerary-mobile-collapse-icon{transform:rotate(180deg)}}
 .itinerary-group-toggle{min-height:40px;border-color:#c8dcd2;border-radius:10px;color:#2f7d70;font-weight:700}.itinerary-group-toggle.is-active{border-color:#b88125;background:#fff4d9;color:#80540f}.itinerary-grouping-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:14px 0 0;padding:10px 12px;border:1px solid #ead39b;border-radius:12px;background:#fffaf0;color:#775d27;font-size:13px}.itinerary-grouping-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.itinerary-group-select-all,.itinerary-group-clear,.itinerary-group-create,.itinerary-group-delete{min-height:36px;font-weight:700}.itinerary-group-select-all{border-color:#c8dcd2;background:#fff;color:#2f7d70}.itinerary-group-clear{border-color:#dcd8c8;background:#fff;color:#7b6d49}.itinerary-group-create{border-color:#bd8730;background:#fff;color:#825b18}.itinerary-group-delete{border-color:#e4b4ae;background:#fff;color:#b55b55}.itinerary-card.is-itinerary-group-card{border-color:#e9c97c;background:#fffaf0}.is-itinerary-group .itinerary-dot{border-color:#d59d35;background:#fff8e8}.itinerary-group-summary{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:2px 0 10px;border-bottom:1px solid #f1dfb3}.itinerary-group-summary p{display:flex;flex-wrap:wrap;gap:4px 8px;margin:0;color:#7e6a42;font-size:12px}.itinerary-group-summary p strong{color:#5d4720;font-size:13px}.itinerary-group-summary-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}.itinerary-group-summary a{display:inline-flex;align-items:center;gap:3px;color:#977026;font-size:12px;white-space:nowrap;text-decoration:none}.itinerary-group-add-button{min-height:38px;border-color:#d7c28d;background:#fff;color:#8a621c;font-weight:700}.itinerary-group-add-button:hover,.itinerary-group-add-button:focus-visible{border-color:#c7ab68;color:#765115;background:#fff7e6}.itinerary-group-members{display:grid;gap:7px;margin-top:10px}.itinerary-group-member{display:grid;grid-template-columns:22px 42px minmax(0,1fr) 36px;align-items:center;gap:9px;padding:8px;border:1px solid #eadfca;border-radius:10px;background:#fff}.itinerary-group-member>img,.itinerary-group-member-placeholder{display:grid;width:42px;height:42px;place-items:center;border-radius:8px;object-fit:cover;background:#f4ead5;color:#a07124;font-weight:800}.itinerary-group-member-copy{display:grid;min-width:0;gap:3px}.itinerary-group-member-copy strong{overflow:hidden;color:#244a43;font-size:14px;text-overflow:ellipsis;white-space:nowrap}.itinerary-group-member-copy small{display:flex;flex-wrap:wrap;align-items:center;gap:5px;color:#75857f;font-size:12px}.itinerary-group-member-copy .itinerary-type-chip{font-size:10px}@media(max-width:720px){.itinerary-group-toggle{display:none}.itinerary-grouping-bar{align-items:flex-start;flex-direction:column}.itinerary-grouping-actions{width:100%;display:grid;grid-template-columns:1fr;gap:8px}.itinerary-group-select-all,.itinerary-group-clear,.itinerary-group-create,.itinerary-group-delete{width:100%;min-height:42px}.itinerary-group-summary{align-items:flex-start;flex-direction:column}.itinerary-group-summary-actions{width:100%;justify-content:flex-start}.itinerary-group-add-button{width:100%;min-height:42px}.itinerary-group-member{grid-template-columns:20px 40px minmax(0,1fr) 34px;gap:7px}.itinerary-group-member>img,.itinerary-group-member-placeholder{width:40px;height:40px}}

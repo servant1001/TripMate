@@ -78,13 +78,6 @@ export const useTripStore = defineStore("trips", {
       this.loading = true;
       try {
         const data = await repository.getData(userId);
-        if (userId)
-          data.itinerary.push(
-            ...(await repository.getPrivateItinerary(
-              data.trips.map((trip) => trip.id),
-              userId,
-            )),
-          );
         Object.assign(this, data);
       } finally {
         this.loading = false;

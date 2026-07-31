@@ -74,7 +74,6 @@ const shoppingImageDisplay = computed(() =>
 const shoppingItineraryDays = computed(() =>
   Object.entries(
     props.itineraries
-      .filter((entry) => entry.activityKind !== 'free')
       .reduce<Record<string, ItineraryItem[]>>((days, entry) => {
         ;(days[entry.date] ||= []).push(entry)
         return days

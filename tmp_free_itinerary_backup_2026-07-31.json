@@ -1,0 +1,52 @@
+{
+  "31cb5cdd-e1f4-49f6-b1f7-b52bc8595882": {
+    "4c0a1570-9317-428d-a4f6-f46c764785ae": {
+      "activityKind": "free",
+      "completed": false,
+      "date": "2026-08-25",
+      "endTime": "",
+      "favoriteId": "",
+      "imageUrl": "",
+      "location": "",
+      "mapUrl": "",
+      "note": "",
+      "order": 13,
+      "ownerId": "",
+      "parentFreeActivityId": "",
+      "time": "20:01",
+      "title": "晚餐後自由活動",
+      "transportDestinationFavoriteId": "",
+      "transportDestinationLocation": "",
+      "transportDestinationMapUrl": "",
+      "transportDestinationName": "",
+      "type": "自由活動"
+    }
+  },
+  "4926967d-3279-4ca7-a849-d7fc52dcf034": {
+    "a394f785-3d4d-4a9f-ac2a-dacdd7869f9c": {
+      "activityKind": "free",
+      "cardVisibility": "shared",
+      "childVisibility": "private",
+      "completed": false,
+      "date": "2026-07-31",
+      "endTime": "",
+      "favoriteId": "",
+      "imageUrl": "",
+      "itineraryGroupId": "",
+      "location": "",
+      "mapUrl": "",
+      "note": "",
+      "order": 0,
+      "ownerId": "odoDzpsOzmhjOFH6ANvgjPGS2EI2",
+      "parentFreeActivityId": "",
+      "time": "",
+      "title": "test",
+      "transportDestinationFavoriteId": "",
+      "transportDestinationLocation": "",
+      "transportDestinationMapUrl": "",
+      "transportDestinationName": "",
+      "type": "自由活動",
+      "website": ""
+    }
+  }
+}

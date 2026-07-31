@@ -50,7 +50,6 @@ export type TripWorkspaceContext = {
   currentStoredBalances: ComputedRef<StoredValueBalance[]>
   currentPaymentToolSummaries: ComputedRef<PaymentToolSummary[]>
   currentMember: ComputedRef<Trip['members'][number] | undefined>
-  currentPersonalItems: ComputedRef<ItineraryItem[]>
   favoritesWithItineraryStatus: ComputedRef<(Favorite & { addedToItinerary: boolean })[]>
   itineraryDays: ComputedRef<ItineraryDayGroup[]>
   activeMemberId: ComputedRef<string | undefined>
@@ -91,7 +90,6 @@ export type TripWorkspaceContext = {
   toggleItinerarySorting: () => void
   sortItineraryItems: (payload: { date: string; oldIndex: number; newIndex: number }) => Promise<void>
   sortGroupItineraryItems: (payload: { groupId: string; oldIndex: number; newIndex: number }) => Promise<void>
-  sortPersonalItineraryItems: (payload: { parentId: string; oldIndex: number; newIndex: number }) => Promise<void>
   moveItineraryItem: (payload: {
     itemId: string
     from: string

@@ -6,7 +6,6 @@ const {
   current,
   currentItems,
   currentFavorites,
-  currentPersonalItems,
   currentShoppingItems,
   favoriteItineraryRequestId,
   itineraryDays,
@@ -23,7 +22,6 @@ const {
   toggleItinerarySorting,
   sortItineraryItems,
   sortGroupItineraryItems,
-  sortPersonalItineraryItems,
   moveItineraryItem,
 } = useTripWorkspaceContext()
 </script>
@@ -36,7 +34,6 @@ const {
     :user-id="userId"
     :favorite-request-id="favoriteItineraryRequestId"
     :days="itineraryDays"
-    :personal-items="currentPersonalItems"
     :shopping-items="currentShoppingItems"
     :can-edit="canEditTrip"
     :sorting-enabled="itinerarySortingEnabled"
@@ -50,7 +47,6 @@ const {
     @toggle-sorting="toggleItinerarySorting"
     @sort="sortItineraryItems"
     @sort-group="sortGroupItineraryItems"
-    @sort-personal="sortPersonalItineraryItems"
     @move="moveItineraryItem"
   />
 </template>

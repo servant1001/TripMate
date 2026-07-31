@@ -28,7 +28,6 @@ export function useTripWorkspaceItinerary({
 
   function itemChildVisibility(entry: ItineraryItem) {
     if (itemCardVisibility(entry) === 'private') return 'private'
-    if (entry.activityKind === 'free') return 'private'
     return entry.childVisibility || 'shared'
   }
 
@@ -45,14 +44,6 @@ export function useTripWorkspaceItinerary({
         (!onlyOwner || !firebaseEnabled || entry.ownerId === user.value?.uid),
     )
   }
-
-  const currentPersonalItems = computed(() =>
-    items.value.filter(
-      (entry) =>
-        entry.activityKind === 'personal' &&
-        (!firebaseEnabled || entry.ownerId === user.value?.uid),
-    ),
-  )
 
   function favoriteToItineraryType(favoriteType: FavoriteType) {
     return (
@@ -89,11 +80,7 @@ export function useTripWorkspaceItinerary({
   const itineraryDays = computed(() =>
     Object.entries(
       items.value
-        .filter(
-          (entry) =>
-            (entry.activityKind || 'shared') !== 'personal' &&
-            canSeeTopLevelEntry(entry),
-        )
+        .filter((entry) => canSeeTopLevelEntry(entry))
         .reduce<Record<string, ItineraryItem[]>>((days, entry) => {
           ;(days[entry.date] ||= []).push(entry)
           return days
@@ -175,23 +162,13 @@ export function useTripWorkspaceItinerary({
       return
     }
     try {
-      const isFree = entry.activityKind === 'free'
       await ElMessageBox.confirm(
-        `確定刪除${isFree ? '自由活動群組' : '行程'}「${entry.title}」嗎？${
-          isFree ? '你的個人行程也會一併移除。' : ''
-        }`,
-        `刪除${isFree ? '自由活動' : '行程'}`,
+        `確定刪除行程「${entry.title}」嗎？`,
+        '刪除行程',
         { confirmButtonText: '刪除', cancelButtonText: '取消', type: 'warning' },
       )
-      if (isFree) {
-        await Promise.all(
-          currentPersonalItems.value
-            .filter((item) => item.parentFreeActivityId === entry.id)
-            .map((item) => store.deleteItem(item)),
-        )
-      }
       await store.deleteItem(entry)
-      ElMessage.success(isFree ? '自由活動已刪除。' : '行程已刪除。')
+      ElMessage.success('行程已刪除。')
     } catch (error) {
       if (error !== 'cancel' && error !== 'close') {
         ElMessage.error(error instanceof Error ? error.message : '無法刪除行程。')
@@ -265,31 +242,6 @@ export function useTripWorkspaceItinerary({
     await store.reorderItems(reordered)
   }
 
-  async function sortPersonalItineraryItems({
-    parentId,
-    oldIndex,
-    newIndex,
-  }: {
-    parentId: string
-    oldIndex: number
-    newIndex: number
-  }) {
-    const entries = currentPersonalItems.value
-      .filter((entry) => entry.parentFreeActivityId === parentId)
-      .sort(
-        (a, b) =>
-          (a.order ?? Number.MAX_SAFE_INTEGER) -
-            (b.order ?? Number.MAX_SAFE_INTEGER) ||
-          compareItineraryTime(a, b),
-      )
-    if (oldIndex < 0 || newIndex < 0 || oldIndex >= entries.length || newIndex >= entries.length) return
-    const reordered = [...entries]
-    const [moved] = reordered.splice(oldIndex, 1)
-    if (!moved) return
-    reordered.splice(newIndex, 0, moved)
-    await store.reorderItems(reordered)
-  }
-
   async function moveItineraryItem({
     itemId,
     from,
@@ -304,15 +256,13 @@ export function useTripWorkspaceItinerary({
     newIndex: number
   }) {
     const entry = items.value.find((item) => item.id === itemId)
-    if (!entry || entry.activityKind === 'free' || entry.activityKind === 'group') return
+    if (!entry || entry.activityKind === 'group') return
 
-    const sourceIsPersonal = from.startsWith('personal:')
-    const targetIsPersonal = to.startsWith('personal:')
     const sourceIsDay = from.startsWith('day:')
     const targetIsDay = to.startsWith('day:')
     const sourceIsGroup = from.startsWith('group:')
     const targetIsGroup = to.startsWith('group:')
-    if ((!sourceIsPersonal && !sourceIsDay && !sourceIsGroup) || (!targetIsPersonal && !targetIsDay && !targetIsGroup)) {
+    if ((!sourceIsDay && !sourceIsGroup) || (!targetIsDay && !targetIsGroup)) {
       return
     }
 
@@ -322,11 +272,7 @@ export function useTripWorkspaceItinerary({
       compareItineraryTime(a, b)
 
     const entriesFor = (scope: string) =>
-      scope.startsWith('personal:')
-        ? currentPersonalItems.value
-            .filter((item) => item.parentFreeActivityId === scope.slice('personal:'.length))
-            .sort(byOrder)
-        : scope.startsWith('group:')
+      scope.startsWith('group:')
           ? items.value
               .filter((item) =>
                 visibleGroupItems(scope.slice('group:'.length)).some((entry) => entry.id === item.id),
@@ -341,34 +287,17 @@ export function useTripWorkspaceItinerary({
     const previous = { ...entry }
     let moved: ItineraryItem
 
-    if (targetIsPersonal) {
-      const parentFreeActivityId = to.slice('personal:'.length)
-      const freeGroup = items.value.find(
-        (item) => item.id === parentFreeActivityId && item.activityKind === 'free',
-      )
-      if (!freeGroup || !user.value?.uid) return
-      moved = {
-        ...entry,
-        activityKind: 'personal',
-        cardVisibility: 'shared',
-        childVisibility: 'private',
-        ownerId: user.value.uid,
-        parentFreeActivityId,
-        itineraryGroupId: '',
-        date: freeGroup.date,
-      }
-    } else if (targetIsGroup) {
+    if (targetIsGroup) {
       const itineraryGroupId = to.slice('group:'.length)
       const placeGroup = items.value.find(
         (item) => item.id === itineraryGroupId && item.activityKind === 'group',
       )
       if (!placeGroup) return
-      const { ownerId: _ownerId, parentFreeActivityId: _parentFreeActivityId, ...sharedEntry } = entry
+      const { ownerId: _ownerId, ...sharedEntry } = entry
       moved = {
         ...sharedEntry,
         activityKind: 'shared',
         ownerId: itemChildVisibility(placeGroup) === 'private' ? (user.value?.uid || placeGroup.ownerId || '') : '',
-        parentFreeActivityId: '',
         itineraryGroupId,
         cardVisibility: 'shared',
         childVisibility: 'shared',
@@ -376,12 +305,11 @@ export function useTripWorkspaceItinerary({
       }
     } else {
       const date = to.slice('day:'.length)
-      const { ownerId: _ownerId, parentFreeActivityId: _parentFreeActivityId, ...sharedEntry } = entry
+      const { ownerId: _ownerId, ...sharedEntry } = entry
       moved = {
         ...sharedEntry,
         activityKind: 'shared',
         ownerId: '',
-        parentFreeActivityId: '',
         itineraryGroupId: '',
         cardVisibility: 'shared',
         childVisibility: 'shared',
@@ -401,7 +329,6 @@ export function useTripWorkspaceItinerary({
 
   return {
     favoriteItineraryRequestId,
-    currentPersonalItems,
     favoritesWithItineraryStatus,
     itineraryDays,
     mapsUrl,
@@ -414,7 +341,6 @@ export function useTripWorkspaceItinerary({
     clearFavoriteRequest,
     sortItineraryItems,
     sortGroupItineraryItems,
-    sortPersonalItineraryItems,
     moveItineraryItem,
   }
 }
