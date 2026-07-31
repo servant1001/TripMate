@@ -105,14 +105,14 @@ const activityKindOptions: Array<{
     value: 'free',
     label: '自由活動',
     tag: '個人安排',
-    description: '建立一張共用群組卡，每位旅伴可在裡面安排自己的個人行程。',
+    description: '建立一張群組卡，所有旅伴都看得到群組，但底下只會看到自己安排的個人行程。',
     icon: Compass,
   },
   {
     value: 'group',
     label: '地點群組',
     tag: '地點整理',
-    description: '把同一區域的多筆共用行程收在一起，之後也能繼續拖曳調整。',
+    description: '建立一張群組卡，把同一區域的多筆共用行程收在一起，之後也能繼續拖曳調整。',
     icon: CollectionTag,
   },
 ]
@@ -125,6 +125,25 @@ const groupSelectableEntries = computed(() =>
   ),
 )
 const groupChildVisibilityLabel = computed(() => itineraryGroup.childVisibility === 'private' ? '僅自己可見' : '所有旅伴可見')
+const groupCardTypeLabel = computed(() => itemActivityKind.value === 'free' ? '自由活動群組' : itemActivityKind.value === 'group' ? '地點群組卡' : '群組卡片')
+const groupCardModeDescription = computed(() => {
+  if (itemActivityKind.value === 'free') {
+    return '所有旅伴都能看到這張群組卡，但底下只會看到自己建立的個人行程。'
+  }
+  if (itemActivityKind.value === 'group') {
+    return '把同一區域的多筆共用行程整理進同一張群組卡，之後也能拖曳移入、移出與調整排序。'
+  }
+  return '群組卡可用來承載同一段安排或同一區域的多筆內容。'
+})
+const groupCardVisibilitySummary = computed(() => {
+  const cardText = itineraryGroup.cardVisibility === 'private' ? '卡片僅自己可見' : '卡片所有旅伴可見'
+  const childText = itemActivityKind.value === 'free'
+    ? '底下個人行程固定僅自己可見'
+    : itineraryGroup.childVisibility === 'private'
+      ? '底下行程僅自己可見'
+      : '底下行程所有旅伴可見'
+  return `${cardText}・${childText}`
+})
 const filteredFavoritesForPicker = computed(() => { const keyword = favoritePickerSearch.value.trim().toLowerCase(); return props.favorites.filter((entry) => { const matchesType = favoritePickerType.value === 'all' || normalizeFavoriteType(entry.type) === favoritePickerType.value; const matchesSearch = !keyword || [entry.name, entry.location, entry.note].some((value) => value?.toLowerCase().includes(keyword)); return matchesType && matchesSearch }) })
 
 function normalizeGoogleMapsUrl(value: string) {
@@ -573,6 +592,46 @@ async function deleteGroup(group: ItineraryItem) {
   }
 }
 
+async function toggleGroupCardVisibility(group: ItineraryItem) {
+  if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。')
+  const nextVisibility: ItineraryVisibility = group.cardVisibility === 'private' ? 'shared' : 'private'
+  try {
+    await store.updateItem({
+      ...group,
+      cardVisibility: nextVisibility,
+      ownerId: props.userId || props.trip.ownerId,
+    })
+    ElMessage.success(nextVisibility === 'private' ? '群組卡已改為僅自己可見。' : '群組卡已改為所有旅伴可見。')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '無法更新群組卡可見性。')
+  }
+}
+
+async function toggleGroupChildVisibility(group: ItineraryItem) {
+  if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。')
+  if (group.activityKind !== 'group') return
+  const nextVisibility: ItineraryVisibility = group.childVisibility === 'private' ? 'shared' : 'private'
+  const members = props.items.filter((item) => item.itineraryGroupId === group.id)
+  try {
+    await Promise.all([
+      store.updateItem({
+        ...group,
+        childVisibility: nextVisibility,
+        ownerId: props.userId || props.trip.ownerId,
+      }),
+      ...members.map((item) =>
+        store.updateItem({
+          ...item,
+          ownerId: nextVisibility === 'private' ? (props.userId || props.trip.ownerId) : '',
+        }),
+      ),
+    ])
+    ElMessage.success(nextVisibility === 'private' ? '群組內行程已改為僅自己可見。' : '群組內行程已改為所有旅伴可見。')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '無法更新群組內行程可見性。')
+  }
+}
+
 async function bulkRemoveEntries(entries: ItineraryItem[]) {
   if (!props.canEdit) return
   const uniqueEntries = entries.filter(
@@ -620,6 +679,8 @@ async function bulkRemoveEntries(entries: ItineraryItem[]) {
       @remove="emit('remove', $event)"
       @create-group="openGroupForm($event.entries)"
       @edit-group="openGroupForm([], $event)"
+      @toggle-group-card-visibility="toggleGroupCardVisibility"
+      @toggle-group-child-visibility="toggleGroupChildVisibility"
       @dissolve-group="dissolveGroup"
       @delete-group="deleteGroup"
       @bulk-remove="bulkRemoveEntries"
@@ -631,7 +692,7 @@ async function bulkRemoveEntries(entries: ItineraryItem[]) {
       @move="emit('move', $event)"
     />
 
-    <el-dialog v-model="showGroupForm" :title="editingGroupId ? '編輯地點群組' : '建立地點群組'" class="itinerary-group-dialog" width="min(92vw, 560px)">
+    <el-dialog v-model="showGroupForm" :title="editingGroupId ? '編輯地點群組卡' : '建立地點群組卡'" class="itinerary-group-dialog" width="min(92vw, 560px)">
       <el-form label-position="top">
         <div class="two-col">
           <el-form-item label="群組名稱"><el-input v-model="itineraryGroup.title" placeholder="例如：築地市場探索" /></el-form-item>
@@ -673,7 +734,7 @@ async function bulkRemoveEntries(entries: ItineraryItem[]) {
       <template #footer><el-button @click="showGroupForm = false">取消</el-button><el-button type="primary" @click="saveGroup">儲存群組</el-button></template>
     </el-dialog>
 
-    <el-dialog v-model="showItem" :title="editingItemId ? `編輯${itemActivityKind === 'free' ? '自由活動' : itemActivityKind === 'group' ? '地點群組' : itemActivityKind === 'personal' ? '我的行程' : '行程'}` : itemActivityKind === 'personal' ? '新增我的行程' : itemActivityKind === 'group' ? '新增地點群組' : '新增行程'" class="itinerary-dialog" width="min(92vw, 520px)">
+    <el-dialog v-model="showItem" :title="editingItemId ? `編輯${itemActivityKind === 'free' ? '自由活動群組' : itemActivityKind === 'group' ? '地點群組卡' : itemActivityKind === 'personal' ? '我的行程' : '行程'}` : itemActivityKind === 'personal' ? '新增我的行程' : itemActivityKind === 'group' ? '新增地點群組卡' : '新增行程'" class="itinerary-dialog" width="min(92vw, 520px)">
       <el-form class="itinerary-form" label-position="top">
         <el-form-item v-if="!editingItemId && itemActivityKind !== 'personal'" label="行程安排方式">
           <div class="itinerary-activity-kind" role="radiogroup" aria-label="選擇行程安排方式">
@@ -704,9 +765,15 @@ async function bulkRemoveEntries(entries: ItineraryItem[]) {
               <span class="itinerary-activity-card-description">{{ option.description }}</span>
             </button>
           </div>
-          <small>{{ itemActivityKind === 'free' ? '自由活動會建立一張所有旅伴都看得到的群組卡片；每位旅伴可在其中安排自己的個人行程。' : itemActivityKind === 'group' ? '地點群組可整理同一區域的多筆共用行程，之後也能繼續拖曳移入、移出或調整順序。' : '共用行程會顯示給所有旅伴，並可從旅遊收藏快速帶入。' }}</small>
+          <small>{{ itemActivityKind === 'free' ? '自由活動與地點群組都屬於群組卡片；自由活動底下會承載每位旅伴自己的個人行程。' : itemActivityKind === 'group' ? '自由活動與地點群組都屬於群組卡片；地點群組底下適合整理同區域的共用行程。' : '共用行程會顯示給所有旅伴，並可從旅遊收藏快速帶入。' }}</small>
         </el-form-item>
         <template v-if="itemActivityKind === 'group'">
+          <div class="itinerary-group-mode-summary">
+            <span class="itinerary-group-mode-kicker">{{ groupCardTypeLabel }}</span>
+            <strong>{{ itemActivityKind === 'group' ? '整理同地點的共用行程' : '讓每位旅伴安排自己的時間' }}</strong>
+            <p>{{ groupCardModeDescription }}</p>
+            <small>{{ groupCardVisibilitySummary }}</small>
+          </div>
           <div class="two-col">
             <el-form-item label="群組名稱"><el-input v-model="itineraryGroup.title" placeholder="例如：築地市場探索" /></el-form-item>
             <el-form-item label="區域／地點"><el-input v-model="itineraryGroup.location" placeholder="例如：築地市場" /></el-form-item>
@@ -746,6 +813,12 @@ async function bulkRemoveEntries(entries: ItineraryItem[]) {
         </template>
         <template v-else>
         <div v-if="itemActivityKind === 'free'" class="itinerary-group-visibility-panel">
+          <div class="itinerary-group-mode-summary is-inline">
+            <span class="itinerary-group-mode-kicker">{{ groupCardTypeLabel }}</span>
+            <strong>讓每位旅伴安排自己的時間</strong>
+            <p>{{ groupCardModeDescription }}</p>
+            <small>{{ groupCardVisibilitySummary }}</small>
+          </div>
           <div class="itinerary-group-visibility-row">
             <span>群組卡片可見性</span>
             <el-radio-group v-model="itineraryGroup.cardVisibility">
@@ -765,7 +838,7 @@ async function bulkRemoveEntries(entries: ItineraryItem[]) {
           <div class="itinerary-favorite-picker-control"><div class="itinerary-favorite-picker-copy"><strong>{{ itemFavoriteId ? '已選擇旅遊收藏' : '尚未選擇收藏' }}</strong><span>{{ itemFavoriteId ? (favorites.find((entry) => entry.id === itemFavoriteId)?.name || '已選擇項目') : '可從收藏清單帶入名稱、類型、地點與圖片' }}</span></div><el-button class="itinerary-favorite-picker-button" @click="openFavoritePicker()">{{ itemFavoriteId ? '更換收藏' : '選擇收藏' }}</el-button></div>
           <small>{{ itemActivityKind === 'personal' ? '會帶入收藏的名稱、地點、Google Maps 與圖片；日期已依自由活動群組設定。' : '日期與時間不會自動設定，請依實際行程選擇。' }}</small>
         </el-form-item>
-        <el-form-item :label="itemActivityKind === 'free' ? '自由活動名稱' : '行程名稱'"><el-input v-model="item.title" :placeholder="itemActivityKind === 'free' ? '例如：下午自由活動、分組逛街' : itemActivityKind === 'personal' ? '例如：前往秋葉原' : ''" /></el-form-item>
+        <el-form-item :label="itemActivityKind === 'free' ? '群組名稱' : '行程名稱'"><el-input v-model="item.title" :placeholder="itemActivityKind === 'free' ? '例如：下午自由活動、分組逛街' : itemActivityKind === 'personal' ? '例如：前往秋葉原' : ''" /></el-form-item>
         <el-form-item v-if="itemActivityKind !== 'personal'" label="日期"><el-date-picker v-model="item.date" type="date" value-format="YYYY-MM-DD" placeholder="選擇日期" /></el-form-item>
         <el-form-item v-if="itemActivityKind === 'shared' && itineraryGroupsForItem.length" label="加入地點群組（選填）"><el-select v-model="itemItineraryGroupId" clearable placeholder="不加入群組"><el-option v-for="group in itineraryGroupsForItem" :key="group.id" :label="`${group.title}・${group.location || '未設定區域'}`" :value="group.id" /></el-select><small>可將這筆行程加入當日既有群組；留白則維持一般共用行程。</small></el-form-item>
         <div class="itinerary-time-grid"><el-form-item label="開始時間"><el-time-picker v-model="item.time" value-format="HH:mm" format="HH:mm" placeholder="選擇開始時間" /></el-form-item><el-form-item label="結束時間"><el-time-picker v-model="item.endTime" value-format="HH:mm" format="HH:mm" placeholder="選擇結束時間（選填）" /></el-form-item></div>
@@ -825,5 +898,5 @@ async function bulkRemoveEntries(entries: ItineraryItem[]) {
 </template>
 
 <style scoped>
-.trip-itinerary-view{display:grid;min-width:0}.two-col,.three-col,.itinerary-time-grid{display:grid;gap:12px}.two-col,.itinerary-time-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.three-col{grid-template-columns:repeat(3,minmax(0,1fr))}.three-col :deep(.el-date-editor),.three-col :deep(.el-time-picker),.itinerary-time-grid :deep(.el-time-picker),.itinerary-form :deep(.el-date-editor),.itinerary-form :deep(.el-select){width:100%}.itinerary-form small{display:block;margin-top:5px;color:#71827c;font-size:12px;line-height:1.5}.itinerary-activity-kind{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.itinerary-activity-card{display:grid;gap:8px;min-width:0;padding:14px 14px 13px;border:1px solid #dce8e2;border-radius:14px;background:#fff;text-align:left;transition:border-color .18s ease,box-shadow .18s ease,background-color .18s ease}.itinerary-activity-card:hover,.itinerary-activity-card:focus-visible{border-color:#93b9aa;box-shadow:0 8px 20px rgba(18,63,58,.06);outline:none}.itinerary-activity-card.is-active{border-color:#123f3a;background:#eef5f0;box-shadow:0 10px 22px rgba(18,63,58,.08)}.itinerary-activity-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.itinerary-activity-card-heading{display:flex;align-items:center;gap:10px;min-width:0}.itinerary-activity-card-icon{display:grid;flex:0 0 34px;width:34px;height:34px;place-items:center;border-radius:10px;background:#f3f7f5;color:#467266}.itinerary-activity-card.is-active .itinerary-activity-card-icon{background:#dcece5;color:#145247}.itinerary-activity-card strong{color:#163b37;font-size:15px;line-height:1.35}.itinerary-activity-card-meta{display:grid;justify-items:end;gap:6px;flex:0 0 auto}.itinerary-activity-card-tag{display:inline-flex;align-items:center;min-height:24px;padding:0 8px;border-radius:999px;background:#f4f7f5;color:#5f7971;font-size:11px;font-weight:800;white-space:nowrap}.itinerary-activity-card.is-active .itinerary-activity-card-tag{background:#dcece5;color:#1f5e52}.itinerary-activity-card-check{display:grid;width:22px;height:22px;place-items:center;border-radius:999px;background:#123f3a;color:#fff;box-shadow:0 4px 10px rgba(18,63,58,.16)}.itinerary-activity-card-description{color:#6b7d78;font-size:12px;line-height:1.55}.itinerary-group-visibility-panel{display:grid;gap:12px;padding:12px;border:1px solid #dce8e2;border-radius:14px;background:#fbfcfa}.itinerary-group-visibility-row{display:grid;gap:8px}.itinerary-group-visibility-row>span{color:#244a43;font-size:13px;font-weight:700}.itinerary-group-visibility-lock{display:grid;gap:4px;padding:10px 12px;border:1px dashed #cfe0d9;border-radius:12px;background:#f3f8f5}.itinerary-group-visibility-lock strong{color:#123f3a;font-size:13px}.itinerary-group-visibility-lock small{margin:0;color:#6b7d78;font-size:12px;line-height:1.55}.itinerary-favorite-picker-control{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid #dce8e2;border-radius:10px;background:#fbfdfc}.itinerary-favorite-picker-copy{display:grid;min-width:0;gap:2px}.itinerary-favorite-picker-copy strong,.itinerary-favorite-picker-copy span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.itinerary-favorite-picker-copy strong{color:#244a43;font-size:13px}.itinerary-favorite-picker-copy span{color:#71827c;font-size:12px}.itinerary-favorite-picker-button{flex:0 0 auto;min-height:36px;border-color:#bfd7cd;color:#236c59;font-weight:700}.transport-destination-actions{display:flex;flex:0 0 auto;align-items:center;gap:4px}.transport-destination-clear{color:#a96a50}.itinerary-form-image-preview{display:flex;align-items:center;gap:10px;margin-top:9px;padding:8px;border:1px solid #e1e8e3;border-radius:10px;background:#fbfcfa}.itinerary-form-image-preview img{width:52px;height:52px;border-radius:8px;object-fit:cover}.itinerary-form-image-preview div{display:grid;gap:2px}.itinerary-form-image-preview strong{color:#244a43;font-size:13px}.itinerary-form-image-preview span{color:#71827c;font-size:12px}.itinerary-group-member-selector{display:grid;gap:7px}.itinerary-group-member-selector :deep(.el-checkbox){height:auto;margin-right:0;white-space:normal}.itinerary-group-member-selector small{display:block;margin:2px 0 0;color:#71827c;font-size:12px}.favorite-picker-toolbar{display:grid;gap:12px}.favorite-picker-filters{display:flex;flex-wrap:wrap;gap:7px}.favorite-picker-filter{min-height:34px;margin:0;border-color:#d9e6e0;color:#477168}.favorite-picker-filter.is-active{border-color:#123f3a;background:#123f3a;color:#fff}.favorite-picker-filter small{margin-left:4px;font-size:11px}.favorite-picker-list{display:grid;gap:9px;max-height:52vh;margin-top:14px;overflow:auto}.favorite-picker-row{display:grid;grid-template-columns:48px minmax(0,1fr) auto;align-items:center;gap:10px;width:100%;padding:9px;border:1px solid #e1e8e3;border-radius:12px;background:#fff;text-align:left;cursor:pointer}.favorite-picker-row:hover,.favorite-picker-row.is-selected{border-color:#9fc8b8;background:#f5faf7}.favorite-picker-row img,.favorite-picker-placeholder{display:grid;width:48px;height:48px;place-items:center;border-radius:9px;background:#eef5f0;color:#347965;object-fit:cover;font-weight:800}.favorite-picker-row-copy{display:grid;min-width:0;gap:3px}.favorite-picker-row-copy strong,.favorite-picker-row-copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.favorite-picker-row-copy strong{color:#244a43;font-size:14px}.favorite-picker-row-copy small{color:#71827c;font-size:12px}.favorite-picker-type{width:max-content;padding:2px 6px;border-radius:999px;background:#eaf4ef;color:#3b7868;font-size:11px;font-weight:700}.favorite-picker-select{color:#2f7d70;font-size:13px;font-weight:800;white-space:nowrap}.favorite-picker-empty{padding:30px 10px;text-align:center;color:#71827c}.favorite-picker-empty strong{color:#244a43}.favorite-picker-empty p{margin:5px 0 0;font-size:13px}.fare-estimate-content{display:grid;gap:14px}.fare-estimate-summary{display:grid;gap:4px;padding:14px;border:1px solid #e1e8e3;border-radius:14px;background:#fbfcfa}.fare-estimate-summary strong{color:#163b37;font-size:16px}.fare-estimate-summary p{margin:0;color:#6b7d78;font-size:13px;line-height:1.6}.fare-estimate-kicker,.fare-estimate-label,.fare-estimate-block span{color:#2f7d70;font-size:12px;font-weight:800;letter-spacing:.08em}.fare-estimate-result-card{display:grid;gap:4px;padding:16px;border-radius:16px;background:#eef5f0}.fare-estimate-result-card strong{color:#123f3a;font-size:28px;line-height:1.1}.fare-estimate-result-card small{color:#5e746d;font-size:12px}.fare-estimate-block{display:grid;gap:6px}.fare-estimate-block p,.fare-estimate-block ul{margin:0;color:#405651;font-size:14px;line-height:1.65}.fare-estimate-block ul{padding-left:18px}.fare-estimate-disclaimer{margin:0;color:#6b7d78;font-size:12px;line-height:1.6}@media(max-width:600px){.two-col,.three-col,.itinerary-time-grid,.itinerary-activity-kind{grid-template-columns:1fr}.itinerary-group-dialog :deep(.el-dialog__body),.itinerary-dialog :deep(.el-dialog__body),.favorite-picker-dialog :deep(.el-dialog__body),.fare-estimate-dialog :deep(.el-dialog__body){padding:16px}.itinerary-group-dialog :deep(.el-dialog__footer),.itinerary-dialog :deep(.el-dialog__footer),.favorite-picker-dialog :deep(.el-dialog__footer),.fare-estimate-dialog :deep(.el-dialog__footer){padding:12px 16px 18px}.itinerary-activity-card-top{align-items:center}.itinerary-group-visibility-panel{padding:10px}.itinerary-favorite-picker-control{align-items:stretch;flex-direction:column}.itinerary-favorite-picker-button{width:100%}.transport-destination-actions{display:grid;grid-template-columns:1fr 1fr}.favorite-picker-row{grid-template-columns:44px minmax(0,1fr)}.favorite-picker-row img,.favorite-picker-placeholder{width:44px;height:44px}.favorite-picker-select{grid-column:2;justify-self:start}.fare-estimate-result-card strong{font-size:24px}}
+.trip-itinerary-view{display:grid;min-width:0}.two-col,.three-col,.itinerary-time-grid{display:grid;gap:12px}.two-col,.itinerary-time-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.three-col{grid-template-columns:repeat(3,minmax(0,1fr))}.three-col :deep(.el-date-editor),.three-col :deep(.el-time-picker),.itinerary-time-grid :deep(.el-time-picker),.itinerary-form :deep(.el-date-editor),.itinerary-form :deep(.el-select){width:100%}.itinerary-form small{display:block;margin-top:5px;color:#71827c;font-size:12px;line-height:1.5}.itinerary-activity-kind{display:grid;grid-template-columns:1fr;gap:12px}.itinerary-activity-card{display:grid;gap:10px;min-width:0;padding:16px;border:1px solid #dce8e2;border-radius:14px;background:#fff;text-align:left;transition:border-color .18s ease,box-shadow .18s ease,background-color .18s ease}.itinerary-activity-card:hover,.itinerary-activity-card:focus-visible{border-color:#93b9aa;box-shadow:0 8px 20px rgba(18,63,58,.06);outline:none}.itinerary-activity-card.is-active{border-color:#123f3a;background:#eef5f0;box-shadow:0 10px 22px rgba(18,63,58,.08)}.itinerary-activity-card-top{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:12px}.itinerary-activity-card-heading{display:flex;align-items:center;gap:12px;min-width:0}.itinerary-activity-card-icon{display:grid;flex:0 0 38px;width:38px;height:38px;place-items:center;border-radius:12px;background:#f3f7f5;color:#467266}.itinerary-activity-card.is-active .itinerary-activity-card-icon{background:#dcece5;color:#145247}.itinerary-activity-card strong{color:#163b37;font-size:16px;line-height:1.4;overflow-wrap:anywhere}.itinerary-activity-card-meta{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex:0 0 auto}.itinerary-activity-card-tag{display:inline-flex;align-items:center;min-height:24px;padding:0 8px;border-radius:999px;background:#f4f7f5;color:#5f7971;font-size:11px;font-weight:800;white-space:nowrap}.itinerary-activity-card.is-active .itinerary-activity-card-tag{background:#dcece5;color:#1f5e52}.itinerary-activity-card-check{display:grid;flex:0 0 22px;width:22px;height:22px;place-items:center;border-radius:999px;background:#123f3a;color:#fff;box-shadow:0 4px 10px rgba(18,63,58,.16)}.itinerary-activity-card-description{color:#6b7d78;font-size:13px;line-height:1.65}.itinerary-group-mode-summary{display:grid;gap:4px;padding:13px 14px;border:1px solid #dce8e2;border-radius:14px;background:linear-gradient(180deg,#fbfcfa 0%,#f4f8f6 100%)}.itinerary-group-mode-summary.is-inline{margin-bottom:2px}.itinerary-group-mode-kicker{display:inline-flex;align-items:center;width:max-content;min-height:24px;padding:0 8px;border-radius:999px;background:#eef5f0;color:#2f7d70;font-size:11px;font-weight:800;letter-spacing:.04em}.itinerary-group-mode-summary strong{color:#163b37;font-size:14px;line-height:1.45}.itinerary-group-mode-summary p{margin:0;color:#5f716c;font-size:13px;line-height:1.6}.itinerary-group-mode-summary small{margin:0;color:#2f7d70;font-size:12px;font-weight:700;line-height:1.55}.itinerary-group-visibility-panel{display:grid;gap:12px;padding:12px;border:1px solid #dce8e2;border-radius:14px;background:#fbfcfa}.itinerary-group-visibility-row{display:grid;gap:8px}.itinerary-group-visibility-row>span{color:#244a43;font-size:13px;font-weight:700}.itinerary-group-visibility-lock{display:grid;gap:4px;padding:10px 12px;border:1px dashed #cfe0d9;border-radius:12px;background:#f3f8f5}.itinerary-group-visibility-lock strong{color:#123f3a;font-size:13px}.itinerary-group-visibility-lock small{margin:0;color:#6b7d78;font-size:12px;line-height:1.55}.itinerary-favorite-picker-control{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid #dce8e2;border-radius:10px;background:#fbfdfc}.itinerary-favorite-picker-copy{display:grid;min-width:0;gap:2px}.itinerary-favorite-picker-copy strong,.itinerary-favorite-picker-copy span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.itinerary-favorite-picker-copy strong{color:#244a43;font-size:13px}.itinerary-favorite-picker-copy span{color:#71827c;font-size:12px}.itinerary-favorite-picker-button{flex:0 0 auto;min-height:36px;border-color:#bfd7cd;color:#236c59;font-weight:700}.transport-destination-actions{display:flex;flex:0 0 auto;align-items:center;gap:4px}.transport-destination-clear{color:#a96a50}.itinerary-form-image-preview{display:flex;align-items:center;gap:10px;margin-top:9px;padding:8px;border:1px solid #e1e8e3;border-radius:10px;background:#fbfcfa}.itinerary-form-image-preview img{width:52px;height:52px;border-radius:8px;object-fit:cover}.itinerary-form-image-preview div{display:grid;gap:2px}.itinerary-form-image-preview strong{color:#244a43;font-size:13px}.itinerary-form-image-preview span{color:#71827c;font-size:12px}.itinerary-group-member-selector{display:grid;gap:7px}.itinerary-group-member-selector :deep(.el-checkbox){height:auto;margin-right:0;white-space:normal}.itinerary-group-member-selector small{display:block;margin:2px 0 0;color:#71827c;font-size:12px}.favorite-picker-toolbar{display:grid;gap:12px}.favorite-picker-filters{display:flex;flex-wrap:wrap;gap:7px}.favorite-picker-filter{min-height:34px;margin:0;border-color:#d9e6e0;color:#477168}.favorite-picker-filter.is-active{border-color:#123f3a;background:#123f3a;color:#fff}.favorite-picker-filter small{margin-left:4px;font-size:11px}.favorite-picker-list{display:grid;gap:9px;max-height:52vh;margin-top:14px;overflow:auto}.favorite-picker-row{display:grid;grid-template-columns:48px minmax(0,1fr) auto;align-items:center;gap:10px;width:100%;padding:9px;border:1px solid #e1e8e3;border-radius:12px;background:#fff;text-align:left;cursor:pointer}.favorite-picker-row:hover,.favorite-picker-row.is-selected{border-color:#9fc8b8;background:#f5faf7}.favorite-picker-row img,.favorite-picker-placeholder{display:grid;width:48px;height:48px;place-items:center;border-radius:9px;background:#eef5f0;color:#347965;object-fit:cover;font-weight:800}.favorite-picker-row-copy{display:grid;min-width:0;gap:3px}.favorite-picker-row-copy strong,.favorite-picker-row-copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.favorite-picker-row-copy strong{color:#244a43;font-size:14px}.favorite-picker-row-copy small{color:#71827c;font-size:12px}.favorite-picker-type{width:max-content;padding:2px 6px;border-radius:999px;background:#eaf4ef;color:#3b7868;font-size:11px;font-weight:700}.favorite-picker-select{color:#2f7d70;font-size:13px;font-weight:800;white-space:nowrap}.favorite-picker-empty{padding:30px 10px;text-align:center;color:#71827c}.favorite-picker-empty strong{color:#244a43}.favorite-picker-empty p{margin:5px 0 0;font-size:13px}.fare-estimate-content{display:grid;gap:14px}.fare-estimate-summary{display:grid;gap:4px;padding:14px;border:1px solid #e1e8e3;border-radius:14px;background:#fbfcfa}.fare-estimate-summary strong{color:#163b37;font-size:16px}.fare-estimate-summary p{margin:0;color:#6b7d78;font-size:13px;line-height:1.6}.fare-estimate-kicker,.fare-estimate-label,.fare-estimate-block span{color:#2f7d70;font-size:12px;font-weight:800;letter-spacing:.08em}.fare-estimate-result-card{display:grid;gap:4px;padding:16px;border-radius:16px;background:#eef5f0}.fare-estimate-result-card strong{color:#123f3a;font-size:28px;line-height:1.1}.fare-estimate-result-card small{color:#5e746d;font-size:12px}.fare-estimate-block{display:grid;gap:6px}.fare-estimate-block p,.fare-estimate-block ul{margin:0;color:#405651;font-size:14px;line-height:1.65}.fare-estimate-block ul{padding-left:18px}.fare-estimate-disclaimer{margin:0;color:#6b7d78;font-size:12px;line-height:1.6}@media(max-width:600px){.two-col,.three-col,.itinerary-time-grid,.itinerary-activity-kind{grid-template-columns:1fr}.itinerary-group-dialog :deep(.el-dialog__body),.itinerary-dialog :deep(.el-dialog__body),.favorite-picker-dialog :deep(.el-dialog__body),.fare-estimate-dialog :deep(.el-dialog__body){padding:16px}.itinerary-group-dialog :deep(.el-dialog__footer),.itinerary-dialog :deep(.el-dialog__footer),.favorite-picker-dialog :deep(.el-dialog__footer),.fare-estimate-dialog :deep(.el-dialog__footer){padding:12px 16px 18px}.itinerary-activity-card-top{align-items:center}.itinerary-group-mode-summary{padding:12px}.itinerary-group-visibility-panel{padding:10px}.itinerary-favorite-picker-control{align-items:stretch;flex-direction:column}.itinerary-favorite-picker-button{width:100%}.transport-destination-actions{display:grid;grid-template-columns:1fr 1fr}.favorite-picker-row{grid-template-columns:44px minmax(0,1fr)}.favorite-picker-row img,.favorite-picker-placeholder{width:44px;height:44px}.favorite-picker-select{grid-column:2;justify-self:start}.fare-estimate-result-card strong{font-size:24px}}
 </style>
