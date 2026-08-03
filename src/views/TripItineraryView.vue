@@ -223,7 +223,22 @@ function resetItem(entry?: ItineraryItem, favoriteId?: string) { const linkedFav
 function openNewItemForm() { if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。'); itemActivityKind.value = 'shared'; itemFormContext.value = 'default'; itemFormGroupName.value = ''; insertAfterItemId.value = null; editingGroupId.value = null; groupMemberIds.value = []; resetItem(); resetGroupDraft(); showItem.value = true }
 function openItemFormForEdit(entry: ItineraryItem) { if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。'); itemActivityKind.value = entry.activityKind || 'shared'; itemFormContext.value = 'default'; itemFormGroupName.value = ''; insertAfterItemId.value = null; resetItem(entry); if (entry.activityKind === 'group') resetGroupDraft(entry); showItem.value = true }
 function openGroupItemForm(group: ItineraryItem) { if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。'); itemActivityKind.value = 'shared'; itemFormContext.value = 'group-child'; itemFormGroupName.value = group.title || '未命名群組'; insertAfterItemId.value = null; resetItem(); item.date = group.date; itemItineraryGroupId.value = group.id; showItem.value = true }
-function openItemFormAfter(entry: ItineraryItem) { if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。'); itemActivityKind.value = 'shared'; itemFormContext.value = 'default'; itemFormGroupName.value = ''; insertAfterItemId.value = entry.id; resetItem(); itemItineraryGroupId.value = entry.itineraryGroupId || ''; item.date = entry.date; showItem.value = true }
+function openItemFormAfter(entry: ItineraryItem) {
+  if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看行程，無法修改。')
+
+  const parentGroup = entry.itineraryGroupId
+    ? props.items.find((candidate) => candidate.id === entry.itineraryGroupId && candidate.activityKind === 'group')
+    : undefined
+
+  itemActivityKind.value = 'shared'
+  itemFormContext.value = parentGroup ? 'group-child' : 'default'
+  itemFormGroupName.value = parentGroup?.title || ''
+  insertAfterItemId.value = entry.id
+  resetItem()
+  itemItineraryGroupId.value = parentGroup?.id || ''
+  item.date = entry.date
+  showItem.value = true
+}
 function openFavoritePicker(target: 'source' | 'destination' = 'source') { favoritePickerTarget.value = target; favoritePickerSearch.value = ''; favoritePickerType.value = 'all'; showFavoritePicker.value = true }
 function applyFavoriteToItem(favoriteId: string) { const selected = props.favorites.find((entry) => entry.id === favoriteId); if (!selected) return; const type = favoriteToItineraryType(selected.type); itemFavoriteId.value = selected.id; pendingFavoriteId.value = selected.id; Object.assign(item, { title: selected.name, location: selected.location || '', mapUrl: selected.mapUrl || '', website: selected.website || '', imageUrl: selected.imageUrl || '', type }); if (type !== '交通') Object.assign(item, { transportDestinationFavoriteId: '', transportDestinationName: '', transportDestinationLocation: '', transportDestinationMapUrl: '' }) }
 function selectFavoriteForItem(favoriteId: string) { const selected = props.favorites.find((entry) => entry.id === favoriteId); if (!selected) return; if (favoritePickerTarget.value === 'destination') Object.assign(item, { transportDestinationFavoriteId: selected.id, transportDestinationName: selected.name, transportDestinationLocation: selected.location || '', transportDestinationMapUrl: selected.mapUrl || '' }); else applyFavoriteToItem(favoriteId); showFavoritePicker.value = false }
@@ -307,7 +322,12 @@ async function saveItem() {
   if (!item.title.trim() || !item.date) return ElMessage.warning('請填寫行程名稱與日期。')
   if (item.endTime && item.time && item.endTime <= item.time) return ElMessage.warning('結束時間必須晚於開始時間。')
   const kind = itemActivityKind.value
-  const sameLevelItems = props.items
+  const targetGroupId = itemItineraryGroupId.value
+  const sameLevelItems = props.items.filter((entry) =>
+    targetGroupId
+      ? entry.itineraryGroupId === targetGroupId
+      : !entry.itineraryGroupId && (entry.activityKind || 'shared') === 'shared',
+  )
   const conflict = sameLevelItems.some((entry) => entry.id !== editingItemId.value && entry.date === item.date && item.time && entry.time && entry.time < (item.endTime || item.time) && (entry.endTime || entry.time) > item.time)
   if (conflict) return ElMessage.warning('此時段與既有行程重疊，請調整時間。')
   savingItem.value = true
