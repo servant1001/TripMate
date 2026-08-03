@@ -15,6 +15,14 @@ const memberRows = computed(() => props.trip.members.map((member) => ({ member, 
 const activeCount = computed(() => Object.values(props.statuses).filter((item) => item.status === 'covered').length)
 const policyCoverageItems = computed(() => coverageFields.filter(([key]) => Number(props.insurance?.coverages[key]) > 0).slice(0, 5))
 function toInputDate(value?: number) { return value ? new Date(value).toISOString().slice(0, 16) : '' }
+function formatCoverageAmount(value?: number) {
+  const amount = Number(value || 0)
+  if (!amount) return '0'
+  if (amount < 10000) return amount.toLocaleString()
+  const wanAmount = amount / 10000
+  const formatted = Number.isInteger(wanAmount) ? String(wanAmount) : wanAmount.toFixed(1).replace(/\.0$/, '')
+  return `${formatted}萬`
+}
 function resetForm() { const source = props.insurance; form.providerName = source?.providerName || ''; form.policyName = source?.policyName || ''; form.policyNumber = source?.policyNumber || ''; form.insuredName = source?.insuredName || props.memberName(props.userId); form.coverageStart = toInputDate(source?.coverageStartAt); form.coverageEnd = toInputDate(source?.coverageEndAt); form.premiumAmount = source?.premiumAmount || 0; form.premiumCurrency = source?.premiumCurrency || props.trip.currency; form.coverages = { ...blankCoverages(), ...(source?.coverages || {}) }; form.emergencyPhone = source?.emergencyPhone || ''; form.customerServicePhone = source?.customerServicePhone || ''; form.claimPhone = source?.claimPhone || ''; form.assistancePhone = source?.assistancePhone || ''; form.website = source?.website || ''; form.note = source?.note || ''; form.visibility = source?.visibility || 'private'; form.status = source?.status || 'draft'; form.attachments = [...(source?.attachments || [])]; uploadFiles.value = [] }
 function openForm() { resetForm(); showForm.value = true }
 function onFiles(event: Event) { const files = Array.from((event.target as HTMLInputElement).files || []); uploadFiles.value.push(...files.filter((file) => file.size <= 10 * 1024 * 1024 && /^(image\/(jpeg|png|webp)|application\/pdf)$/.test(file.type))) }
@@ -32,7 +40,7 @@ watch(() => props.insurance, resetForm, { immediate: true })
     <div v-if="insurance" class="insurance-policy">
       <div class="insurance-policy-top"><div><span :class="['insurance-status', `is-${coverage}`]">{{ coverage ? coverageLabel[coverage] : '尚未檢查' }}</span><h3>{{ insurance.policyName }}</h3><p>{{ insurance.providerName }} · {{ insurance.insuredName }}</p></div><el-dropdown trigger="click"><button class="insurance-more" type="button" aria-label="保單更多操作">⋯</button><template #dropdown><el-dropdown-menu><el-dropdown-item @click="openForm">編輯保單</el-dropdown-item><el-dropdown-item divided class="danger-action" @click="removePolicy">刪除保單</el-dropdown-item></el-dropdown-menu></template></el-dropdown></div>
       <p class="insurance-period">保障期間 {{ new Date(insurance.coverageStartAt).toLocaleString('zh-TW') }}－{{ new Date(insurance.coverageEndAt).toLocaleString('zh-TW') }}</p>
-      <div class="insurance-coverages"><span v-for="([key, label]) in policyCoverageItems" :key="key">{{ label }} {{ insurance.coverages[key]?.toLocaleString() }}</span><span v-if="!policyCoverageItems.length">尚未填寫保障額度</span></div>
+      <div class="insurance-coverages"><span v-for="([key, label]) in policyCoverageItems" :key="key">{{ label }} {{ formatCoverageAmount(insurance.coverages[key]) }}</span><span v-if="!policyCoverageItems.length">尚未填寫保障額度</span></div>
       <div v-if="insurance.emergencyPhone || insurance.customerServicePhone || insurance.claimPhone || insurance.assistancePhone" class="insurance-phones"><a v-if="insurance.emergencyPhone" :href="`tel:${insurance.emergencyPhone}`">緊急救援 {{ insurance.emergencyPhone }}</a><a v-if="insurance.customerServicePhone" :href="`tel:${insurance.customerServicePhone}`">客服 {{ insurance.customerServicePhone }}</a><a v-if="insurance.claimPhone" :href="`tel:${insurance.claimPhone}`">理賠 {{ insurance.claimPhone }}</a><a v-if="insurance.assistancePhone" :href="`tel:${insurance.assistancePhone}`">旅遊協助 {{ insurance.assistancePhone }}</a></div>
       <div v-if="insurance.attachments?.length" class="insurance-attachments"><button v-for="attachment in insurance.attachments || []" :key="attachment.secureUrl" type="button" @click="emit('openAttachment', attachment)">📎 {{ attachment.originalFilename || '保單附件' }}</button></div>
     </div>
