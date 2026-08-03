@@ -576,15 +576,17 @@ async function deleteGroup(group: ItineraryItem) {
   if (!props.canEdit) return
   const members = props.items.filter((item) => item.itineraryGroupId === group.id)
   try {
-    await ElMessageBox.confirm(
-      `確定刪除群組卡「${group.title}」嗎？群組內 ${members.length} 筆行程也會一併刪除。`,
-      '刪除群組卡',
-      {
-        confirmButtonText: '刪除群組卡',
-        cancelButtonText: '取消',
-        type: 'warning',
-      },
-    )
+    if (members.length) {
+      await ElMessageBox.confirm(
+        `此群組底下還有 ${members.length} 筆行程。若繼續刪除，群組卡與底下所有行程都會一併刪除，確定要刪除嗎？`,
+        '再次確認刪除',
+        {
+          confirmButtonText: '確定全部刪除',
+          cancelButtonText: '取消',
+          type: 'warning',
+        },
+      )
+    }
     await Promise.all(members.map((item) => store.deleteItem(item)))
     await store.deleteItem(group)
     ElMessage.success('群組卡與群組內行程已刪除。')
