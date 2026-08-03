@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import Sortable from 'sortablejs'
 import type { SortableEvent } from 'sortablejs'
 import {
   Calendar,
+  ArrowDown,
+  ArrowRight,
   Delete,
   Folder,
   FolderAdd,
@@ -49,6 +51,7 @@ const sortableElements = new Map<string, HTMLElement>()
 const folderStackElement = computedRootRef()
 const sortableInstances = new Map<string, Sortable>()
 let folderSortableInstance: Sortable | undefined
+const collapsedFolderIds = ref<string[]>([])
 
 function computedRootRef() {
   let element: HTMLElement | null = null
@@ -109,6 +112,16 @@ function handleFolderCommand(command: string, folder: AlbumFolder) {
 
 function folderPhotoCount(folderId?: string) {
   return orderedPhotos(folderId).length
+}
+
+function isFolderCollapsed(folderId: string) {
+  return collapsedFolderIds.value.includes(folderId)
+}
+
+function toggleFolderCollapsed(folderId: string) {
+  collapsedFolderIds.value = isFolderCollapsed(folderId)
+    ? collapsedFolderIds.value.filter((id) => id !== folderId)
+    : [...collapsedFolderIds.value, folderId]
 }
 
 function isPhotoSelected(photoId: string) {
@@ -396,16 +409,10 @@ onBeforeUnmount(destroySortables)
         v-for="folder in sortedFolders"
         :key="folder.id"
         class="album-folder-section is-draggable"
+        :class="{ 'is-collapsed': isFolderCollapsed(folder.id) }"
       >
         <div class="album-folder-header">
-          <div class="album-folder-copy">
-            <div class="album-folder-label-row">
-              <span class="album-folder-chip is-folder"><el-icon><Folder /></el-icon>資料夾</span>
-            </div>
-            <h3>{{ folder.name }}</h3>
-            <p>{{ folderPhotoCount(folder.id) }} 張照片 · 可把照片拖曳到這裡，或直接在資料夾內上傳。</p>
-          </div>
-          <div class="album-folder-actions">
+          <div class="album-folder-title-area">
             <el-button
               v-if="canEditTrip && !selectionMode"
               class="album-action-button album-folder-drag-handle"
@@ -415,6 +422,26 @@ onBeforeUnmount(destroySortables)
               title="拖曳排序資料夾"
             >
               <el-icon><Rank /></el-icon>
+            </el-button>
+            <div class="album-folder-copy">
+              <div class="album-folder-label-row">
+                <span class="album-folder-chip is-folder"><el-icon><Folder /></el-icon>資料夾</span>
+              </div>
+              <h3>{{ folder.name }}</h3>
+              <p>{{ folderPhotoCount(folder.id) }} 張照片 · 可把照片拖曳到這裡，或直接在資料夾內上傳。</p>
+            </div>
+          </div>
+          <div class="album-folder-actions">
+            <el-button
+              class="album-action-button is-folder-action album-folder-collapse-button"
+              text
+              circle
+              :aria-label="isFolderCollapsed(folder.id) ? '展開資料夾' : '收合資料夾'"
+              :title="isFolderCollapsed(folder.id) ? '展開資料夾' : '收合資料夾'"
+              :aria-expanded="!isFolderCollapsed(folder.id)"
+              @click="toggleFolderCollapsed(folder.id)"
+            >
+              <el-icon><component :is="isFolderCollapsed(folder.id) ? ArrowRight : ArrowDown" /></el-icon>
             </el-button>
             <el-button
               v-if="canEditTrip"
@@ -448,6 +475,7 @@ onBeforeUnmount(destroySortables)
         </div>
 
         <div
+          v-show="!isFolderCollapsed(folder.id)"
           class="album-grid album-folder-grid"
           :data-folder-id="folder.id"
           :ref="(element) => registerSortableList(`folder:${folder.id}`, element as Element | null)"
@@ -552,6 +580,8 @@ onBeforeUnmount(destroySortables)
 .album-folder-section{border:1px solid #dfe9e3;border-radius:16px;background:#fbfcfa;padding:18px}
 .album-folder-section.is-root{background:#f7faf8}
 .album-folder-header{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding-bottom:14px;border-bottom:1px solid #e7efea}
+.album-folder-section.is-collapsed .album-folder-header{padding-bottom:0;border-bottom-color:transparent}
+.album-folder-title-area{display:flex;align-items:flex-start;gap:8px;min-width:0}
 .album-folder-copy{display:grid;gap:5px;min-width:0}
 .album-folder-copy h3{margin:0;color:#163b37;font-size:18px;line-height:1.35}
 .album-folder-copy p{margin:0;color:#6b7d78;font-size:13px;line-height:1.6}
@@ -579,6 +609,7 @@ onBeforeUnmount(destroySortables)
 .album-action-button.is-folder-action{position:static}
 .album-folder-drag-handle{cursor:grab}
 .album-folder-drag-handle:active{cursor:grabbing}
+.album-folder-collapse-button{flex:0 0 auto}
 .album-photo-select{position:absolute;top:8px;left:8px;z-index:2;display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:10px;background:rgba(255,255,255,.94);box-shadow:0 4px 10px rgba(18,63,58,.12)}
 .album-photo-select :deep(.el-checkbox){margin-right:0}
 .album-folder-empty{display:grid;place-items:center;gap:8px;min-height:96px;padding:16px;border:1px dashed #d5e2dc;border-radius:12px;background:#f7faf8;color:#6f827b;text-align:center}
@@ -602,6 +633,10 @@ onBeforeUnmount(destroySortables)
   .album-panel-actions>.el-button{height:var(--tripmate-mobile-page-button-height);min-height:var(--tripmate-mobile-page-button-height);padding:0 12px}
   .album-empty-actions>.el-button{width:100%;height:var(--tripmate-mobile-page-button-height);min-height:var(--tripmate-mobile-page-button-height);margin-left:0!important;padding:0 12px}
   .album-selection-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .album-folder-title-area{width:100%}
+  .album-folder-actions{width:100%;justify-content:flex-end}
+  .album-folder-actions>.el-button{width:auto;flex:0 0 auto}
+  .album-folder-actions>.el-dropdown{width:auto;flex:0 0 auto}
 }
 @media(max-width:600px){
   .album-panel{padding:18px}
