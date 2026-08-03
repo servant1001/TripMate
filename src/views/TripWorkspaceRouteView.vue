@@ -48,8 +48,8 @@ const currentAlbumFolders = computed(() => store.tripAlbumFolders(activeId.value
 const currentAlbumPhotos = computed(() => store.tripAlbumPhotos(activeId.value))
 const currentShoppingItems = computed(() => store.tripShoppingItems(activeId.value))
 const currentSettlements = computed(() => store.tripSettlements(activeId.value))
-const currentInsurance = computed(() =>
-  store.tripInsurances(activeId.value).find((entry) => entry.userId === user.value?.uid),
+const currentInsurances = computed(() =>
+  store.tripInsurances(activeId.value).filter((entry) => entry.userId === user.value?.uid),
 )
 const currentInsuranceStatuses = computed(() =>
   store.tripInsuranceStatuses(activeId.value),
@@ -376,7 +376,7 @@ const workspaceContext: TripWorkspaceContext = {
   currentAlbumPhotos,
   currentShoppingItems,
   currentSettlements,
-  currentInsurance,
+  currentInsurances,
   currentInsuranceStatuses,
   currentPaymentTools,
   currentRewardRules,

@@ -7,11 +7,11 @@ import { useTripStore } from '../stores/trip'
 import type { InsuranceAttachment, InsuranceStatusSummary, TravelInsurance, Trip } from '../types'
 import { memberInsuranceStatus, validateCoveragePeriod } from '../utils/insuranceCoverage'
 
-type InsuranceSavePayload = Omit<TravelInsurance, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<TravelInsurance, 'createdAt'>>
+type InsuranceSavePayload = Omit<TravelInsurance, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<TravelInsurance, 'id' | 'createdAt'>>
 
 const props = defineProps<{
   trip: Trip
-  insurance?: TravelInsurance
+  insurances: TravelInsurance[]
   statuses: Record<string, InsuranceStatusSummary>
   userId: string
   canEdit: boolean
@@ -29,7 +29,10 @@ async function saveInsurance(payload: InsuranceSavePayload, files: File[]) {
 
   saving.value = true
   try {
-    const previousAttachments = [...(props.insurance?.attachments || [])]
+    const previousInsurance = payload.id
+      ? props.insurances.find((item) => item.id === payload.id)
+      : undefined
+    const previousAttachments = [...(previousInsurance?.attachments || [])]
     const attachments = [...(payload.attachments || [])]
 
     for (const file of files) {
@@ -70,7 +73,7 @@ async function removeInsurance(insurance: TravelInsurance) {
 }
 
 async function openInsuranceAttachment(attachment: InsuranceAttachment) {
-  const ownerId = props.insurance?.userId || props.userId
+  const ownerId = props.userId
   try {
     const url = await getInsuranceAttachmentUrl(attachment, props.trip.id, ownerId)
     window.open(url, '_blank', 'noopener,noreferrer')
@@ -84,7 +87,7 @@ async function openInsuranceAttachment(attachment: InsuranceAttachment) {
   <section class="trip-insurance-view" aria-label="旅行保險">
     <TripInsuranceCard
       :trip="trip"
-      :insurance="insurance"
+      :insurances="insurances"
       :statuses="statuses"
       :user-id="userId"
       :member-name="memberName"

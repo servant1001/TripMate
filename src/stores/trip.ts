@@ -22,6 +22,7 @@ import type {
   Trip,
 } from "../types";
 import { repository } from "../services/repository";
+import { summarizeInsurancePolicies } from "../utils/insuranceCoverage";
 
 export const useTripStore = defineStore("trips", {
   state: () => ({
@@ -446,18 +447,26 @@ export const useTripStore = defineStore("trips", {
         (item) => item.id !== settlement.id,
       );
     },
-    async saveInsurance(input: Omit<TravelInsurance, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<TravelInsurance, 'createdAt'>>, statusSummary?: Pick<InsuranceStatusSummary, 'status' | 'coverageStatus'>) {
+    async saveInsurance(input: Omit<TravelInsurance, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<TravelInsurance, 'id' | 'createdAt'>>, statusSummary?: Pick<InsuranceStatusSummary, 'status' | 'coverageStatus'>) {
       const saved = await repository.saveInsurance(input, statusSummary);
-      const index = this.insurances.findIndex((item) => item.tripId === saved.tripId && item.userId === saved.userId);
+      const index = this.insurances.findIndex((item) => item.id === saved.id);
       if (index >= 0) this.insurances.splice(index, 1, saved); else this.insurances.push(saved);
-      const status = statusSummary?.status || (saved.status === 'active' ? 'covered' : saved.status === 'cancelled' ? 'cancelled' : saved.status === 'expired' ? 'expired' : 'draft');
-      this.insuranceStatuses[saved.tripId] = { ...(this.insuranceStatuses[saved.tripId] || {}), [saved.userId]: { userId: saved.userId, status, coverageStatus: statusSummary?.coverageStatus, providerName: saved.visibility === 'private' ? undefined : saved.providerName, visibility: saved.visibility, updatedAt: saved.updatedAt } };
+      const trip = this.trips.find((item) => item.id === saved.tripId);
+      const policies = this.insurances.filter((item) => item.tripId === saved.tripId && item.userId === saved.userId);
+      const summary = trip ? summarizeInsurancePolicies(policies, trip) : null;
+      this.insuranceStatuses[saved.tripId] = { ...(this.insuranceStatuses[saved.tripId] || {}) };
+      if (summary) this.insuranceStatuses[saved.tripId][saved.userId] = { userId: saved.userId, ...summary };
       return saved;
     },
     async deleteInsurance(insurance: TravelInsurance) {
       await repository.deleteInsurance(insurance);
-      this.insurances = this.insurances.filter((item) => !(item.tripId === insurance.tripId && item.userId === insurance.userId));
-      if (this.insuranceStatuses[insurance.tripId]) delete this.insuranceStatuses[insurance.tripId][insurance.userId];
+      this.insurances = this.insurances.filter((item) => item.id !== insurance.id);
+      if (!this.insuranceStatuses[insurance.tripId]) return;
+      const trip = this.trips.find((item) => item.id === insurance.tripId);
+      const policies = this.insurances.filter((item) => item.tripId === insurance.tripId && item.userId === insurance.userId);
+      const summary = trip ? summarizeInsurancePolicies(policies, trip) : null;
+      if (summary) this.insuranceStatuses[insurance.tripId][insurance.userId] = { userId: insurance.userId, ...summary };
+      else delete this.insuranceStatuses[insurance.tripId][insurance.userId];
     },
     async savePaymentTool(input: Omit<PaymentTool, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<PaymentTool, 'id' | 'createdAt'>>, options?: { previousVisibility?: PaymentToolVisibility }) { const tool = await repository.savePaymentTool(input, options); const index = this.paymentTools.findIndex((item) => item.id === tool.id); if (index >= 0) this.paymentTools.splice(index, 1, tool); else this.paymentTools.push(tool); return tool },
     async deletePaymentTool(tool: PaymentTool) { const hadSummary = tool.visibility === 'summary' || tool.visibility === 'trip_members'; const rewardRuleIds = this.rewardRules.filter((item) => item.paymentToolId === tool.id && item.createdBy === tool.ownerUserId).map((item) => item.id); await repository.deletePaymentTool(tool, { hadSummary, rewardRuleIds }); this.paymentTools = this.paymentTools.filter((item) => item.id !== tool.id); this.paymentToolSummaries = this.paymentToolSummaries.filter((item) => item.id !== tool.id); this.rewardRules = this.rewardRules.filter((item) => item.paymentToolId !== tool.id); this.storedValueBalances = this.storedValueBalances.filter((item) => item.paymentToolId !== tool.id) },

@@ -2,9 +2,9 @@
 import TripInsuranceView from './TripInsuranceView.vue'
 import { useTripWorkspaceContext } from '../composables/useTripWorkspaceContext'
 
-const { current, currentInsurance, currentInsuranceStatuses, userId, memberName, canEditTrip } = useTripWorkspaceContext()
+const { current, currentInsurances, currentInsuranceStatuses, userId, memberName, canEditTrip } = useTripWorkspaceContext()
 </script>
 
 <template>
-  <TripInsuranceView :trip="current!" :insurance="currentInsurance" :statuses="currentInsuranceStatuses" :user-id="userId" :member-name="memberName" :can-edit="canEditTrip" />
+  <TripInsuranceView :trip="current!" :insurances="currentInsurances" :statuses="currentInsuranceStatuses" :user-id="userId" :member-name="memberName" :can-edit="canEditTrip" />
 </template>

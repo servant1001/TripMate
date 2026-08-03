@@ -42,7 +42,7 @@ export type TripWorkspaceContext = {
   currentAlbumPhotos: ComputedRef<AlbumPhoto[]>
   currentShoppingItems: ComputedRef<ShoppingItem[]>
   currentSettlements: ComputedRef<Settlement[]>
-  currentInsurance: ComputedRef<TravelInsurance | undefined>
+  currentInsurances: ComputedRef<TravelInsurance[]>
   currentInsuranceStatuses: ComputedRef<Record<string, InsuranceStatusSummary>>
   currentPaymentTools: ComputedRef<PaymentTool[]>
   currentRewardRules: ComputedRef<RewardRule[]>

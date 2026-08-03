@@ -21,6 +21,7 @@ import type {
 } from "../types";
 import { database, firebaseEnabled } from "./firebase";
 import { get, ref, set, update } from "firebase/database";
+import { summarizeInsurancePolicies } from "../utils/insuranceCoverage";
 
 const key = "tripmate-data-v1";
 type Data = {
@@ -75,6 +76,59 @@ const withoutUndefined = (data: Record<string, unknown>) =>
   Object.fromEntries(
     Object.entries(data).filter(([, value]) => value !== undefined),
   );
+
+function normalizeInsuranceSnapshot(
+  value: unknown,
+  tripId: string,
+  userId: string,
+): TravelInsurance[] {
+  if (!value || typeof value !== "object") return [];
+
+  const isRecord = (candidate: unknown): candidate is Record<string, unknown> =>
+    Boolean(candidate) && typeof candidate === "object" && !Array.isArray(candidate);
+  const looksLikePolicy = (candidate: Record<string, unknown>) =>
+    "providerName" in candidate ||
+    "policyName" in candidate ||
+    "policyNumber" in candidate ||
+    "coverageStartAt" in candidate ||
+    "coverageEndAt" in candidate;
+  const toPolicy = (policyId: string, record: Record<string, unknown>): TravelInsurance => ({
+    id: String(record.id || policyId),
+    tripId,
+    userId,
+    ...(record as Omit<TravelInsurance, "id" | "tripId" | "userId">),
+  });
+
+  const raw = value as Record<string, unknown>;
+
+  // 2026-08 以前是一位成員直接存一張保單；新版則在同一位置以
+  // policyId 為 key 存多張。兩種資料都要保留可讀，避免前端升級後
+  // 讓既有保單看起來像是消失。
+  if (looksLikePolicy(raw)) return [toPolicy(userId, raw)];
+
+  const policyContainer = isRecord(raw.policies) ? raw.policies : raw;
+  return Object.entries(policyContainer).flatMap(([policyId, policyValue]) => {
+    if (!isRecord(policyValue)) return [];
+    if (looksLikePolicy(policyValue)) return [toPolicy(policyId, policyValue)];
+
+    // 容忍早期測試資料額外包一層 id，並只取真正的保單節點；不會把
+    // 附件、保障額度等子物件誤當成保單。
+    return Object.entries(policyValue).flatMap(([nestedId, nestedValue]) =>
+      isRecord(nestedValue) && looksLikePolicy(nestedValue)
+        ? [toPolicy(nestedId, nestedValue)]
+        : [],
+    );
+  });
+}
+
+function buildInsurancePolicyMap(policies: TravelInsurance[]) {
+  return Object.fromEntries(
+    policies.map(({ id: policyId, tripId: _tripId, userId: _userId, ...data }) => [
+      policyId,
+      withoutUndefined(data as Record<string, unknown>),
+    ]),
+  );
+}
 
 export const repository = {
   async getData(userId?: string) {
@@ -224,7 +278,7 @@ export const repository = {
             ),
           },
           dailyBudgets: { [tripId]: Math.max(0, Number(dailyBudgetSnapshot.val()) || 0) },
-          insurances: insuranceSnapshot.val() ? [{ id: userId, userId, ...(insuranceSnapshot.val() as Omit<TravelInsurance, 'id' | 'tripId' | 'userId'>), tripId }] : [],
+          insurances: normalizeInsuranceSnapshot(insuranceSnapshot.val(), tripId, userId),
           insuranceStatuses: { [tripId]: Object.fromEntries(Object.entries(insuranceStatusSnapshot.val() || {}).map(([statusUserId, value]) => [statusUserId, { userId: statusUserId, ...(value as Omit<InsuranceStatusSummary, 'userId'>) }])) },
           paymentTools: Object.entries(paymentToolsSnapshot.val() || {}).map(([id, value]) => ({ id, ...(value as Omit<PaymentTool, 'id' | 'tripId'>), tripId })),
           paymentToolSummaries: Object.entries(paymentSummariesSnapshot.val() || {}).map(([id, value]) => ({ id, ...(value as Omit<PaymentToolSummary, 'id' | 'tripId'>), tripId })),
@@ -1045,23 +1099,57 @@ export const repository = {
     d.settlements = d.settlements.filter((item) => item.id !== settlement.id);
     write(d);
   },
-  async saveInsurance(input: Omit<TravelInsurance, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<TravelInsurance, 'createdAt'>>, statusSummary?: Pick<InsuranceStatusSummary, 'status' | 'coverageStatus'>) {
+  async saveInsurance(input: Omit<TravelInsurance, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<TravelInsurance, 'id' | 'createdAt'>>, statusSummary?: Pick<InsuranceStatusSummary, 'status' | 'coverageStatus'>) {
     const now = Date.now();
-    const insurance: TravelInsurance = { ...input, id: input.userId, createdAt: input.createdAt || now, updatedAt: now };
+    const insurance: TravelInsurance = { ...input, id: input.id || id(), createdAt: input.createdAt || now, updatedAt: now };
     const db = database;
     if (firebaseEnabled && db) {
-      const { id: _id, tripId, userId, ...data } = insurance;
-      const summary = withoutUndefined({ status: statusSummary?.status || (insurance.status === 'active' ? 'covered' : insurance.status === 'cancelled' ? 'cancelled' : insurance.status === 'expired' ? 'expired' : 'draft'), coverageStatus: statusSummary?.coverageStatus, providerName: insurance.visibility === 'private' ? undefined : insurance.providerName, visibility: insurance.visibility, updatedAt: insurance.updatedAt });
-      await update(ref(db), { [`travelInsurances/${tripId}/${userId}`]: withoutUndefined(data), [`insuranceStatuses/${tripId}/${userId}`]: summary });
+      const { tripId, userId } = insurance;
+      const [existingSnapshot, tripSnapshot] = await Promise.all([
+        get(ref(db, `travelInsurances/${tripId}/${userId}`)),
+        get(ref(db, `trips/${tripId}`)),
+      ]);
+      const existingPolicies = normalizeInsuranceSnapshot(existingSnapshot.val(), tripId, userId);
+      const nextPolicies = existingPolicies.filter((item) => item.id !== insurance.id);
+      nextPolicies.push(insurance);
+      const trip = tripSnapshot.val() as Pick<Trip, "startDate" | "endDate"> | null;
+      const summaryFallback: Omit<InsuranceStatusSummary, 'userId'> = {
+        status: statusSummary?.status || (insurance.status === 'active' ? 'covered' : insurance.status === 'cancelled' ? 'cancelled' : insurance.status === 'expired' ? 'expired' : 'draft'),
+        coverageStatus: statusSummary?.coverageStatus,
+        providerName: insurance.visibility === 'private' ? undefined : insurance.providerName,
+        visibility: insurance.visibility,
+        updatedAt: insurance.updatedAt,
+      };
+      const summary: Omit<InsuranceStatusSummary, 'userId'> = trip
+        ? summarizeInsurancePolicies(nextPolicies, trip) || summaryFallback
+        : summaryFallback;
+      await update(ref(db), {
+        [`travelInsurances/${tripId}/${userId}`]: buildInsurancePolicyMap(nextPolicies),
+        [`insuranceStatuses/${tripId}/${userId}`]: withoutUndefined(summary),
+      });
       return insurance;
     }
-    const d = read(); const index = d.insurances.findIndex((entry) => entry.tripId === insurance.tripId && entry.userId === insurance.userId);
+    const d = read(); const index = d.insurances.findIndex((entry) => entry.id === insurance.id);
     if (index >= 0) d.insurances.splice(index, 1, insurance); else d.insurances.push(insurance); write(d); return insurance;
   },
   async deleteInsurance(insurance: TravelInsurance) {
     const db = database;
-    if (firebaseEnabled && db) { await update(ref(db), { [`travelInsurances/${insurance.tripId}/${insurance.userId}`]: null, [`insuranceStatuses/${insurance.tripId}/${insurance.userId}`]: null }); return; }
-    const d = read(); d.insurances = d.insurances.filter((entry) => !(entry.tripId === insurance.tripId && entry.userId === insurance.userId)); write(d);
+    if (firebaseEnabled && db) {
+      const { tripId, userId } = insurance;
+      const [existingSnapshot, tripSnapshot] = await Promise.all([
+        get(ref(db, `travelInsurances/${tripId}/${userId}`)),
+        get(ref(db, `trips/${tripId}`)),
+      ]);
+      const remainingPolicies = normalizeInsuranceSnapshot(existingSnapshot.val(), tripId, userId).filter((item) => item.id !== insurance.id);
+      const trip = tripSnapshot.val() as Pick<Trip, "startDate" | "endDate"> | null;
+      const summary = trip ? summarizeInsurancePolicies(remainingPolicies, trip) : null;
+      await update(ref(db), {
+        [`travelInsurances/${tripId}/${userId}`]: remainingPolicies.length ? buildInsurancePolicyMap(remainingPolicies) : null,
+        [`insuranceStatuses/${tripId}/${userId}`]: summary ? withoutUndefined(summary) : null,
+      });
+      return;
+    }
+    const d = read(); d.insurances = d.insurances.filter((entry) => entry.id !== insurance.id); write(d);
   },
   async savePaymentTool(input: Omit<PaymentTool, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<PaymentTool, 'id' | 'createdAt'>>, options?: { previousVisibility?: PaymentToolVisibility }) { const now = Date.now(); const tool: PaymentTool = { ...input, id: input.id || id(), createdAt: input.createdAt || now, updatedAt: now }; const db = database; const summary = tool.visibility === 'private' ? null : { ownerUserId: tool.ownerUserId, type: tool.type, name: tool.name, issuer: tool.issuer, visibility: tool.visibility, isActive: tool.isActive, updatedAt: tool.updatedAt }; const hadSummary = options?.previousVisibility === 'summary' || options?.previousVisibility === 'trip_members'; if (firebaseEnabled && db) { const { id: toolId, tripId, ownerUserId, ...data } = tool; const updates: Record<string, unknown> = { [`paymentTools/${tripId}/${ownerUserId}/${toolId}`]: withoutUndefined({ ...data, ownerUserId }) }; if (summary || hadSummary) updates[`paymentToolSummaries/${tripId}/${toolId}`] = summary ? withoutUndefined(summary) : null; await update(ref(db), updates); return tool } const d = read(); const index = d.paymentTools.findIndex((item) => item.id === tool.id); if (index >= 0) d.paymentTools.splice(index, 1, tool); else d.paymentTools.push(tool); d.paymentToolSummaries = d.paymentToolSummaries.filter((item) => item.id !== tool.id); if (summary) d.paymentToolSummaries.push({ id: tool.id, tripId: tool.tripId, ...summary }); write(d); return tool },
   async deletePaymentTool(tool: PaymentTool, options?: { hadSummary?: boolean; rewardRuleIds?: string[] }) { const db = database; if (firebaseEnabled && db) { const updates: Record<string, unknown> = { [`paymentTools/${tool.tripId}/${tool.ownerUserId}/${tool.id}`]: null, [`storedValueBalances/${tool.tripId}/${tool.ownerUserId}/${tool.id}`]: null }; if (options?.hadSummary) updates[`paymentToolSummaries/${tool.tripId}/${tool.id}`] = null; for (const ruleId of options?.rewardRuleIds || []) updates[`rewardRules/${tool.tripId}/${tool.ownerUserId}/${ruleId}`] = null; await update(ref(db), updates); return } const d = read(); d.paymentTools = d.paymentTools.filter((item) => item.id !== tool.id); d.paymentToolSummaries = d.paymentToolSummaries.filter((item) => item.id !== tool.id); d.rewardRules = d.rewardRules.filter((item) => item.paymentToolId !== tool.id); d.storedValueBalances = d.storedValueBalances.filter((item) => item.paymentToolId !== tool.id); write(d) },
