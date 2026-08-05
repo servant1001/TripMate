@@ -747,10 +747,18 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
                 isItineraryGroup(entry)
                   ? 'is-itinerary-group-card'
                   : itineraryTypeClass(entry.type),
+                { 'is-sortable-enabled': sortingEnabled && canEditTrip },
               ]"
               :style="groupCardStyle(entry)"
               >
               <div class="itinerary-card-header">
+                <el-tooltip
+                  v-if="sortingEnabled && canEditTrip"
+                  content="長按並拖曳排序"
+                  placement="top"
+                  ><span :class="['itinerary-drag-handle', { 'is-group-card': isItineraryGroup(entry) }]" aria-hidden="true"
+                    ><el-icon><Rank /></el-icon></span
+                ></el-tooltip>
                 <img
                   v-if="entry.imageUrl && !isItineraryGroup(entry)"
                   class="itinerary-card-image"
@@ -758,13 +766,6 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
                   :alt="`${entry.title} 圖片`"
                 />
                 <div class="itinerary-card-heading">
-                  <el-tooltip
-                    v-if="sortingEnabled && canEditTrip"
-                    content="長按並拖曳排序"
-                    placement="top"
-                    ><span class="itinerary-drag-handle" aria-hidden="true"
-                      ><el-icon><Rank /></el-icon></span
-                  ></el-tooltip>
                   <div>
                     <div class="itinerary-card-tags">
                       <span class="itinerary-scope-tag">{{ sharedLabel(entry) }}</span>
@@ -1413,6 +1414,10 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
   background: #eaf5ef;
   color: #155b4b;
 }
+.itinerary-drag-handle.is-group-card {
+  align-self: flex-start;
+  margin: -2px 0 0 -2px;
+}
 .itinerary-card-body {
   min-width: 0;
 }
@@ -1966,6 +1971,14 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
 @media (max-width: 720px) {
   .itinerary-card:not(.is-itinerary-group-card) .itinerary-card-controls { position:absolute!important; top:-4px!important; right:4px!important; left:auto!important; bottom:auto!important; grid-column:auto!important; grid-row:auto!important; margin:0!important; }
   .itinerary-card:not(.is-itinerary-group-card) .itinerary-card-tags { margin-right:74px; }
+  .itinerary-card:not(.is-itinerary-group-card).is-sortable-enabled .itinerary-card-header { grid-template-columns:28px 52px minmax(0,1fr); gap:7px; }
+  .itinerary-card:not(.is-itinerary-group-card).is-sortable-enabled .itinerary-drag-handle { position:static; grid-column:1; grid-row:1 / span 2; align-self:center; width:28px; height:36px; margin:0; background:transparent; }
+  .itinerary-card:not(.is-itinerary-group-card).is-sortable-enabled .itinerary-card-image { grid-column:2; }
+  .itinerary-card:not(.is-itinerary-group-card).is-sortable-enabled .itinerary-card-heading { grid-column:3; }
+}
+@media (max-width: 390px) {
+  .itinerary-card:not(.is-itinerary-group-card).is-sortable-enabled .itinerary-card-header { grid-template-columns:26px 48px minmax(0,1fr); gap:6px; }
+  .itinerary-card:not(.is-itinerary-group-card).is-sortable-enabled .itinerary-drag-handle { width:26px; }
 }
 .itinerary-add{margin-left:0!important}.itinerary-mobile-toolbar{display:none}@media(max-width:720px){.itinerary-heading-actions>.itinerary-expand-actions,.itinerary-heading-actions>.itinerary-sort-toggle,.itinerary-heading-actions>.itinerary-add{display:none}.itinerary-mobile-toolbar{display:flex;align-items:center;gap:8px;width:100%;min-width:0;box-sizing:border-box}.itinerary-mobile-toolbar :deep(.el-button){height:42px;min-height:42px;margin-left:0;padding:0 10px;border-radius:10px;font-size:14px;font-weight:700;white-space:nowrap}.itinerary-mobile-expand-toggle{flex:1;min-width:0;border-color:#d3e3dc;background:#f8fbf9;color:#416d62}.itinerary-mobile-expand-toggle span{overflow:hidden;text-overflow:ellipsis}.itinerary-mobile-sort,.itinerary-mobile-add{flex:0 0 auto}.itinerary-mobile-sort{min-width:68px;border-color:#bfd7cd;color:#2f7d70}.itinerary-mobile-add{min-width:66px}.itinerary-mobile-collapse-icon{transform:rotate(180deg)}}
 .itinerary-group-toggle{min-height:40px;border-color:#c8dcd2;border-radius:10px;color:#2f7d70;font-weight:700}.itinerary-group-toggle.is-active{border-color:#b88125;background:#fff4d9;color:#80540f}.itinerary-grouping-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:14px 0 0;padding:10px 12px;border:1px solid #ead39b;border-radius:12px;background:#fffaf0;color:#775d27;font-size:13px}.itinerary-grouping-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.itinerary-group-select-all,.itinerary-group-clear,.itinerary-group-create,.itinerary-group-delete{min-height:36px;font-weight:700}.itinerary-group-select-all{border-color:#c8dcd2;background:#fff;color:#2f7d70}.itinerary-group-clear{border-color:#dcd8c8;background:#fff;color:#7b6d49}.itinerary-group-create{border-color:#bd8730;background:#fff;color:#825b18}.itinerary-group-delete{border-color:#e4b4ae;background:#fff;color:#b55b55}.itinerary-card.is-itinerary-group-card{border-color:#e9c97c;background:#fffaf0}.is-itinerary-group .itinerary-dot{border-color:#d59d35;background:#fff8e8}.itinerary-group-summary{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:2px 0 10px;border-bottom:1px solid #f1dfb3}.itinerary-group-summary p{display:flex;flex-wrap:wrap;gap:4px 8px;margin:0;color:#7e6a42;font-size:12px}.itinerary-group-summary p strong{color:#5d4720;font-size:13px}.itinerary-group-summary-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}.itinerary-group-summary a{display:inline-flex;align-items:center;gap:3px;color:#977026;font-size:12px;white-space:nowrap;text-decoration:none}.itinerary-group-add-button{min-height:38px;border-color:#d7c28d;background:#fff;color:#8a621c;font-weight:700}.itinerary-group-add-button:hover,.itinerary-group-add-button:focus-visible{border-color:#c7ab68;color:#765115;background:#fff7e6}.itinerary-group-members{display:grid;gap:7px;margin-top:10px}.itinerary-group-member{display:grid;grid-template-columns:22px 42px minmax(0,1fr) 36px;align-items:center;gap:9px;padding:8px;border:1px solid #eadfca;border-radius:10px;background:#fff}.itinerary-group-member>img,.itinerary-group-member-placeholder{display:grid;width:42px;height:42px;place-items:center;border-radius:8px;object-fit:cover;background:#f4ead5;color:#a07124;font-weight:800}.itinerary-group-member-copy{display:grid;min-width:0;gap:3px}.itinerary-group-member-copy strong{overflow:hidden;color:#244a43;font-size:14px;text-overflow:ellipsis;white-space:nowrap}.itinerary-group-member-copy small{display:flex;flex-wrap:wrap;align-items:center;gap:5px;color:#75857f;font-size:12px}.itinerary-group-member-copy .itinerary-type-chip{font-size:10px}@media(max-width:720px){.itinerary-group-toggle{display:none}.itinerary-grouping-bar{align-items:flex-start;flex-direction:column}.itinerary-grouping-actions{width:100%;display:grid;grid-template-columns:1fr;gap:8px}.itinerary-group-select-all,.itinerary-group-clear,.itinerary-group-create,.itinerary-group-delete{width:100%;height:42px;min-height:42px}.itinerary-group-summary{align-items:flex-start;flex-direction:column}.itinerary-group-summary-actions{width:100%;justify-content:flex-start}.itinerary-group-add-button{width:100%;height:42px;min-height:42px}.itinerary-group-member{grid-template-columns:20px 40px minmax(0,1fr) 34px;gap:7px}.itinerary-group-member>img,.itinerary-group-member-placeholder{width:40px;height:40px}}
@@ -2052,6 +2065,113 @@ function toggleChildVisibilityLabel(entry: ItineraryItem) {
   .itinerary-mobile-sort,
   .itinerary-mobile-add{
     min-width:0;
+  }
+}
+
+/* 排序啟用時，將群組子行程的拖曳把手放在縮圖左側，避免混在標題資訊中。 */
+.itinerary-group-member.is-sortable-enabled{
+  position:relative;
+  grid-template-columns:22px 28px 42px minmax(0,1fr) 36px;
+}
+.itinerary-group-member.is-sortable-enabled>img,
+.itinerary-group-member.is-sortable-enabled>.itinerary-group-member-placeholder{
+  grid-column:3;
+}
+.itinerary-group-member.is-sortable-enabled>.itinerary-group-member-copy{
+  grid-column:4;
+}
+.itinerary-group-member.is-sortable-enabled :deep(.el-dropdown){
+  grid-column:5;
+}
+.itinerary-group-member.is-sortable-enabled .itinerary-group-member-detail{
+  grid-column:4 / -1;
+}
+.itinerary-group-member.is-sortable-enabled .group-drag-handle{
+  position:absolute;
+  z-index:2;
+  top:9px;
+  left:39px;
+  width:28px;
+  height:32px;
+  margin:0;
+  background:rgba(255,255,255,.84);
+}
+
+@media(max-width:720px){
+  .itinerary-card.is-itinerary-group-card.is-sortable-enabled .itinerary-card-header{
+    position:relative;
+    display:grid;
+    grid-template-columns:28px minmax(0,1fr);
+    gap:7px;
+  }
+  .itinerary-card.is-itinerary-group-card.is-sortable-enabled .itinerary-drag-handle{
+    position:static;
+    grid-column:1;
+    grid-row:1;
+    align-self:start;
+    width:28px;
+    height:32px;
+    margin:0;
+    background:transparent;
+  }
+  .itinerary-card.is-itinerary-group-card.is-sortable-enabled .itinerary-card-heading{
+    grid-column:2;
+    grid-row:1;
+    min-width:0;
+  }
+  .itinerary-card.is-itinerary-group-card.is-sortable-enabled .itinerary-card-controls{
+    position:absolute!important;
+    z-index:2;
+    top:-4px!important;
+    right:4px!important;
+    left:auto!important;
+    bottom:auto!important;
+    margin:0!important;
+  }
+  .itinerary-card.is-itinerary-group-card.is-sortable-enabled .itinerary-card-tags{
+    margin-right:74px;
+  }
+  .itinerary-group-member.is-sortable-enabled{
+    grid-template-columns:28px 40px minmax(0,1fr) 34px;
+    gap:7px;
+  }
+  .itinerary-group-member.is-sortable-enabled>img,
+  .itinerary-group-member.is-sortable-enabled>.itinerary-group-member-placeholder{
+    grid-column:2;
+  }
+  .itinerary-group-member.is-sortable-enabled>.itinerary-group-member-copy{
+    grid-column:3;
+  }
+  .itinerary-group-member.is-sortable-enabled :deep(.el-dropdown){
+    grid-column:4;
+  }
+  .itinerary-group-member.is-sortable-enabled .itinerary-group-member-detail{
+    grid-column:1 / -1;
+  }
+  .itinerary-group-member.is-sortable-enabled .group-drag-handle{
+    top:8px;
+    left:8px;
+    width:28px;
+    height:40px;
+    background:transparent;
+  }
+  .itinerary-group-member.is-sortable-enabled :deep(.el-checkbox){
+    left:43px;
+  }
+}
+@media(max-width:390px){
+  .itinerary-card.is-itinerary-group-card.is-sortable-enabled .itinerary-card-header{
+    grid-template-columns:26px minmax(0,1fr);
+    gap:6px;
+  }
+  .itinerary-card.is-itinerary-group-card.is-sortable-enabled .itinerary-drag-handle{
+    width:26px;
+  }
+  .itinerary-group-member.is-sortable-enabled{
+    grid-template-columns:26px 40px minmax(0,1fr) 34px;
+  }
+  .itinerary-group-member.is-sortable-enabled :deep(.el-checkbox){
+    left:41px;
   }
 }
 </style>
