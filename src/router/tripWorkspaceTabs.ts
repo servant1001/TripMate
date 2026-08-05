@@ -20,7 +20,7 @@ export const tripTabLabels: Record<TripTab, string> = {
   expenses: '開銷',
   todos: '待辦',
   packing: '行李',
-  bookings: '預訂',
+  bookings: '票券與預訂',
   favorites: '收藏',
   album: '相簿',
   shopping: '購物',
