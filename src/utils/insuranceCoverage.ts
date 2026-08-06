@@ -1,4 +1,4 @@
-import type { InsuranceMemberStatus, InsuranceStatus, InsuranceStatusSummary, TravelInsurance, Trip } from '../types'
+import type { InsuranceBenefitType, InsuranceMemberStatus, InsuranceStatus, InsuranceStatusSummary, TravelInsurance, Trip } from '../types'
 
 export type CoverageValidationStatus = 'complete' | 'starts_late' | 'ends_early' | 'outside_trip' | 'expired' | 'invalid'
 
@@ -22,6 +22,16 @@ export function memberInsuranceStatus(status: InsuranceStatus, coverage: Coverag
 }
 
 export const coverageLabel: Record<CoverageValidationStatus, string> = { complete: '保障完整', starts_late: '開始較晚', ends_early: '結束較早', outside_trip: '未涵蓋旅行', expired: '已過期', invalid: '期間設定有誤' }
+
+export const insuranceBenefitTypeLabel: Record<InsuranceBenefitType, string> = {
+  reimbursement: '實支實付',
+  fixed: '定額給付',
+  mixed: '混合型',
+}
+
+export function benefitTypeLabel(value?: InsuranceBenefitType) {
+  return value && value in insuranceBenefitTypeLabel ? insuranceBenefitTypeLabel[value] : '未設定'
+}
 
 export function formatCoverageAmount(value?: number) {
   const amount = Number(value || 0)

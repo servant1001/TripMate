@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { ElMessageBox } from 'element-plus'
-import type { InsuranceAttachment, InsuranceCoverages, InsuranceStatusSummary, InsuranceVisibility, TravelInsurance, Trip } from '../types'
-import { coverageLabel, formatCoverageAmount, validateCoveragePeriod } from '../utils/insuranceCoverage'
+import type { InsuranceAttachment, InsuranceBenefitType, InsuranceCoverageIntervalUnit, InsuranceCoverageRule, InsuranceCoverageRuleType, InsuranceCoverages, InsuranceStatusSummary, InsuranceVisibility, TravelInsurance, Trip } from '../types'
+import { benefitTypeLabel, coverageLabel, formatCoverageAmount, validateCoveragePeriod } from '../utils/insuranceCoverage'
 
 type InsuranceFormPayload = Omit<TravelInsurance, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<TravelInsurance, 'id' | 'createdAt'>>
 
@@ -13,9 +13,14 @@ const showForm = ref(false)
 const uploadFiles = ref<File[]>([])
 const editingInsuranceId = ref<string | null>(null)
 
-const blankCoverages = (): InsuranceCoverages => ({ accidentDeath: 0, accidentDisability: 0, overseasMedical: 0, emergencyIllness: 0, emergencyEvacuation: 0, flightDelay: 0, baggageDelay: 0, baggageLoss: 0, tripCancellation: 0, tripChange: 0, personalLiability: 0, legalInfectiousDisease: 0 })
-const form = reactive({ providerName: '', policyName: '', policyNumber: '', insuredName: '', coverageStart: '', coverageEnd: '', premiumAmount: 0, premiumCurrency: '', coverages: blankCoverages(), emergencyPhone: '', customerServicePhone: '', claimPhone: '', assistancePhone: '', website: '', note: '', visibility: 'private' as InsuranceVisibility, status: 'draft' as TravelInsurance['status'], attachments: [] as InsuranceAttachment[] })
 const coverageFields: [keyof InsuranceCoverages, string][] = [['accidentDeath', '意外身故'], ['accidentDisability', '意外失能'], ['overseasMedical', '海外醫療'], ['emergencyIllness', '突發疾病'], ['emergencyEvacuation', '緊急救援'], ['flightDelay', '班機延誤'], ['baggageDelay', '行李延誤'], ['baggageLoss', '行李遺失'], ['tripCancellation', '旅程取消'], ['tripChange', '旅程更改'], ['personalLiability', '第三人責任'], ['legalInfectiousDisease', '法定傳染病']]
+const blankCoverages = (): InsuranceCoverages => ({ accidentDeath: 0, accidentDisability: 0, overseasMedical: 0, emergencyIllness: 0, emergencyEvacuation: 0, flightDelay: 0, baggageDelay: 0, baggageLoss: 0, tripCancellation: 0, tripChange: 0, personalLiability: 0, legalInfectiousDisease: 0 })
+type CoverageRuleForm = { type: InsuranceCoverageRuleType; interval: number; intervalUnit: InsuranceCoverageIntervalUnit; amountPerInterval: number; maxAmount: number }
+type CoverageRuleFormMap = Record<keyof InsuranceCoverages, CoverageRuleForm>
+function blankCoverageRules(): CoverageRuleFormMap {
+  return Object.fromEntries(coverageFields.map(([key]) => [key, { type: 'flat', interval: 4, intervalUnit: 'hour', amountPerInterval: 0, maxAmount: 0 }])) as CoverageRuleFormMap
+}
+const form = reactive({ providerName: '', policyName: '', policyNumber: '', insuredName: '', coverageStart: '', coverageEnd: '', premiumAmount: 0, premiumCurrency: '', coverages: blankCoverages(), coverageBenefitTypes: {} as Partial<Record<keyof InsuranceCoverages, InsuranceBenefitType | ''>>, coverageBenefitRules: blankCoverageRules(), emergencyPhone: '', customerServicePhone: '', claimPhone: '', assistancePhone: '', website: '', note: '', visibility: 'private' as InsuranceVisibility, status: 'draft' as TravelInsurance['status'], attachments: [] as InsuranceAttachment[] })
 
 const memberRows = computed(() => props.trip.members.map((member) => ({ member, summary: props.statuses[member.id], mine: member.id === props.userId })))
 const activeCount = computed(() => Object.values(props.statuses).filter((item) => item.status === 'covered').length)
@@ -29,6 +34,20 @@ function coverageItems(insurance: TravelInsurance) {
   return coverageFields.filter(([key]) => Number(coverages[key]) > 0).slice(0, 5)
 }
 
+const intervalUnitLabel: Record<InsuranceCoverageIntervalUnit, string> = { hour: '小時', day: '天', occurrence: '次' }
+function coverageBenefitLabel(policy: TravelInsurance, key: keyof InsuranceCoverages) {
+  const type = policy.coverageBenefitTypes?.[key]
+  const rule = policy.coverageBenefitRules?.[key]
+  if (type === 'fixed' && rule?.type === 'tiered') {
+    const interval = Number(rule.interval) || 0
+    const unit = intervalUnitLabel[rule.intervalUnit || 'hour']
+    const amount = formatCoverageAmount(rule.amountPerInterval)
+    const max = formatCoverageAmount(rule.maxAmount || policy.coverages?.[key])
+    return `定額累進｜每 ${interval} ${unit} ${amount}｜上限 ${max}`
+  }
+  return benefitTypeLabel(type)
+}
+
 function resetForm(source?: TravelInsurance) {
   form.providerName = source?.providerName || ''
   form.policyName = source?.policyName || ''
@@ -39,6 +58,19 @@ function resetForm(source?: TravelInsurance) {
   form.premiumAmount = source?.premiumAmount || 0
   form.premiumCurrency = source?.premiumCurrency || props.trip.currency
   form.coverages = { ...blankCoverages(), ...(source?.coverages || {}) }
+  form.coverageBenefitTypes = { ...(source?.coverageBenefitTypes || {}) }
+  form.coverageBenefitRules = blankCoverageRules()
+  Object.entries(source?.coverageBenefitRules || {}).forEach(([key, rule]) => {
+    if (!rule) return
+    const coverageKey = key as keyof InsuranceCoverages
+    form.coverageBenefitRules[coverageKey] = {
+      type: rule.type || 'flat',
+      interval: Number(rule.interval) || 4,
+      intervalUnit: rule.intervalUnit || 'hour',
+      amountPerInterval: Number(rule.amountPerInterval) || 0,
+      maxAmount: Number(rule.maxAmount) || Number(form.coverages[coverageKey]) || 0,
+    }
+  })
   form.emergencyPhone = source?.emergencyPhone || ''
   form.customerServicePhone = source?.customerServicePhone || ''
   form.claimPhone = source?.claimPhone || ''
@@ -74,7 +106,27 @@ function save() {
   const start = new Date(form.coverageStart).getTime()
   const end = new Date(form.coverageEnd).getTime()
   if (end < start) return
-  emit('save', {
+  const coverages = Object.fromEntries(Object.entries(form.coverages).filter(([, value]) => Number(value) > 0)) as InsuranceCoverages
+  const coverageBenefitTypes = Object.fromEntries(
+    Object.entries(coverages).flatMap(([key]) => {
+      const benefitType = form.coverageBenefitTypes[key as keyof InsuranceCoverages]
+      return benefitType ? [[key, benefitType]] : []
+    }),
+  ) as NonNullable<TravelInsurance['coverageBenefitTypes']>
+  const coverageBenefitRules = Object.fromEntries(
+    Object.entries(coverages).flatMap(([key]) => {
+      const coverageKey = key as keyof InsuranceCoverages
+      const benefitType = form.coverageBenefitTypes[coverageKey]
+      const rule = form.coverageBenefitRules[coverageKey]
+      if (benefitType !== 'fixed' || rule.type !== 'tiered') return []
+      const interval = Math.max(1, Number(rule.interval) || 1)
+      const amountPerInterval = Math.max(0, Number(rule.amountPerInterval) || 0)
+      if (!amountPerInterval) return []
+      const maxAmount = Math.max(0, Number(rule.maxAmount) || Number(coverages[coverageKey]) || 0)
+      return [[key, { type: 'tiered', interval, intervalUnit: rule.intervalUnit, amountPerInterval, ...(maxAmount ? { maxAmount } : {}) } as InsuranceCoverageRule]]
+    }),
+  ) as NonNullable<TravelInsurance['coverageBenefitRules']>
+  const payload: InsuranceFormPayload = {
     id: editingInsurance.value?.id,
     tripId: props.trip.id,
     userId: props.userId,
@@ -86,7 +138,9 @@ function save() {
     coverageEndAt: end,
     premiumAmount: Number(form.premiumAmount) || undefined,
     premiumCurrency: form.premiumCurrency || props.trip.currency,
-    coverages: Object.fromEntries(Object.entries(form.coverages).filter(([, value]) => Number(value) > 0)),
+    coverages,
+    ...(Object.keys(coverageBenefitTypes).length ? { coverageBenefitTypes } : {}),
+    ...(Object.keys(coverageBenefitRules).length ? { coverageBenefitRules } : {}),
     emergencyPhone: form.emergencyPhone.trim() || undefined,
     customerServicePhone: form.customerServicePhone.trim() || undefined,
     claimPhone: form.claimPhone.trim() || undefined,
@@ -98,7 +152,8 @@ function save() {
     status: form.status,
     createdBy: editingInsurance.value?.createdBy || props.userId,
     createdAt: editingInsurance.value?.createdAt,
-  }, uploadFiles.value)
+  }
+  emit('save', payload, uploadFiles.value)
   showForm.value = false
 }
 
@@ -160,7 +215,9 @@ watch(() => props.insurances, () => {
         </div>
         <p class="insurance-period">保障期間 {{ new Date(policy.coverageStartAt).toLocaleString('zh-TW') }}－{{ new Date(policy.coverageEndAt).toLocaleString('zh-TW') }}</p>
         <div class="insurance-coverages">
-          <span v-for="([key, label]) in coverageItems(policy)" :key="key">{{ label }} {{ formatCoverageAmount(policy.coverages?.[key]) }}</span>
+          <span v-for="([key, label]) in coverageItems(policy)" :key="key">
+            {{ label }} {{ formatCoverageAmount(policy.coverages?.[key]) }}<small> · {{ coverageBenefitLabel(policy, key) }}</small>
+          </span>
           <span v-if="!coverageItems(policy).length">尚未填寫保障額度</span>
         </div>
         <div v-if="policy.emergencyPhone || policy.customerServicePhone || policy.claimPhone || policy.assistancePhone" class="insurance-phones">
@@ -212,8 +269,42 @@ watch(() => props.insurances, () => {
       <el-form-item label="可見性"><el-radio-group v-model="form.visibility"><el-radio-button label="private">僅自己（其他人只見狀態）</el-radio-button><el-radio-button label="status_only">狀態與保險公司</el-radio-button><el-radio-button label="trip_members">旅行成員可查看</el-radio-button></el-radio-group></el-form-item>
       <el-form-item label="保單狀態"><el-radio-group v-model="form.status"><el-radio-button label="draft">草稿</el-radio-button><el-radio-button label="active">生效中</el-radio-button><el-radio-button label="cancelled">已取消</el-radio-button></el-radio-group></el-form-item>
       <h3 class="insurance-form-subtitle">主要保障額度</h3>
+      <p class="insurance-coverage-hint">每項保障額度可分別設定給付方式；定額給付還能設定一次給付或累進規則。</p>
       <div class="insurance-coverage-grid">
-        <el-form-item v-for="([key, label]) in coverageFields" :key="key" :label="label"><el-input-number v-model="form.coverages[key]" :min="0" controls-position="right" /></el-form-item>
+        <div v-for="([key, label]) in coverageFields" :key="key" class="insurance-coverage-field">
+          <el-form-item :label="label"><el-input-number v-model="form.coverages[key]" :min="0" controls-position="right" /></el-form-item>
+          <el-select v-model="form.coverageBenefitTypes[key]" clearable placeholder="給付方式（選填）" aria-label="給付方式">
+            <el-option label="實支實付" value="reimbursement" />
+            <el-option label="定額給付" value="fixed" />
+            <el-option label="混合型" value="mixed" />
+          </el-select>
+          <el-select v-if="form.coverageBenefitTypes[key] === 'fixed'" v-model="form.coverageBenefitRules[key].type" aria-label="定額給付規則">
+            <el-option label="一次給付" value="flat" />
+            <el-option label="累進式給付" value="tiered" />
+          </el-select>
+          <div v-if="form.coverageBenefitTypes[key] === 'fixed' && form.coverageBenefitRules[key].type === 'tiered'" class="insurance-coverage-rule-grid">
+            <div class="insurance-coverage-rule-field">
+              <label>間隔數值</label>
+              <el-input-number v-model="form.coverageBenefitRules[key].interval" :min="1" :step="1" controls-position="right" />
+            </div>
+            <div class="insurance-coverage-rule-field">
+              <label>累進單位</label>
+              <el-select v-model="form.coverageBenefitRules[key].intervalUnit" aria-label="累進單位">
+                <el-option label="小時" value="hour" />
+                <el-option label="天" value="day" />
+                <el-option label="次" value="occurrence" />
+              </el-select>
+            </div>
+            <div class="insurance-coverage-rule-field">
+              <label>每單位給付</label>
+              <el-input-number v-model="form.coverageBenefitRules[key].amountPerInterval" :min="0" controls-position="right" />
+            </div>
+            <div class="insurance-coverage-rule-field">
+              <label>最高給付上限</label>
+              <el-input-number v-model="form.coverageBenefitRules[key].maxAmount" :min="0" controls-position="right" />
+            </div>
+          </div>
+        </div>
       </div>
       <h3 class="insurance-form-subtitle">緊急聯絡資訊</h3>
       <div class="insurance-form-grid">
@@ -237,5 +328,16 @@ watch(() => props.insurances, () => {
 </template>
 
 <style scoped>
-.insurance-card{grid-column:1/-1;padding:24px}.insurance-heading{display:flex;align-items:start;justify-content:space-between;gap:18px;padding-bottom:18px;border-bottom:1px solid #e6ece8}.insurance-heading p{margin:0;color:#de765e;font-size:11px;font-weight:800;letter-spacing:1.2px}.insurance-heading h2{margin:3px 0;color:#163b37;font-size:20px}.insurance-heading span{color:#6b7d78;font-size:13px;line-height:1.6}.insurance-add{min-height:42px;border:0;background:#123f3a}.insurance-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:18px 0}.insurance-summary article{display:grid;gap:4px;padding:12px;border:1px solid #e1e8e3;border-radius:12px;background:#fbfcfa}.insurance-summary span{color:#6b7d78;font-size:12px}.insurance-summary strong{color:#163b37;font-size:17px}.insurance-summary .warning{color:#bd7a1d}.insurance-policy-list{display:grid;gap:12px}.insurance-policy{display:grid;gap:12px;padding:16px;border:1px solid #bcdacf;border-radius:14px;background:#f7fbf8}.insurance-policy-top{display:flex;justify-content:space-between;gap:12px}.insurance-status{display:inline-flex;padding:3px 7px;border-radius:999px;background:#e9f5ee;color:#28725f;font-size:11px;font-weight:800}.insurance-status.is-starts_late,.insurance-status.is-ends_early,.insurance-status.is-outside_trip{background:#fff4d9;color:#956315}.insurance-status.is-expired,.insurance-status.is-invalid{background:#fdecea;color:#ba554d}.insurance-policy h3{margin:7px 0 2px;color:#163b37;font-size:17px}.insurance-policy p{margin:0;color:#6b7d78;font-size:13px}.insurance-more{width:36px;height:36px;border:0;border-radius:9px;background:transparent;color:#53736a;font-size:20px;cursor:pointer}.insurance-more:hover{background:#e6f0eb}.insurance-period{line-height:1.5}.insurance-coverages,.insurance-phones,.insurance-attachments{display:flex;flex-wrap:wrap;gap:7px}.insurance-coverages span{padding:4px 8px;border-radius:8px;background:#e9f4ef;color:#396b5e;font-size:12px}.insurance-phones a,.insurance-attachments button{padding:6px 8px;border:1px solid #d4e5dc;border-radius:8px;background:#fff;color:#216b59;font-size:12px;text-decoration:none;cursor:pointer}.insurance-empty{display:grid;justify-items:center;gap:7px;margin:18px 0;padding:30px;border:1px dashed #c9ddd4;border-radius:14px;text-align:center}.insurance-empty span{font-size:28px}.insurance-empty strong{color:#244a43}.insurance-empty p{margin:0;color:#6b7d78;font-size:13px}.insurance-members{margin-top:22px}.insurance-members h3{margin:0 0 8px;color:#244a43;font-size:15px}.insurance-member{display:grid;grid-template-columns:36px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 4px;border-bottom:1px solid #edf1ef}.insurance-avatar{display:grid;width:34px;height:34px;place-items:center;border-radius:50%;background:#e5f2ec;color:#276a59;font-size:13px;font-weight:800}.insurance-member div{display:grid;gap:2px;min-width:0}.insurance-member strong{color:#244a43;font-size:14px}.insurance-member strong small,.insurance-member span{color:#71827c;font-size:12px}.member-status{padding:4px 8px;border-radius:999px;background:#f1f3f2;color:#78847f;font-size:11px;white-space:nowrap}.member-status.is-covered{background:#e8f5ed;color:#28735e}.member-status.is-coverage_gap{background:#fff4d9;color:#966319}.member-status.is-expired,.member-status.is-cancelled{background:#fdecea;color:#b9564e}.insurance-form-grid,.insurance-coverage-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 14px}.insurance-coverage-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.insurance-dialog .el-date-editor,.insurance-dialog .el-input-number,.insurance-dialog .el-select{width:100%}.insurance-form-subtitle{margin:8px 0 12px;color:#244a43;font-size:15px}.insurance-file-list{display:grid;gap:5px;margin-top:8px}.insurance-file-list span{display:flex;justify-content:space-between;gap:10px;padding:6px 8px;border-radius:7px;background:#f2f7f4;color:#52736a;font-size:12px}.insurance-file-list button{border:0;background:transparent;color:#b8564f;cursor:pointer}@media(max-width:600px){.insurance-card{padding:16px}.insurance-heading{align-items:stretch;flex-direction:column}.insurance-add{width:100%}.insurance-summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.insurance-form-grid,.insurance-coverage-grid{grid-template-columns:1fr}.insurance-member{grid-template-columns:34px minmax(0,1fr)}.member-status{grid-column:2;justify-self:start}.insurance-policy{padding:12px}.insurance-policy-top{align-items:start}.insurance-attachments,.insurance-phones,.insurance-coverages{gap:6px}}
+.insurance-card{grid-column:1/-1;padding:24px}.insurance-heading{display:flex;align-items:start;justify-content:space-between;gap:18px;padding-bottom:18px;border-bottom:1px solid #e6ece8}.insurance-heading p{margin:0;color:#de765e;font-size:11px;font-weight:800;letter-spacing:1.2px}.insurance-heading h2{margin:3px 0;color:#163b37;font-size:20px}.insurance-heading span{color:#6b7d78;font-size:13px;line-height:1.6}.insurance-add{min-height:42px;border:0;background:#123f3a}.insurance-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:18px 0}.insurance-summary article{display:grid;gap:4px;padding:12px;border:1px solid #e1e8e3;border-radius:12px;background:#fbfcfa}.insurance-summary span{color:#6b7d78;font-size:12px}.insurance-summary strong{color:#163b37;font-size:17px}.insurance-summary .warning{color:#bd7a1d}.insurance-policy-list{display:grid;gap:12px}.insurance-policy{display:grid;gap:12px;padding:16px;border:1px solid #bcdacf;border-radius:14px;background:#f7fbf8}.insurance-policy-top{display:flex;justify-content:space-between;gap:12px}.insurance-status{display:inline-flex;padding:3px 7px;border-radius:999px;background:#e9f5ee;color:#28725f;font-size:11px;font-weight:800}.insurance-status.is-starts_late,.insurance-status.is-ends_early,.insurance-status.is-outside_trip{background:#fff4d9;color:#956315}.insurance-status.is-expired,.insurance-status.is-invalid{background:#fdecea;color:#ba554d}.insurance-policy h3{margin:7px 0 2px;color:#163b37;font-size:17px}.insurance-policy p{margin:0;color:#6b7d78;font-size:13px}.insurance-more{width:36px;height:36px;border:0;border-radius:9px;background:transparent;color:#53736a;font-size:20px;cursor:pointer}.insurance-more:hover{background:#e6f0eb}.insurance-period{line-height:1.5}.insurance-benefit-summary{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;border-radius:9px;background:#eef5f0;color:#396b5e;font-size:12px}.insurance-benefit-summary strong{color:#163b37;font-size:13px}.insurance-benefit-label{color:#6b7d78}.insurance-coverages,.insurance-phones,.insurance-attachments{display:flex;flex-wrap:wrap;gap:7px}.insurance-coverages span{padding:4px 8px;border-radius:8px;background:#e9f4ef;color:#396b5e;font-size:12px}.insurance-phones a,.insurance-attachments button{padding:6px 8px;border:1px solid #d4e5dc;border-radius:8px;background:#fff;color:#216b59;font-size:12px;text-decoration:none;cursor:pointer}.insurance-empty{display:grid;justify-items:center;gap:7px;margin:18px 0;padding:30px;border:1px dashed #c9ddd4;border-radius:14px;text-align:center}.insurance-empty span{font-size:28px}.insurance-empty strong{color:#244a43}.insurance-empty p{margin:0;color:#6b7d78;font-size:13px}.insurance-members{margin-top:22px}.insurance-members h3{margin:0 0 8px;color:#244a43;font-size:15px}.insurance-member{display:grid;grid-template-columns:36px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 4px;border-bottom:1px solid #edf1ef}.insurance-avatar{display:grid;width:34px;height:34px;place-items:center;border-radius:50%;background:#e5f2ec;color:#276a59;font-size:13px;font-weight:800}.insurance-member div{display:grid;gap:2px;min-width:0}.insurance-member strong{color:#244a43;font-size:14px}.insurance-member strong small,.insurance-member span{color:#71827c;font-size:12px}.member-status{padding:4px 8px;border-radius:999px;background:#f1f3f2;color:#78847f;font-size:11px;white-space:nowrap}.member-status.is-covered{background:#e8f5ed;color:#28735e}.member-status.is-coverage_gap{background:#fff4d9;color:#966319}.member-status.is-expired,.member-status.is-cancelled{background:#fdecea;color:#b9564e}.insurance-form-grid,.insurance-coverage-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 14px}.insurance-coverage-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.insurance-dialog .el-date-editor,.insurance-dialog .el-input-number,.insurance-dialog .el-select{width:100%}.insurance-form-subtitle{margin:8px 0 12px;color:#244a43;font-size:15px}.insurance-file-list{display:grid;gap:5px;margin-top:8px}.insurance-file-list span{display:flex;justify-content:space-between;gap:10px;padding:6px 8px;border-radius:7px;background:#f2f7f4;color:#52736a;font-size:12px}.insurance-file-list button{border:0;background:transparent;color:#b8564f;cursor:pointer}@media(max-width:600px){.insurance-card{padding:16px}.insurance-heading{align-items:stretch;flex-direction:column}.insurance-add{width:100%}.insurance-summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.insurance-form-grid,.insurance-coverage-grid{grid-template-columns:1fr}.insurance-member{grid-template-columns:34px minmax(0,1fr)}.member-status{grid-column:2;justify-self:start}.insurance-policy{padding:12px}.insurance-policy-top{align-items:start}.insurance-attachments,.insurance-phones,.insurance-coverages{gap:6px}}
+</style>
+<style scoped>
+.insurance-coverage-field{display:grid;gap:4px;min-width:0}
+.insurance-coverage-field .el-select{width:100%;margin-bottom:18px}
+.insurance-coverage-rule-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-bottom:14px}
+.insurance-coverage-rule-grid .el-input-number,.insurance-coverage-rule-grid .el-select{width:100%;margin-bottom:0}
+.insurance-coverage-rule-field{display:grid;gap:4px;min-width:0}
+.insurance-coverage-rule-field label{color:#6b7d78;font-size:11px;line-height:1.4}
+.insurance-coverages small{font-size:11px;color:#6b7d78}
+.insurance-coverage-hint{margin:-4px 0 12px;color:#6b7d78;font-size:12px;line-height:1.5}
+@media(max-width:600px){.insurance-coverage-rule-grid{grid-template-columns:1fr 1fr}}
 </style>
