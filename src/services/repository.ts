@@ -123,10 +123,21 @@ function normalizeInsuranceSnapshot(
 
 function buildInsurancePolicyMap(policies: TravelInsurance[]) {
   return Object.fromEntries(
-    policies.map(({ id: policyId, tripId: _tripId, userId: _userId, ...data }) => [
-      policyId,
-      withoutUndefined(data as Record<string, unknown>),
-    ]),
+    policies.map(({ id: policyId, tripId: _tripId, userId: _userId, attachments, ...data }) => {
+      const safeAttachments = Array.isArray(attachments)
+        ? attachments.map((attachment) => {
+            const extension = attachment.originalFilename?.split('.').pop()?.trim().toLowerCase()
+            return withoutUndefined({
+              ...attachment,
+              format: attachment.format || extension || (attachment.resourceType === 'raw' ? 'pdf' : 'jpg'),
+            } as Record<string, unknown>)
+          })
+        : []
+      return [
+        policyId,
+        withoutUndefined({ ...data, attachments: safeAttachments } as Record<string, unknown>),
+      ]
+    }),
   );
 }
 
@@ -1099,20 +1110,16 @@ export const repository = {
     d.settlements = d.settlements.filter((item) => item.id !== settlement.id);
     write(d);
   },
-  async saveInsurance(input: Omit<TravelInsurance, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<TravelInsurance, 'id' | 'createdAt'>>, statusSummary?: Pick<InsuranceStatusSummary, 'status' | 'coverageStatus'>) {
+  async saveInsurance(input: Omit<TravelInsurance, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<TravelInsurance, 'id' | 'createdAt'>>, statusSummary?: Pick<InsuranceStatusSummary, 'status' | 'coverageStatus'>, options?: { policies?: TravelInsurance[]; trip?: Pick<Trip, 'startDate' | 'endDate'> }) {
     const now = Date.now();
     const insurance: TravelInsurance = { ...input, id: input.id || id(), createdAt: input.createdAt || now, updatedAt: now };
     const db = database;
     if (firebaseEnabled && db) {
       const { tripId, userId } = insurance;
-      const [existingSnapshot, tripSnapshot] = await Promise.all([
-        get(ref(db, `travelInsurances/${tripId}/${userId}`)),
-        get(ref(db, `trips/${tripId}`)),
-      ]);
-      const existingPolicies = normalizeInsuranceSnapshot(existingSnapshot.val(), tripId, userId);
+      const existingPolicies = options?.policies || [];
       const nextPolicies = existingPolicies.filter((item) => item.id !== insurance.id);
       nextPolicies.push(insurance);
-      const trip = tripSnapshot.val() as Pick<Trip, "startDate" | "endDate"> | null;
+      const trip = options?.trip || null;
       const summaryFallback: Omit<InsuranceStatusSummary, 'userId'> = {
         status: statusSummary?.status || (insurance.status === 'active' ? 'covered' : insurance.status === 'cancelled' ? 'cancelled' : insurance.status === 'expired' ? 'expired' : 'draft'),
         coverageStatus: statusSummary?.coverageStatus,

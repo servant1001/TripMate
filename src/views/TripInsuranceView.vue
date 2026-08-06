@@ -48,7 +48,7 @@ async function saveInsurance(payload: InsuranceSavePayload, files: File[]) {
     await Promise.all(
       previousAttachments
         .filter((attachment) => attachment.publicId && !attachments.some((next) => next.publicId === attachment.publicId))
-        .map((attachment) => deleteTripImage(attachment.publicId!, 'insurance', props.trip.id)),
+        .map((attachment) => deleteTripImage(attachment.publicId!, 'insurance', props.trip.id, attachment.resourceType)),
     )
     ElMessage.success('保險資料已安全儲存。')
   } catch (error) {
@@ -64,7 +64,7 @@ async function removeInsurance(insurance: TravelInsurance) {
     await Promise.allSettled(
       (insurance.attachments || [])
         .filter((attachment) => attachment.publicId)
-        .map((attachment) => deleteTripImage(attachment.publicId!, 'insurance', insurance.tripId)),
+        .map((attachment) => deleteTripImage(attachment.publicId!, 'insurance', insurance.tripId, attachment.resourceType)),
     )
     ElMessage.success('保險資料已刪除。')
   } catch (error) {

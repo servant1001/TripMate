@@ -448,10 +448,11 @@ export const useTripStore = defineStore("trips", {
       );
     },
     async saveInsurance(input: Omit<TravelInsurance, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<TravelInsurance, 'id' | 'createdAt'>>, statusSummary?: Pick<InsuranceStatusSummary, 'status' | 'coverageStatus'>) {
-      const saved = await repository.saveInsurance(input, statusSummary);
+      const trip = this.trips.find((item) => item.id === input.tripId);
+      const knownPolicies = this.insurances.filter((item) => item.tripId === input.tripId && item.userId === input.userId);
+      const saved = await repository.saveInsurance(input, statusSummary, { trip, policies: knownPolicies });
       const index = this.insurances.findIndex((item) => item.id === saved.id);
       if (index >= 0) this.insurances.splice(index, 1, saved); else this.insurances.push(saved);
-      const trip = this.trips.find((item) => item.id === saved.tripId);
       const policies = this.insurances.filter((item) => item.tripId === saved.tripId && item.userId === saved.userId);
       const summary = trip ? summarizeInsurancePolicies(policies, trip) : null;
       this.insuranceStatuses[saved.tripId] = { ...(this.insuranceStatuses[saved.tripId] || {}) };

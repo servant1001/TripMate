@@ -24,7 +24,10 @@ const editingInsurance = computed(() => sortedPolicies.value.find((item) => item
 
 function toInputDate(value?: number) { return value ? new Date(value).toISOString().slice(0, 16) : '' }
 function coverageFor(insurance: TravelInsurance) { return validateCoveragePeriod(insurance.coverageStartAt, insurance.coverageEndAt, props.trip) }
-function coverageItems(insurance: TravelInsurance) { return coverageFields.filter(([key]) => Number(insurance.coverages[key]) > 0).slice(0, 5) }
+function coverageItems(insurance: TravelInsurance) {
+  const coverages = insurance.coverages || {}
+  return coverageFields.filter(([key]) => Number(coverages[key]) > 0).slice(0, 5)
+}
 
 function resetForm(source?: TravelInsurance) {
   form.providerName = source?.providerName || ''
@@ -157,7 +160,7 @@ watch(() => props.insurances, () => {
         </div>
         <p class="insurance-period">保障期間 {{ new Date(policy.coverageStartAt).toLocaleString('zh-TW') }}－{{ new Date(policy.coverageEndAt).toLocaleString('zh-TW') }}</p>
         <div class="insurance-coverages">
-          <span v-for="([key, label]) in coverageItems(policy)" :key="key">{{ label }} {{ formatCoverageAmount(policy.coverages[key]) }}</span>
+          <span v-for="([key, label]) in coverageItems(policy)" :key="key">{{ label }} {{ formatCoverageAmount(policy.coverages?.[key]) }}</span>
           <span v-if="!coverageItems(policy).length">尚未填寫保障額度</span>
         </div>
         <div v-if="policy.emergencyPhone || policy.customerServicePhone || policy.claimPhone || policy.assistancePhone" class="insurance-phones">
