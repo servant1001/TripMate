@@ -31,6 +31,9 @@ const props = defineProps<{
   sourceCurrency: string
   sourceAmount: number
   exchangeRate: number
+  rateLoading: boolean
+  rateDate: string
+  sourceConversionActive: boolean
   note: string
   receiptPreview: string
   receiptUrl: string
@@ -43,6 +46,7 @@ const emit = defineEmits<{
   'update:sourceCurrency': [value: string]
   'update:sourceAmount': [value: number]
   'update:exchangeRate': [value: number]
+  refreshRate: []
   'update:note': [value: string]
   selectReceipt: [event: Event]
   removeReceipt: []
@@ -61,6 +65,38 @@ const payerIdsModel = computed({
 const participantIdsModel = computed({
   get: () => props.participantIds,
   set: (value: string[]) => emit('update:participantIds', value),
+})
+
+const currencyOptions = computed(() => {
+  const common = [
+    { code: 'TWD', name: '新台幣' },
+    { code: 'JPY', name: '日圓' },
+    { code: 'USD', name: '美元' },
+    { code: 'EUR', name: '歐元' },
+    { code: 'CNY', name: '人民幣' },
+    { code: 'KRW', name: '韓元' },
+    { code: 'HKD', name: '港幣' },
+    { code: 'SGD', name: '新加坡幣' },
+    { code: 'THB', name: '泰銖' },
+    { code: 'GBP', name: '英鎊' },
+    { code: 'AUD', name: '澳幣' },
+  ]
+  const tripCurrency = props.trip.currency?.trim().toUpperCase()
+  if (tripCurrency && !common.some((item) => item.code === tripCurrency)) {
+    common.unshift({ code: tripCurrency, name: '旅行幣別' })
+  } else if (tripCurrency) {
+    common.sort((left, right) => (left.code === tripCurrency ? -1 : right.code === tripCurrency ? 1 : 0))
+  }
+  return common
+})
+
+const convertedAmountPreview = computed(() => {
+  const from = props.sourceCurrency?.trim().toUpperCase()
+  const to = props.trip.currency?.trim().toUpperCase()
+  const amount = Number(props.sourceAmount) || 0
+  const rate = Number(props.exchangeRate) || 0
+  if (!from || !to || from === to || amount <= 0 || rate <= 0) return ''
+  return `${to} ${(amount * rate).toFixed(2)}`
 })
 
 function memberName(memberId: string) {
@@ -83,9 +119,10 @@ function memberName(memberId: string) {
       </el-form-item>
 
       <div class="two-col">
-        <el-form-item label="金額">
-          <el-input-number v-model="form.amount" :min="0" />
-          <small>以旅行幣別 {{ trip.currency }} 記帳與結算。</small>
+        <el-form-item :label="`記帳金額（${trip.currency}）`">
+          <el-input-number v-model="form.amount" :min="0" :disabled="sourceConversionActive" />
+          <small v-if="sourceConversionActive">已鎖定，會依原始金額與匯率自動換算。</small>
+          <small v-else>以旅行幣別 {{ trip.currency }} 記帳與結算。</small>
         </el-form-item>
         <el-form-item label="日期">
           <el-date-picker v-model="form.date" type="date" value-format="YYYY-MM-DD" />
@@ -94,14 +131,24 @@ function memberName(memberId: string) {
 
       <div class="three-col expense-source-fields">
         <el-form-item label="原始幣別（選填）">
-          <el-input
+          <el-select
             :model-value="sourceCurrency"
-            placeholder="例如：JPY"
-            maxlength="8"
-            @update:model-value="emit('update:sourceCurrency', $event)"
-          />
+            filterable
+            allow-create
+            default-first-option
+            clearable
+            placeholder="選擇原始幣別"
+            @update:model-value="emit('update:sourceCurrency', $event || '')"
+          >
+            <el-option
+              v-for="option in currencyOptions"
+              :key="option.code"
+              :label="`${option.code} ${option.name}`"
+              :value="option.code"
+            />
+          </el-select>
         </el-form-item>
-        <el-form-item label="原始金額（選填）">
+        <el-form-item :label="sourceConversionActive ? '原始金額' : '原始金額（選填）'">
           <el-input-number
             :model-value="sourceAmount"
             :min="0"
@@ -110,7 +157,7 @@ function memberName(memberId: string) {
             @update:model-value="emit('update:sourceAmount', $event || 0)"
           />
         </el-form-item>
-        <el-form-item label="換算匯率（選填）">
+        <el-form-item :label="sourceConversionActive ? '換算匯率' : '換算匯率（選填）'">
           <el-input-number
             :model-value="exchangeRate"
             :min="0"
@@ -118,12 +165,25 @@ function memberName(memberId: string) {
             controls-position="right"
             @update:model-value="emit('update:exchangeRate', $event || 0)"
           />
+          <el-button
+            class="expense-rate-button"
+            size="small"
+            :loading="rateLoading"
+            :disabled="!sourceCurrency || sourceCurrency === trip.currency"
+            @click="emit('refreshRate')"
+          >
+            更新匯率
+          </el-button>
         </el-form-item>
       </div>
 
       <p class="expense-source-hint">
-        原始幣別資訊僅供查閱；結算固定使用上方 {{ trip.currency }} 金額。換算匯率表示 1 原始幣別可換得多少旅行幣別。
+        原始幣別不同於旅行幣別時，儲存會以原始金額 × 匯率換算為 {{ trip.currency }} 結算金額。匯率表示 1 原始幣別可換得多少旅行幣別。
+        <span v-if="rateDate">（匯率日期 {{ rateDate }}）</span>
       </p>
+      <div v-if="convertedAmountPreview" class="expense-conversion-preview">
+        換算後記帳金額：<strong>{{ convertedAmountPreview }}</strong>
+      </div>
 
       <el-form-item label="付款人">
         <el-select
@@ -144,7 +204,7 @@ function memberName(memberId: string) {
         <small>
           {{
             form.kind === 'shared'
-              ? '可選擇多位付款人；多人付款時請填寫每位實際付款金額。'
+              ? '通常只需選一位付款人，付款金額會自動等於支出金額；多人付款時再分別填寫。'
               : '個人支出只能選擇一位付款人。'
           }}
         </small>
@@ -158,6 +218,7 @@ function memberName(memberId: string) {
               v-model="payerShares[memberId]"
               :min="0"
               :precision="2"
+              :disabled="payerIds.length === 1"
               controls-position="right"
             />
           </div>
@@ -322,7 +383,10 @@ function memberName(memberId: string) {
 .two-col :deep(.el-input-number),
 .two-col :deep(.el-date-editor),
 .two-col :deep(.el-select){width:100%}
+.expense-rate-button{margin-top:6px}
 .expense-source-hint{margin:-8px 0 12px;color:#71827c;font-size:12px;line-height:1.5}
+.expense-conversion-preview{margin:-4px 0 14px;padding:8px 10px;border-radius:8px;background:#eef5f0;color:#35665b;font-size:12px;line-height:1.4}
+.expense-conversion-preview strong{color:#123f3a;font-size:13px}
 .expense-participants{display:flex;flex-wrap:wrap;gap:7px 12px}
 .expense-participants :deep(.el-checkbox){margin-right:0}
 .custom-shares{display:grid;gap:8px}

@@ -63,8 +63,16 @@ export type TripWorkspaceContext = {
   settlementSuggestions: ComputedRef<SettlementSuggestion[]>
   total: ComputedRef<number>
   myPaid: ComputedRef<number>
+  myPaidInTrip: ComputedRef<number>
   myBalance: ComputedRef<number>
+  myBalanceInTrip: ComputedRef<number>
   myExpense: ComputedRef<number>
+  accountingCurrency: string
+  accountingRate: Ref<number>
+  accountingRateDate: Ref<string>
+  expenseAmountInAccounting: (expense: Expense) => number
+  toTripCurrencyAmount: (amount: number) => number
+  payerAmountInAccounting: (expense: Expense, memberId: string) => number
   canEditTrip: ComputedRef<boolean>
   canManageMembers: ComputedRef<boolean>
   canEditTripSettings: ComputedRef<boolean>

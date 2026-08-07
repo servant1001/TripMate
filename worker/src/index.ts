@@ -391,16 +391,19 @@ async function latestExchangeRate(request: Request, origin: string | null): Prom
   const url = new URL(request.url)
   const from = url.searchParams.get('from')?.trim().toUpperCase() || ''
   const to = url.searchParams.get('to')?.trim().toUpperCase() || 'TWD'
+  const requestedDate = url.searchParams.get('date')?.trim() || ''
   const forceRefresh = url.searchParams.get('refresh') === '1'
   if (!validCurrency(from) || !validCurrency(to)) return out({ error: '請提供有效的三碼幣別。' }, 400, origin)
+  if (requestedDate && !/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) return out({ error: '匯率日期格式必須為 YYYY-MM-DD。' }, 400, origin)
   const cacheControl = { 'Cache-Control': 'public, max-age=86400' }
   if (from === to) {
-    return out({ from, to, rate: 1, date: new Date().toISOString().slice(0, 10), provider: 'TripMate local cache', cached: true }, 200, origin, cacheControl)
+    return out({ from, to, rate: 1, date: requestedDate || new Date().toISOString().slice(0, 10), provider: 'TripMate local cache', cached: true }, 200, origin, cacheControl)
   }
   const cacheUrl = new URL(url.origin)
   cacheUrl.pathname = '/__tripmate_cache/exchange-rate'
   cacheUrl.searchParams.set('from', from)
   cacheUrl.searchParams.set('to', to)
+  if (requestedDate) cacheUrl.searchParams.set('date', requestedDate)
   const cacheKey = new Request(cacheUrl.toString(), { method: 'GET' })
   const cache = await caches.open('tripmate-exchange')
   if (!forceRefresh) {
@@ -410,7 +413,11 @@ async function latestExchangeRate(request: Request, origin: string | null): Prom
       return out({ ...(payload as Record<string, unknown>), cached: true }, 200, origin, cacheControl)
     }
   }
-  const remote = await fetch(`https://api.frankfurter.dev/v2/rates?base=${from}&quotes=${to}`, { headers: { Accept: 'application/json' } })
+  const remoteUrl = new URL('https://api.frankfurter.dev/v2/rates')
+  remoteUrl.searchParams.set('base', from)
+  remoteUrl.searchParams.set('quotes', to)
+  if (requestedDate) remoteUrl.searchParams.set('date', requestedDate)
+  const remote = await fetch(remoteUrl, { headers: { Accept: 'application/json' } })
   const payload = await remote.json() as ExchangeRateRow[]
   const row = Array.isArray(payload) ? payload[0] : undefined
   if (!remote.ok || !row?.date || !(typeof row.rate === 'number' && Number.isFinite(row.rate) && row.rate > 0)) {

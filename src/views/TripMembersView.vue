@@ -4,7 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import TripMembersSettlementCard from '../components/TripMembersSettlementCard.vue'
 import { useTripStore } from '../stores/trip'
 import type { Expense, Member, Settlement, Trip } from '../types'
-import { participantsForExpense, payerSharesForExpense } from '../utils/expenseSplit'
+import { participantsForExpense } from '../utils/expenseSplit'
 
 type BalanceMember = Member & { balance: number }
 type SettlementSuggestion = { fromId: string; toId: string; from: string; to: string; amount: number }
@@ -19,6 +19,10 @@ const props = defineProps<{
   canEdit: boolean
   openManager: boolean
   memberName: (id: string) => string
+  accountingCurrency: string
+  accountingRate: number
+  toTripCurrencyAmount: (amount: number) => number
+  payerAmountInAccounting: (expense: Expense, memberId: string) => number
 }>()
 
 const emit = defineEmits<{ 'update:openManager': [value: boolean] }>()
@@ -28,7 +32,7 @@ const managerOpen = ref(false)
 const member = reactive({ name: '', email: '', role: 'editor' as Exclude<Member['role'], 'owner'> })
 
 function memberPaid(memberId: string) {
-  return props.expenses.reduce((sum, expense) => sum + (payerSharesForExpense(expense)[memberId] || 0), 0)
+  return props.expenses.reduce((sum, expense) => sum + props.payerAmountInAccounting(expense, memberId), 0)
 }
 
 function openMemberManager() {
@@ -130,7 +134,7 @@ async function confirmSettlement(suggestion: SettlementSuggestion) {
 
   try {
     await ElMessageBox.confirm(
-      `確認「${suggestion.from}」已支付 ${props.trip.currency} ${suggestion.amount.toFixed(0)} 給「${suggestion.to}」？`,
+      `確認「${suggestion.from}」已支付 ${props.accountingCurrency} ${suggestion.amount.toFixed(0)} 給「${suggestion.to}」？`,
       '標記為已結算',
       { confirmButtonText: '確認結算', cancelButtonText: '取消', type: 'success' },
     )
@@ -138,7 +142,7 @@ async function confirmSettlement(suggestion: SettlementSuggestion) {
       tripId: props.trip.id,
       fromId: suggestion.fromId,
       toId: suggestion.toId,
-      amount: suggestion.amount,
+      amount: props.toTripCurrencyAmount(suggestion.amount),
       date: localDate(),
       createdAt: Date.now(),
     })
@@ -182,6 +186,8 @@ async function undoSettlement(settlement: Settlement) {
       :can-manage-members="canManage"
       :can-edit-trip="canEdit"
       :member-paid="memberPaid"
+      :accounting-currency="accountingCurrency"
+      :settlement-amount-in-accounting="(settlement) => settlement.amount * accountingRate"
       :member-name="memberName"
       @manage-members="openMemberManager"
       @copy-invite="copyInvite"

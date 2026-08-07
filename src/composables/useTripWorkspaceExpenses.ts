@@ -1,5 +1,6 @@
-import { computed, type ComputedRef } from 'vue'
+import { computed, ref, watch, type ComputedRef } from 'vue'
 import type { Expense, Settlement, Trip } from '../types'
+import { getLatestExchangeRate } from '../services/exchangeRates'
 import { participantsForExpense, payerSharesForExpense, splitModeLabel, splitShareForMember } from '../utils/expenseSplit'
 
 export function useTripWorkspaceExpenses({
@@ -13,6 +14,80 @@ export function useTripWorkspaceExpenses({
   settlements: ComputedRef<Settlement[]>
   activeMemberId: ComputedRef<string | undefined>
 }) {
+  const accountingCurrency = 'TWD'
+  const accountingRate = ref(trip.value?.currency?.toUpperCase() === accountingCurrency ? 1 : 0)
+  const accountingRateDate = ref('')
+  const historicalAccountingRates = ref<Record<string, number>>({})
+  let historicalRateRequest = 0
+
+  async function refreshAccountingRate() {
+    const tripCurrency = trip.value?.currency?.trim().toUpperCase()
+    if (!tripCurrency || tripCurrency === accountingCurrency) {
+      accountingRate.value = 1
+      accountingRateDate.value = ''
+      return
+    }
+    try {
+      const quote = await getLatestExchangeRate(tripCurrency, accountingCurrency)
+      accountingRate.value = quote.rate
+      accountingRateDate.value = quote.date
+    } catch {
+      accountingRate.value = 0
+      accountingRateDate.value = ''
+    }
+  }
+
+  watch(() => trip.value?.currency, () => { void refreshAccountingRate() }, { immediate: true })
+
+  async function refreshHistoricalAccountingRates() {
+    const tripCurrency = trip.value?.currency?.trim().toUpperCase()
+    if (!tripCurrency || tripCurrency === accountingCurrency) return
+    const requestId = ++historicalRateRequest
+    const candidates = expenses.value.filter((expense) => {
+      const hasTwdSource = expense.sourceCurrency?.trim().toUpperCase() === accountingCurrency && Number(expense.sourceAmount) > 0
+      return !hasTwdSource && !(Number(expense.accountingRate) > 0) && !(Number(historicalAccountingRates.value[expense.id]) > 0)
+    })
+    await Promise.all(candidates.map(async (expense) => {
+      try {
+        let quote
+        try {
+          quote = await getLatestExchangeRate(tripCurrency, accountingCurrency, expense.date ? { date: expense.date } : undefined)
+        } catch {
+          quote = await getLatestExchangeRate(tripCurrency, accountingCurrency)
+        }
+        if (requestId !== historicalRateRequest) return
+        historicalAccountingRates.value = { ...historicalAccountingRates.value, [expense.id]: quote.rate }
+      } catch {
+        // 保留旅行層級匯率作為無法取得歷史資料時的最後備援。
+      }
+    }))
+  }
+
+  watch([() => trip.value?.currency, expenses], () => { void refreshHistoricalAccountingRates() }, { immediate: true })
+
+  function expenseAmountInAccounting(expense: Expense) {
+    const sourceCurrency = expense.sourceCurrency?.trim().toUpperCase()
+    if (sourceCurrency === accountingCurrency && Number(expense.sourceAmount) > 0) {
+      return Number(expense.sourceAmount)
+    }
+    const storedRate = Number(expense.accountingRate) || Number(historicalAccountingRates.value[expense.id]) || 0
+    return Number(expense.amount || 0) * (storedRate > 0 ? storedRate : accountingRate.value || 0)
+  }
+
+  function expenseScale(expense: Expense) {
+    const storedAmount = Number(expense.amount) || 0
+    return storedAmount > 0 ? expenseAmountInAccounting(expense) / storedAmount : 0
+  }
+
+  function payerSharesInAccounting(expense: Expense) {
+    const scale = expenseScale(expense)
+    return Object.fromEntries(
+      Object.entries(payerSharesForExpense(expense)).map(([memberId, amount]) => [memberId, amount * scale]),
+    )
+  }
+  function payerAmountInAccounting(expense: Expense, memberId: string) {
+    return payerSharesInAccounting(expense)[memberId] || 0
+  }
   function expenseParticipants(expense: Pick<Expense, 'kind' | 'payerId' | 'participantIds'>) {
     return participantsForExpense(expense, trip.value?.members.map((member) => member.id) || [])
   }
@@ -38,14 +113,14 @@ export function useTripWorkspaceExpenses({
   }
 
   function expenseShareForMember(expense: Expense, memberId: string) {
-    return splitShareForMember(expense, memberId, trip.value?.members.map((member) => member.id) || [])
+    return splitShareForMember(expense, memberId, trip.value?.members.map((member) => member.id) || []) * expenseScale(expense)
   }
 
   function expenseSplitLabel(expense: Expense) {
     return expense.kind === 'personal' ? '個人支出' : splitModeLabel(expense.splitMode)
   }
 
-  const total = computed(() => expenses.value.reduce((sum, expense) => sum + expense.amount, 0))
+  const total = computed(() => expenses.value.reduce((sum, expense) => sum + expenseAmountInAccounting(expense), 0))
   const baseBudgetCategories = ['餐飲', '交通', '住宿', '購物', '景點', '其他']
   const balances = computed(() => {
     const currentTrip = trip.value
@@ -53,7 +128,7 @@ export function useTripWorkspaceExpenses({
     const paid = Object.fromEntries(currentTrip.members.map((member) => [member.id, 0]))
     const owed = Object.fromEntries(currentTrip.members.map((member) => [member.id, 0]))
     expenses.value.forEach((expense) => {
-      Object.entries(payerSharesForExpense(expense)).forEach(([memberId, amount]) => {
+      Object.entries(payerSharesInAccounting(expense)).forEach(([memberId, amount]) => {
         paid[memberId] = (paid[memberId] || 0) + amount
       })
       expenseParticipants(expense).forEach((id) => {
@@ -61,8 +136,9 @@ export function useTripWorkspaceExpenses({
       })
     })
     settlements.value.forEach((settlement) => {
-      paid[settlement.fromId] = (paid[settlement.fromId] || 0) + settlement.amount
-      paid[settlement.toId] = (paid[settlement.toId] || 0) - settlement.amount
+      const amount = settlement.amount * (accountingRate.value || 0)
+      paid[settlement.fromId] = (paid[settlement.fromId] || 0) + amount
+      paid[settlement.toId] = (paid[settlement.toId] || 0) - amount
     })
     return currentTrip.members.map((member) => ({
       ...member,
@@ -101,11 +177,41 @@ export function useTripWorkspaceExpenses({
   const myPaid = computed(() =>
     activeMemberId.value
       ? expenses.value.reduce(
+          (sum, expense) => sum + (payerSharesInAccounting(expense)[activeMemberId.value!] || 0),
+          0,
+        )
+      : 0,
+  )
+  const myPaidInTrip = computed(() =>
+    activeMemberId.value
+      ? expenses.value.reduce(
           (sum, expense) => sum + (payerSharesForExpense(expense)[activeMemberId.value!] || 0),
           0,
         )
       : 0,
   )
+  const myBalanceInTrip = computed(() => {
+    if (!activeMemberId.value) return 0
+    const memberIds = trip.value?.members.map((member) => member.id) || []
+    const memberId = activeMemberId.value
+    const paid = expenses.value.reduce(
+      (sum, expense) => sum + (payerSharesForExpense(expense)[memberId] || 0),
+      0,
+    )
+    const owed = expenses.value.reduce(
+      (sum, expense) => sum + splitShareForMember(expense, memberId, memberIds),
+      0,
+    )
+    const settlementsPaid = settlements.value.reduce(
+      (sum, settlement) => sum + (settlement.fromId === memberId ? settlement.amount : 0),
+      0,
+    )
+    const settlementsReceived = settlements.value.reduce(
+      (sum, settlement) => sum + (settlement.toId === memberId ? settlement.amount : 0),
+      0,
+    )
+    return paid - owed + settlementsPaid - settlementsReceived
+  })
   const myBalance = computed(() =>
     activeMemberId.value
       ? balances.value.find((member) => member.id === activeMemberId.value)?.balance || 0
@@ -121,12 +227,20 @@ export function useTripWorkspaceExpenses({
   )
 
   return {
+    accountingCurrency,
+    accountingRate,
+    accountingRateDate,
+    expenseAmountInAccounting,
+    toTripCurrencyAmount: (amount: number) => amount / (accountingRate.value || 1),
+    payerAmountInAccounting,
     baseBudgetCategories,
     total,
     balances,
     settlementSuggestions,
     myPaid,
+    myPaidInTrip,
     myBalance,
+    myBalanceInTrip,
     myExpense,
     expensePayerLabel,
     expenseSplitLabel,

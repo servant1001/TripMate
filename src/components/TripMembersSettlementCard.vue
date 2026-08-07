@@ -13,6 +13,8 @@ defineProps<{
   canManageMembers: boolean
   canEditTrip: boolean
   memberPaid: (memberId: string) => number
+  accountingCurrency: string
+  settlementAmountInAccounting: (settlement: Settlement) => number
   memberName: (memberId: string) => string
 }>()
 
@@ -35,7 +37,7 @@ function roleName(role: Member['role']) { return role === 'owner' ? '建立者' 
 
     <div class="member-summary">
       <span><b>{{ trip.members.length }}</b> 位旅伴</span>
-      <span><b>{{ trip.currency }} {{ balances.reduce((sum, member) => sum + memberPaid(member.id), 0).toLocaleString() }}</b> 總支出</span>
+      <span><b>{{ accountingCurrency }} {{ balances.reduce((sum, member) => sum + memberPaid(member.id), 0).toLocaleString() }}</b> 總支出</span>
       <span :class="suggestions.length ? 'is-pending' : 'is-settled'"><el-icon><CircleCheck /></el-icon>{{ suggestions.length ? '尚有待結算款項' : '目前已結清' }}</span>
     </div>
 
@@ -47,18 +49,18 @@ function roleName(role: Member['role']) { return role === 'owner' ? '建立者' 
     <div class="member-list" :class="{ 'has-invite': canManageMembers }">
       <article v-for="member in balances" :key="member.id" class="member-row">
         <span class="member-avatar" aria-hidden="true">{{ member.name.slice(0, 1) }}</span>
-        <div class="member-copy"><strong>{{ member.name }}</strong><span>{{ roleName(member.role) }}・已支付 {{ trip.currency }} {{ memberPaid(member.id).toLocaleString() }}</span></div>
-        <b class="member-balance" :class="{ 'is-positive': member.balance > .01, 'is-negative': member.balance < -.01, 'is-zero': Math.abs(member.balance) <= .01 }">{{ member.balance > .01 ? `應收 ${trip.currency} ${member.balance.toFixed(0)}` : member.balance < -.01 ? `應付 ${trip.currency} ${Math.abs(member.balance).toFixed(0)}` : '已結清' }}</b>
+        <div class="member-copy"><strong>{{ member.name }}</strong><span>{{ roleName(member.role) }}・已支付 {{ accountingCurrency }} {{ memberPaid(member.id).toLocaleString() }}</span></div>
+        <b class="member-balance" :class="{ 'is-positive': member.balance > .01, 'is-negative': member.balance < -.01, 'is-zero': Math.abs(member.balance) <= .01 }">{{ member.balance > .01 ? `應收 ${accountingCurrency} ${member.balance.toFixed(0)}` : member.balance < -.01 ? `應付 ${accountingCurrency} ${Math.abs(member.balance).toFixed(0)}` : '已結清' }}</b>
       </article>
     </div>
 
     <section class="settlement-section">
       <div class="settlement-section-title"><el-icon><Money /></el-icon><h3>建議結算</h3></div>
-      <div v-if="suggestions.length" class="settlement-list"><article v-for="suggestion in suggestions" :key="`${suggestion.fromId}-${suggestion.toId}`" class="settlement-row"><p><strong>{{ suggestion.from }}</strong><span>→</span><strong>{{ suggestion.to }}</strong><b>{{ trip.currency }} {{ suggestion.amount.toFixed(0) }}</b></p><el-button v-if="canEditTrip" class="settle-button" @click="emit('settle', suggestion)">標記為已結算</el-button></article></div>
+      <div v-if="suggestions.length" class="settlement-list"><article v-for="suggestion in suggestions" :key="`${suggestion.fromId}-${suggestion.toId}`" class="settlement-row"><p><strong>{{ suggestion.from }}</strong><span>→</span><strong>{{ suggestion.to }}</strong><b>{{ accountingCurrency }} {{ suggestion.amount.toFixed(0) }}</b></p><el-button v-if="canEditTrip" class="settle-button" @click="emit('settle', suggestion)">標記為已結算</el-button></article></div>
       <div v-else class="settlement-clear"><el-icon><CircleCheck /></el-icon><span>目前沒有待結算款項。</span></div>
     </section>
 
-    <section v-if="settlements.length" class="settlement-history"><h3>已結算紀錄</h3><article v-for="settlement in settlements" :key="settlement.id"><span>{{ settlement.date }}・{{ memberName(settlement.fromId) }} → {{ memberName(settlement.toId) }}</span><b>{{ trip.currency }} {{ settlement.amount.toFixed(0) }}</b><el-button v-if="canEditTrip" text size="small" class="undo-button" @click="emit('undoSettlement', settlement)">復原</el-button></article></section>
+    <section v-if="settlements.length" class="settlement-history"><h3>已結算紀錄</h3><article v-for="settlement in settlements" :key="settlement.id"><span>{{ settlement.date }}・{{ memberName(settlement.fromId) }} → {{ memberName(settlement.toId) }}</span><b>{{ accountingCurrency }} {{ settlementAmountInAccounting(settlement).toFixed(0) }}</b><el-button v-if="canEditTrip" text size="small" class="undo-button" @click="emit('undoSettlement', settlement)">復原</el-button></article></section>
   </section>
 </template>
 

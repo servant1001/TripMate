@@ -15,7 +15,7 @@ function normalizeCurrency(value: string) {
   return value.trim().toUpperCase()
 }
 
-export async function getLatestExchangeRate(fromCurrency: string, toCurrency = 'TWD', options?: { force?: boolean }): Promise<ExchangeRateQuote> {
+export async function getLatestExchangeRate(fromCurrency: string, toCurrency = 'TWD', options?: { force?: boolean; date?: string }): Promise<ExchangeRateQuote> {
   const from = normalizeCurrency(fromCurrency)
   const to = normalizeCurrency(toCurrency)
   const force = Boolean(options?.force)
@@ -31,7 +31,8 @@ export async function getLatestExchangeRate(fromCurrency: string, toCurrency = '
     }
   }
   if (!workerUrl) throw new Error('請先設定 Cloudflare Worker API。')
-  const key = `${from}_${to}`
+  const requestedDate = options?.date?.trim() || ''
+  const key = `${from}_${to}_${requestedDate || 'latest'}`
   const current = cache.get(key)
   if (!force && current?.data && current.expiresAt > Date.now()) return current.data
   if (!force && current?.promise) return current.promise
@@ -39,6 +40,7 @@ export async function getLatestExchangeRate(fromCurrency: string, toCurrency = '
   const url = new URL(`${workerUrl.replace(/\/$/, '')}/v1/exchange-rate`)
   url.searchParams.set('from', from)
   url.searchParams.set('to', to)
+  if (requestedDate) url.searchParams.set('date', requestedDate)
   if (force) url.searchParams.set('refresh', '1')
 
   const promise = fetch(url.toString(), {

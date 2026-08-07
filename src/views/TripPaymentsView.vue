@@ -436,6 +436,9 @@ async function savePaymentTransaction() {
       shares: {},
       category: paymentTransaction.category,
       date: paymentTransaction.transactionDate,
+      sourceCurrency: paymentTransaction.originalCurrency,
+      sourceAmount: Number(paymentTransaction.originalAmount),
+      exchangeRate: Number(paymentTransaction.exchangeRate),
       note: paymentTransaction.note.trim(),
     })
     expenseId = expense.id

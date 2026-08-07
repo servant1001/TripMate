@@ -24,8 +24,16 @@ const {
   settlementSuggestions,
   total,
   myPaid,
+  myPaidInTrip,
   myBalance,
+  myBalanceInTrip,
   myExpense,
+  accountingCurrency,
+  accountingRate,
+  accountingRateDate,
+  expenseAmountInAccounting,
+  toTripCurrencyAmount,
+  payerAmountInAccounting,
   canEditTrip,
   canManageMembers,
   canEditTripSettings,
@@ -80,10 +88,17 @@ const {
     :expenses="currentExpenses"
     :total="total"
     :my-paid="myPaid"
+    :my-paid-in-trip="myPaidInTrip"
     :my-balance="myBalance"
+    :my-balance-in-trip="myBalanceInTrip"
     :personal-budget-member-id="activeMemberId"
     :personal-budget="personalBudget"
     :personal-spent="myExpense"
+    :accounting-currency="accountingCurrency"
+    :accounting-rate="accountingRate"
+    :accounting-rate-date="accountingRateDate"
+    :expense-amount-in-accounting="expenseAmountInAccounting"
+    :to-trip-currency-amount="toTripCurrencyAmount"
     :category-budget-values="categoryBudgets"
     :category-budget-options="budgetCategoryNames"
     :category-budgets="categoryBudgetSummary"
@@ -109,5 +124,9 @@ const {
     :can-manage="canManageMembers"
     :can-edit="canEditTrip"
     :member-name="memberName"
+    :accounting-currency="accountingCurrency"
+    :accounting-rate="accountingRate"
+    :to-trip-currency-amount="toTripCurrencyAmount"
+    :payer-amount-in-accounting="payerAmountInAccounting"
   />
 </template>

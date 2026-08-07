@@ -7,7 +7,11 @@ export function participantsForExpense(expense: Pick<ExpenseLike, 'kind' | 'paye
   return expense.participantIds.length ? expense.participantIds : fallback
 }
 
-export function payerSharesForExpense(expense: Pick<ExpenseLike, 'amount' | 'payerId' | 'payerShares'>): Record<string, number> {
+export function payerSharesForExpense(expense: Pick<ExpenseLike, 'amount' | 'payerId' | 'payerShares' | 'kind'>): Record<string, number> {
+  // 個人支出只有一位付款人；以 payerId 為準，避免舊資料中的 payerShares 索引過期，導致「我已支付」漏算。
+  if (expense.kind === 'personal' && expense.payerId) {
+    return { [expense.payerId]: Number(expense.amount) || 0 }
+  }
   const stored = Object.entries(expense.payerShares || {}).reduce<Record<string, number>>((result, [memberId, amount]) => {
     const value = Number(amount) || 0
     if (value > 0) result[memberId] = value

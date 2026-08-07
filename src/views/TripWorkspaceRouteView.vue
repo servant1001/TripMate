@@ -125,7 +125,8 @@ const tripEditor = useTripWorkspaceTripEditor({
 })
 
 const categoryBudgets = computed(() => store.tripCategoryBudgets(activeId.value))
-const dailyBudget = computed(() => store.tripDailyBudget(activeId.value))
+const dailyBudgetStored = computed(() => store.tripDailyBudget(activeId.value))
+const dailyBudget = computed(() => dailyBudgetStored.value * (expenseState.accountingRate.value || 0))
 const budgetCategoryNames = computed(() => [
   ...new Set([
     ...expenseState.baseBudgetCategories,
@@ -137,10 +138,10 @@ const categoryBudgetSummary = computed(() =>
   budgetCategoryNames.value
     .map((category) => ({
       category,
-      budget: Number(categoryBudgets.value[category]) || 0,
+      budget: (Number(categoryBudgets.value[category]) || 0) * (expenseState.accountingRate.value || 0),
       spent: currentExpenses.value
         .filter((expense) => expense.category === category)
-        .reduce((sum, expense) => sum + expense.amount, 0),
+        .reduce((sum, expense) => sum + expenseState.expenseAmountInAccounting(expense), 0),
     }))
     .filter((row) => row.budget > 0 || row.spent > 0),
 )
@@ -149,14 +150,16 @@ const dailyExpenseSummary = computed(() =>
     currentExpenses.value
       .filter((expense) => /^\d{4}-\d{2}-\d{2}$/.test(expense.date))
       .reduce<Record<string, number>>((days, expense) => {
-        days[expense.date] = (days[expense.date] || 0) + expense.amount
+        days[expense.date] = (days[expense.date] || 0) + expenseState.expenseAmountInAccounting(expense)
         return days
       }, {}),
   )
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, spent]) => ({ date, spent })),
 )
-const personalBudget = computed(() => activeMember.value?.personalBudget || 0)
+const personalBudget = computed(() =>
+  (activeMember.value?.personalBudget || 0) * (expenseState.accountingRate.value || 0),
+)
 const tripExchangeRateText = ref('')
 const tripExchangeRateDate = ref('')
 const tripExchangeRateError = ref('')
@@ -181,7 +184,9 @@ const total = expenseState.total
 const balances = expenseState.balances
 const settlementSuggestions = expenseState.settlementSuggestions
 const myPaid = expenseState.myPaid
+const myPaidInTrip = expenseState.myPaidInTrip
 const myBalance = expenseState.myBalance
+const myBalanceInTrip = expenseState.myBalanceInTrip
 const myExpense = expenseState.myExpense
 
 const showJoin = tripEditor.showJoin
@@ -397,8 +402,16 @@ const workspaceContext: TripWorkspaceContext = {
   settlementSuggestions,
   total,
   myPaid,
+  myPaidInTrip,
   myBalance,
+  myBalanceInTrip,
   myExpense,
+  accountingCurrency: expenseState.accountingCurrency,
+  accountingRate: expenseState.accountingRate,
+  accountingRateDate: expenseState.accountingRateDate,
+  expenseAmountInAccounting: expenseState.expenseAmountInAccounting,
+  toTripCurrencyAmount: expenseState.toTripCurrencyAmount,
+  payerAmountInAccounting: expenseState.payerAmountInAccounting,
   canEditTrip,
   canManageMembers,
   canEditTripSettings,
