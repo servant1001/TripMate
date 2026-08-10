@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { CoffeeCup, House, Money, MoreFilled, ShoppingBag, Van, Wallet } from '@element-plus/icons-vue'
+import { CoffeeCup, House, Money, MoreFilled, Present, ShoppingBag, Van, Wallet } from '@element-plus/icons-vue'
 import type { Component } from 'vue'
 import { getLatestExchangeRate } from '../services/exchangeRates'
 import type { Expense, Trip } from '../types'
@@ -130,6 +130,7 @@ function categoryIcon(category: string): Component {
   if (category === '交通') return Van
   if (category === '住宿') return House
   if (category === '購物') return ShoppingBag
+  if (category === '伴手禮') return Present
   return Wallet
 }
 

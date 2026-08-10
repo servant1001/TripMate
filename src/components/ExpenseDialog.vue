@@ -241,6 +241,8 @@ function memberName(memberId: string) {
             <el-option label="交通" value="交通" />
             <el-option label="住宿" value="住宿" />
             <el-option label="購物" value="購物" />
+            <el-option label="伴手禮" value="伴手禮" />
+            <el-option label="其他" value="其他" />
           </el-select>
         </el-form-item>
       </div>

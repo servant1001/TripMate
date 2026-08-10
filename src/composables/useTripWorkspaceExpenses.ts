@@ -121,7 +121,7 @@ export function useTripWorkspaceExpenses({
   }
 
   const total = computed(() => expenses.value.reduce((sum, expense) => sum + expenseAmountInAccounting(expense), 0))
-  const baseBudgetCategories = ['餐飲', '交通', '住宿', '購物', '景點', '其他']
+  const baseBudgetCategories = ['餐飲', '交通', '住宿', '購物', '伴手禮', '景點', '其他']
   const balances = computed(() => {
     const currentTrip = trip.value
     if (!currentTrip) return []
