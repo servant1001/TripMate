@@ -193,10 +193,25 @@ function normalizeStationText(value: string): string {
     .replace(/\s+/g, ' ')
     .trim()
   if (normalized.includes('-')) normalized = normalized.split('-')[0]?.trim() || normalized
-  normalized = normalized.replace(/駅$/u, '').trim()
+  // 使用者常會混用日文「駅」與中文「站」；統一移除站名後綴，讓官方路線規則能命中。
+  normalized = normalized.replace(/[駅站]$/u, '').trim()
   normalized = normalized.replace(/[第候機樓楼]/g, (char) => (char === '樓' ? '楼' : char))
   const compact = normalized.replace(/\s+/g, '')
-  return STATION_ALIAS[compact] || STATION_ALIAS[normalized] || normalized
+  const directAlias = STATION_ALIAS[compact] || STATION_ALIAS[normalized]
+  if (directAlias) return directAlias
+
+  // 收藏名稱常同時包含中文站名與日文括號站名，例如「澀谷站（渋谷駅）」。
+  // 從完整文字中挑出已知官方站名，避免因混合文字導致規則票價失效而退回 AI。
+  const knownStations = [
+    ...Object.values(STATION_ALIAS),
+    ...Object.values(TOKYO_METRO_LINES).flat(),
+    ...Object.values(TOEI_LINES).flat(),
+    ...Object.keys(KEISEI_ACCESS_FIXED_FARES),
+  ]
+  return knownStations
+    .filter((station, index, all) => all.indexOf(station) === index)
+    .sort((a, b) => b.length - a.length)
+    .find((station) => compact.includes(station)) || normalized
 }
 
 function normalizeLineText(value: string): string {
