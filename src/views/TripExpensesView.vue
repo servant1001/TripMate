@@ -591,13 +591,21 @@ async function saveExpense() {
 
 async function removeExpense(expenseItem: Expense) {
   if (!props.canEdit) return ElMessage.warning('Viewer 僅能查看開銷，無法修改。')
+  const linkedPayment = props.paymentTransactions.find((transaction) => transaction.expenseId === expenseItem.id)
   try {
-    await ElMessageBox.confirm(`確定刪除「${expenseItem.title}」嗎？`, '刪除支出', {
+    await ElMessageBox.confirm(
+      linkedPayment
+        ? `確定刪除「${expenseItem.title}」嗎？\n這筆開銷有一筆關聯的支付紀錄，刪除時也會一併刪除。`
+        : `確定刪除「${expenseItem.title}」嗎？`,
+      '刪除支出',
+      {
       confirmButtonText: '刪除',
       cancelButtonText: '取消',
       type: 'warning',
-    })
+      },
+    )
     await store.deleteExpense(expenseItem)
+    if (linkedPayment) await store.deletePaymentTransaction(linkedPayment)
     ElMessage.success('支出已刪除。')
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') {
