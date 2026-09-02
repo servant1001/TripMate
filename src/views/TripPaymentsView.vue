@@ -3,7 +3,7 @@ import { computed, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PaymentToolDialog, { type PaymentToolDraft } from '../components/PaymentToolDialog.vue'
 import PaymentRewardRuleDialog, { type RewardRuleDraft } from '../components/PaymentRewardRuleDialog.vue'
-import PaymentTransactionDialog, { type PaymentTransactionDraft } from '../components/PaymentTransactionDialog.vue'
+import UnifiedConsumptionDialog, { type PaymentTransactionDraft } from '../components/UnifiedConsumptionDialog.vue'
 import StoredBalanceDialog, { type StoredBalanceDraft } from '../components/StoredBalanceDialog.vue'
 import TripPaymentToolsCard from '../components/TripPaymentToolsCard.vue'
 import TripPaymentRecommendationCard from '../components/TripPaymentRecommendationCard.vue'
@@ -354,7 +354,7 @@ function openPaymentTransactionForm(tool?: PaymentTool, transaction?: PaymentTra
           status: transaction.status,
           refundedAmount: transaction.refundedAmount || 0,
           note: transaction.note || '',
-          syncExpense: false,
+          syncExpense: Boolean(transaction.expenseId),
         }
       : {
           paymentToolId: target.id,
@@ -424,26 +424,42 @@ async function savePaymentTransaction() {
     maximumRewardAmount: usage?.remainingRewardCap,
   })
   let expenseId = existing?.expenseId || ''
-  if (paymentTransaction.syncExpense && !expenseId && paymentTransaction.transactionType === 'purchase') {
-    const expense = await store.addExpense({
-      tripId: props.trip.id,
-      title: paymentTransaction.title.trim(),
-      amount: convertedAmount,
-      payerId: tool.ownerUserId,
-      kind: 'personal',
-      participantIds: [tool.ownerUserId],
-      splitMode: 'equal',
-      shares: {},
-      category: paymentTransaction.category,
-      date: paymentTransaction.transactionDate,
-      sourceCurrency: paymentTransaction.originalCurrency,
-      sourceAmount: Number(paymentTransaction.originalAmount),
-      exchangeRate: Number(paymentTransaction.exchangeRate),
-      note: paymentTransaction.note.trim(),
-    })
-    expenseId = expense.id
-  }
   try {
+    if (paymentTransaction.syncExpense && !expenseId && paymentTransaction.transactionType === 'purchase') {
+      const expense = await store.addExpense({
+        tripId: props.trip.id,
+        title: paymentTransaction.title.trim(),
+        amount: convertedAmount,
+        payerId: tool.ownerUserId,
+        kind: 'personal',
+        participantIds: [tool.ownerUserId],
+        splitMode: 'equal',
+        shares: {},
+        category: paymentTransaction.category,
+        date: paymentTransaction.transactionDate,
+        sourceCurrency: paymentTransaction.originalCurrency,
+        sourceAmount: Number(paymentTransaction.originalAmount),
+        exchangeRate: Number(paymentTransaction.exchangeRate),
+        note: paymentTransaction.note.trim(),
+      })
+      expenseId = expense.id
+    }
+    if (paymentTransaction.syncExpense && expenseId && paymentTransaction.transactionType === 'purchase') {
+      const linkedExpense = store.expenses.find((item) => item.id === expenseId)
+      if (linkedExpense) {
+        await store.updateExpense({
+          ...linkedExpense,
+          title: paymentTransaction.title.trim(),
+          amount: convertedAmount,
+          category: paymentTransaction.category,
+          date: paymentTransaction.transactionDate,
+          sourceCurrency: paymentTransaction.originalCurrency,
+          sourceAmount: Number(paymentTransaction.originalAmount),
+          exchangeRate: Number(paymentTransaction.exchangeRate),
+          note: paymentTransaction.note.trim(),
+        })
+      }
+    }
     await store.savePaymentTransaction({
       ...(existing ? { id: existing.id, createdAt: existing.createdAt } : {}),
       tripId: props.trip.id,
@@ -559,10 +575,12 @@ async function saveStoredBalance() {
       :tools="ownTools"
       @save="saveRewardRule"
     />
-    <PaymentTransactionDialog
-      v-model:open="showPaymentTransaction"
+    <UnifiedConsumptionDialog
+      v-model="showPaymentTransaction"
+      mode="payment"
       :editing="Boolean(editingPaymentTransactionId)"
       :form="paymentTransaction"
+      :trip="trip"
       :tools="ownTools"
       @save="savePaymentTransaction"
     />

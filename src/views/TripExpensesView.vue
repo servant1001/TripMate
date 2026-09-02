@@ -2,7 +2,7 @@
 import { computed, onUnmounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import TripExpenseCard from '../components/TripExpenseCard.vue'
-import ExpenseDialog, { type ExpenseDraft } from '../components/ExpenseDialog.vue'
+import UnifiedConsumptionDialog, { type ExpenseDraft } from '../components/UnifiedConsumptionDialog.vue'
 import { uploadTripImage } from '../services/cloudinary'
 import { getLatestExchangeRate } from '../services/exchangeRates'
 import { useTripStore } from '../stores/trip'
@@ -628,8 +628,9 @@ onUnmounted(() => {
       @remove="removeExpense"
     />
 
-    <ExpenseDialog
+    <UnifiedConsumptionDialog
       v-model="showExpense"
+      mode="expense"
       :editing="Boolean(editingExpenseId)"
       :saving="savingExpense"
       :form="expense"

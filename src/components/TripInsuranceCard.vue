@@ -29,6 +29,11 @@ const editingInsurance = computed(() => sortedPolicies.value.find((item) => item
 
 function toInputDate(value?: number) { return value ? new Date(value).toISOString().slice(0, 16) : '' }
 function coverageFor(insurance: TravelInsurance) { return validateCoveragePeriod(insurance.coverageStartAt, insurance.coverageEndAt, props.trip) }
+function websiteUrl(value?: string) {
+  const raw = value?.trim() || ''
+  if (!raw) return ''
+  return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
+}
 function coverageItems(insurance: TravelInsurance) {
   const coverages = insurance.coverages || {}
   return coverageFields.filter(([key]) => Number(coverages[key]) > 0).slice(0, 5)
@@ -226,6 +231,9 @@ watch(() => props.insurances, () => {
           <a v-if="policy.claimPhone" :href="`tel:${policy.claimPhone}`">理賠 {{ policy.claimPhone }}</a>
           <a v-if="policy.assistancePhone" :href="`tel:${policy.assistancePhone}`">旅遊協助 {{ policy.assistancePhone }}</a>
         </div>
+        <div v-if="websiteUrl(policy.website)" class="insurance-policy-links">
+          <a :href="websiteUrl(policy.website)" target="_blank" rel="noopener noreferrer" aria-label="開啟保險網站">開啟保險網站 ↗</a>
+        </div>
         <div v-if="policy.attachments?.length" class="insurance-attachments">
           <button v-for="attachment in policy.attachments || []" :key="attachment.secureUrl" type="button" @click="emit('openAttachment', attachment)">📎 {{ attachment.originalFilename || '保單附件' }}</button>
         </div>
@@ -339,5 +347,6 @@ watch(() => props.insurances, () => {
 .insurance-coverage-rule-field label{color:#6b7d78;font-size:11px;line-height:1.4}
 .insurance-coverages small{font-size:11px;color:#6b7d78}
 .insurance-coverage-hint{margin:-4px 0 12px;color:#6b7d78;font-size:12px;line-height:1.5}
+.insurance-policy-links a{display:inline-flex;align-items:center;padding:6px 8px;border:1px solid #d4e5dc;border-radius:8px;background:#fff;color:#216b59;font-size:12px;font-weight:700;text-decoration:none;cursor:pointer}.insurance-policy-links a:hover,.insurance-policy-links a:focus-visible{border-color:#8dbbab;background:#eef5f0;color:#123f3a}
 @media(max-width:600px){.insurance-coverage-rule-grid{grid-template-columns:1fr 1fr}}
 </style>
