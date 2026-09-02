@@ -6,12 +6,16 @@ import UnifiedConsumptionDialog, { type ExpenseDraft } from '../components/Unifi
 import { uploadTripImage } from '../services/cloudinary'
 import { getLatestExchangeRate } from '../services/exchangeRates'
 import { useTripStore } from '../stores/trip'
-import type { Expense, Trip } from '../types'
+import type { Expense, PaymentTool, PaymentTransaction, RewardRule, Trip } from '../types'
+import { calculateTransactionReward, rewardUsage, selectApplicableRule } from '../utils/paymentRewards'
 import { expenseKindParticipants, participantsForExpense, payerSharesForExpense } from '../utils/expenseSplit'
 
 const props = defineProps<{
   trip: Trip
   expenses: Expense[]
+  paymentTools: PaymentTool[]
+  paymentRules: RewardRule[]
+  paymentTransactions: PaymentTransaction[]
   total: number
   myPaid: number
   myPaidInTrip: number
@@ -56,6 +60,7 @@ const expenseExchangeRate = ref(1)
 const expenseRateLoading = ref(false)
 const expenseRateDate = ref('')
 const expenseNote = ref('')
+const expensePaymentToolId = ref('')
 
 const expenseShares = reactive<Record<string, number>>({})
 const expenseRatios = reactive<Record<string, number>>({})
@@ -78,13 +83,22 @@ const expense = reactive<ExpenseDraft>({
   title: '',
   amount: 0,
   payerId: '',
-  kind: 'shared',
+  kind: 'personal',
   splitMode: 'equal',
   category: '餐飲',
   date: '',
 })
 
 const memberIds = computed(() => props.trip.members.map((member) => member.id))
+const expensePaymentTools = computed(() =>
+  props.paymentTools.filter(
+    // Firebase 目前只會載入登入者可用的支付工具；舊資料可能沒有 ownerUserId，
+    // 因此這裡只排除明確停用的工具，避免既有工具消失在下拉選單。
+    (tool) =>
+      tool.isActive !== false &&
+      (!tool.ownerUserId || tool.ownerUserId === props.userId || tool.ownerUserId === props.trip.ownerId),
+  ),
+)
 const sourceConversionActive = computed(() => {
   const source = expenseSourceCurrency.value.trim().toUpperCase()
   const tripCurrency = (props.trip.currency || '').trim().toUpperCase()
@@ -210,6 +224,7 @@ function resetExpenseForm() {
   expenseExchangeRate.value = 1
   expenseRateDate.value = ''
   expenseNote.value = ''
+  expensePaymentToolId.value = ''
   expenseParticipantIds.value = []
   expensePayerIds.value = []
   ;[expenseShares, expenseRatios, expenseSplitUnits, expensePayerShares].forEach((values) =>
@@ -219,7 +234,7 @@ function resetExpenseForm() {
     title: '',
     amount: 0,
     payerId: '',
-    kind: 'shared',
+    kind: 'personal',
     splitMode: 'equal',
     category: '餐飲',
     date: '',
@@ -318,6 +333,103 @@ function selectExpenseReceipt(event: Event) {
   expenseReceiptPreview.value = URL.createObjectURL(file)
 }
 
+function paymentMethodForTool(tool: PaymentTool) {
+  if (tool.type === 'credit_card' || tool.type === 'debit_card') return 'physical_card' as const
+  if (tool.type === 'electronic_payment') return 'online' as const
+  if (tool.type === 'transport_card') return 'transport_card_topup' as const
+  if (tool.type === 'cash') return 'other' as const
+  return 'other' as const
+}
+
+async function resolveExpensePaymentTool() {
+  if (!expensePaymentToolId.value) return undefined
+  if (expensePaymentToolId.value !== 'cash') {
+    return expensePaymentTools.value.find((tool) => tool.id === expensePaymentToolId.value)
+  }
+  const ownerUserId = props.userId || props.trip.ownerId
+  const existingCash = expensePaymentTools.value.find((tool) => tool.type === 'cash' && tool.ownerUserId === ownerUserId)
+  if (existingCash) return existingCash
+  return store.savePaymentTool({
+    tripId: props.trip.id,
+    ownerUserId,
+    type: 'cash',
+    name: '現金',
+    defaultCurrency: props.trip.currency,
+    settlementCurrency: props.trip.currency,
+    foreignTransactionFeeRate: 0,
+    visibility: 'private',
+    isActive: true,
+    createdBy: ownerUserId,
+  })
+}
+
+async function syncExpensePayment(expenseItem: Expense) {
+  const tool = await resolveExpensePaymentTool()
+  if (!tool) return
+  const linked = props.paymentTransactions.find((transaction) => transaction.expenseId === expenseItem.id)
+  const originalCurrency = (expenseItem.sourceCurrency || props.trip.currency).trim().toUpperCase()
+  const originalAmount = Number(expenseItem.sourceAmount) > 0 ? Number(expenseItem.sourceAmount) : expenseItem.amount
+  const exchangeRate = Number(expenseItem.exchangeRate) > 0 ? Number(expenseItem.exchangeRate) : 1
+  const convertedAmount = expenseItem.amount
+  const rule = selectApplicableRule(
+    props.paymentRules.filter((item) => item.paymentToolId === tool.id),
+    {
+      amount: convertedAmount,
+      date: expenseItem.date,
+      currency: originalCurrency,
+      category: expenseItem.category,
+      paymentMethod: paymentMethodForTool(tool),
+    },
+  )
+  const usage = rule
+    ? rewardUsage(
+        rule,
+        props.paymentTransactions.filter((transaction) => transaction.id !== linked?.id),
+        new Date(`${expenseItem.date}T12:00:00`).getTime(),
+      )
+    : undefined
+  const calculation = calculateTransactionReward({
+    amount: convertedAmount,
+    baseRate: rule?.baseRate || 0,
+    bonusRate: rule?.bonusRate || 0,
+    feeRate: tool.foreignTransactionFeeRate,
+    maximumEligibleAmount: usage?.remainingEligibleSpend,
+    maximumBaseRewardAmount: usage?.remainingBaseRewardCap,
+    maximumBonusRewardAmount: usage?.remainingBonusRewardCap,
+    maximumRewardAmount: usage?.remainingRewardCap,
+  })
+  await store.savePaymentTransaction({
+    ...(linked ? { id: linked.id, createdAt: linked.createdAt } : {}),
+    tripId: props.trip.id,
+    paymentToolId: tool.id,
+    ownerUserId: tool.ownerUserId,
+    title: expenseItem.title,
+    category: expenseItem.category,
+    transactionDate: expenseItem.date,
+    transactionType: 'purchase',
+    status: 'posted',
+    paymentMethod: paymentMethodForTool(tool),
+    originalAmount,
+    originalCurrency,
+    exchangeRate,
+    convertedAmount,
+    settlementCurrency: tool.settlementCurrency || props.trip.currency,
+    foreignTransactionFeeRate: tool.foreignTransactionFeeRate || 0,
+    foreignTransactionFee: calculation.foreignTransactionFee,
+    eligibleAmount: calculation.eligibleAmount,
+    appliedRewardRuleId: rule?.id,
+    estimatedRewardRate: rule?.totalRate || 0,
+    estimatedBaseRewardAmount: calculation.estimatedBaseRewardAmount,
+    estimatedBonusRewardAmount: calculation.estimatedBonusRewardAmount,
+    estimatedRewardAmount: calculation.estimatedRewardAmount,
+    estimatedNetRewardAmount: calculation.estimatedNetRewardAmount,
+    estimatedNetRewardRate: calculation.estimatedNetRewardRate,
+    expenseId: expenseItem.id,
+    note: expenseItem.note || undefined,
+    createdBy: linked?.createdBy || tool.ownerUserId,
+  })
+}
+
 function removeExpenseReceipt() {
   clearExpenseReceiptPreview()
   expenseReceiptFile.value = undefined
@@ -344,7 +456,7 @@ function openExpenseForm(existing?: Expense) {
           title: '',
           amount: 0,
           payerId: props.userId || members[0]?.id || '',
-          kind: 'shared',
+          kind: 'personal',
           splitMode: 'equal',
           category: '餐飲',
           date: localDate(),
@@ -368,6 +480,9 @@ function openExpenseForm(existing?: Expense) {
   expenseExchangeRate.value = Number(existing?.exchangeRate || 1)
   expenseRateDate.value = existing?.exchangeRateDate || ''
   expenseNote.value = existing?.note || ''
+  expensePaymentToolId.value = existing
+    ? props.paymentTransactions.find((transaction) => transaction.expenseId === existing.id)?.paymentToolId || ''
+    : ''
   showExpense.value = true
   if (expenseSourceCurrency.value.trim().toUpperCase() !== (props.trip.currency || '').trim().toUpperCase()) {
     syncExpenseAmountFromSource()
@@ -458,8 +573,12 @@ async function saveExpense() {
       receiptUrl,
       note: expenseNote.value.trim(),
     }
-    if (existing) await store.updateExpense({ ...existing, ...payload })
-    else await store.addExpense(payload)
+    const savedExpense = existing ? { ...existing, ...payload } : await store.addExpense(payload)
+    if (expensePaymentToolId.value) await syncExpensePayment(savedExpense)
+    else if (existing && props.paymentTransactions.some((transaction) => transaction.expenseId === existing.id)) {
+      ElMessage.info('付款方式已清除，原支付紀錄仍保留於支付與回饋頁面。')
+    }
+    if (existing) await store.updateExpense(savedExpense)
     showExpense.value = false
     resetExpenseForm()
     ElMessage.success('支出已儲存。')
@@ -635,6 +754,8 @@ onUnmounted(() => {
       :saving="savingExpense"
       :form="expense"
       :trip="trip"
+      :tools="expensePaymentTools"
+      :payment-tool-id="expensePaymentToolId"
       :participant-ids="expenseParticipantIds"
       :payer-ids="expensePayerIds"
       :shares="expenseShares"
@@ -659,6 +780,7 @@ onUnmounted(() => {
       @update:source-currency="handleExpenseSourceCurrencyChange"
       @update:source-amount="handleExpenseSourceAmountChange"
       @update:exchange-rate="handleExpenseExchangeRateChange"
+      @update:payment-tool-id="expensePaymentToolId = $event"
       @refresh-rate="refreshExpenseExchangeRate(true)"
       @update:note="expenseNote = $event"
       @select-receipt="selectExpenseReceipt"

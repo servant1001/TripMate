@@ -5,6 +5,9 @@ import { useTripWorkspaceContext } from '../composables/useTripWorkspaceContext'
 const {
   current,
   currentExpenses,
+  currentPaymentTools,
+  currentRewardRules,
+  currentPaymentTransactions,
   total,
   myPaid,
   myPaidInTrip,
@@ -37,6 +40,9 @@ const {
   <TripExpensesView
     :trip="current!"
     :expenses="currentExpenses"
+    :payment-tools="currentPaymentTools"
+    :payment-rules="currentRewardRules"
+    :payment-transactions="currentPaymentTransactions"
     :total="total"
     :my-paid="myPaid"
     :my-paid-in-trip="myPaidInTrip"

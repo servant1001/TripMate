@@ -40,6 +40,7 @@ const props = defineProps<{
   form: ExpenseDraft | PaymentTransactionDraft
   trip: Trip
   tools?: PaymentTool[]
+  paymentToolId?: string
   participantIds?: string[]
   payerIds?: string[]
   shares?: Record<string, number>
@@ -68,6 +69,7 @@ const emit = defineEmits<{
   'update:sourceCurrency': [value: string]
   'update:sourceAmount': [value: number]
   'update:exchangeRate': [value: number]
+  'update:paymentToolId': [value: string]
   refreshRate: []
   'update:note': [value: string]
   selectReceipt: [event: Event]
@@ -195,6 +197,23 @@ const participantIdsModel = computed({
           <el-option v-for="member in members" :key="member.id" :label="member.name" :value="member.id" />
         </el-select>
         <small>個人支出只能選擇一位付款人；共同分攤可設定多人付款。</small>
+      </el-form-item>
+      <el-form-item label="付款方式（同步至支付與回饋）">
+        <el-select
+          :model-value="paymentToolId || ''"
+          clearable
+          placeholder="選擇支付工具或現金"
+          @update:model-value="emit('update:paymentToolId', $event || '')"
+        >
+          <el-option label="現金" value="cash" />
+          <el-option
+            v-for="tool in tools || []"
+            :key="tool.id"
+            :label="tool.name"
+            :value="tool.id"
+          />
+        </el-select>
+        <small>儲存後會在「支付與回饋」建立對應付款紀錄；留白則只保存旅行開銷。</small>
       </el-form-item>
       <el-form-item v-if="payerIds.length" :label="payerIds.length > 1 ? '各自付款金額' : '付款金額'">
         <div class="custom-shares">

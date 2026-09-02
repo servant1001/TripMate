@@ -10,6 +10,9 @@ const {
   currentFavorites,
   currentShoppingItems,
   currentExpenses,
+  currentPaymentTools,
+  currentRewardRules,
+  currentPaymentTransactions,
   currentSettlements,
   favoriteItineraryRequestId,
   itineraryDays,
@@ -86,6 +89,9 @@ const {
   <TripExpensesView
     :trip="current!"
     :expenses="currentExpenses"
+    :payment-tools="currentPaymentTools"
+    :payment-rules="currentRewardRules"
+    :payment-transactions="currentPaymentTransactions"
     :total="total"
     :my-paid="myPaid"
     :my-paid-in-trip="myPaidInTrip"

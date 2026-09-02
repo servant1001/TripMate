@@ -9,7 +9,7 @@ import type {
   StoredValueBalance,
   Trip,
 } from '../types'
-import { rewardUsage, storedValueBalance } from '../utils/paymentRewards'
+import { calculateTransactionReward, rewardUsage, selectApplicableRule, storedValueBalance } from '../utils/paymentRewards'
 
 const props = defineProps<{
   trip: Trip
@@ -118,6 +118,65 @@ const sortedFilteredTransactions = computed(() => {
       return items.sort((a, b) => b.transactionDate.localeCompare(a.transactionDate))
   }
 })
+
+function transactionRewardValues(transaction: PaymentTransaction) {
+  if (
+    transaction.estimatedRewardAmount !== undefined ||
+    transaction.foreignTransactionFee !== undefined ||
+    transaction.estimatedNetRewardAmount !== undefined
+  ) {
+    return {
+      reward: transaction.estimatedRewardAmount || 0,
+      fee: transaction.foreignTransactionFee || 0,
+      net: transaction.estimatedNetRewardAmount || 0,
+    }
+  }
+  const tool = ownTools.value.find((item) => item.id === transaction.paymentToolId)
+  if (!tool) return { reward: 0, fee: 0, net: 0 }
+  const amount = transaction.convertedAmount || transaction.originalAmount
+  const paymentMethod = transaction.paymentMethod ||
+    (tool.type === 'credit_card' || tool.type === 'debit_card'
+      ? 'physical_card'
+      : tool.type === 'electronic_payment'
+        ? 'online'
+        : tool.type === 'transport_card'
+          ? 'transport_card_topup'
+          : 'other')
+  const rule = selectApplicableRule(
+    props.rules.filter((item) => item.paymentToolId === tool.id),
+    {
+      amount,
+      date: transaction.transactionDate,
+      currency: transaction.originalCurrency,
+      category: transaction.category,
+      merchant: transaction.merchant,
+      paymentMethod,
+    },
+  )
+  if (!rule) return { reward: 0, fee: 0, net: 0 }
+  const usage = rewardUsage(
+    rule,
+    props.transactions.filter((item) => item.id !== transaction.id),
+    new Date(`${transaction.transactionDate}T12:00:00`).getTime(),
+  )
+  const calculation = calculateTransactionReward({
+    amount,
+    baseRate: rule.baseRate,
+    bonusRate: rule.bonusRate,
+    feeRate: tool.foreignTransactionFeeRate,
+    refundedAmount: transaction.refundedAmount,
+    maximumEligibleAmount: usage.remainingEligibleSpend,
+    maximumBaseRewardAmount: usage.remainingBaseRewardCap,
+    maximumBonusRewardAmount: usage.remainingBonusRewardCap,
+    maximumRewardAmount: usage.remainingRewardCap,
+  })
+  return {
+    reward: calculation.estimatedRewardAmount,
+    fee: calculation.foreignTransactionFee,
+    net: calculation.estimatedNetRewardAmount,
+  }
+}
+
 const activeFilterSummary = computed(() => {
   const items: Array<{ key: string; label: string }> = []
   if (transactionToolFilter.value) {
@@ -154,9 +213,9 @@ const totals = computed(() =>
         (item.transactionType === 'purchase'
           ? item.convertedAmount || item.originalAmount
           : 0),
-      reward: sum.reward + (item.estimatedRewardAmount || 0),
-      fee: sum.fee + (item.foreignTransactionFee || 0),
-      net: sum.net + (item.estimatedNetRewardAmount || 0),
+      reward: sum.reward + transactionRewardValues(item).reward,
+      fee: sum.fee + transactionRewardValues(item).fee,
+      net: sum.net + transactionRewardValues(item).net,
     }),
     { amount: 0, reward: 0, fee: 0, net: 0 },
   ),
@@ -356,12 +415,9 @@ function transactionStatusClass(status: PaymentTransaction['status']) {
 }
 
 function transactionRewardLabel(transaction: PaymentTransaction) {
-  if (transaction.estimatedRewardAmount && transaction.estimatedRewardAmount > 0) {
-    return `預估回饋 ${props.trip.currency} ${transaction.estimatedRewardAmount.toLocaleString()}`
-  }
-  if (transaction.foreignTransactionFee && transaction.foreignTransactionFee > 0) {
-    return `海外手續費 ${props.trip.currency} ${transaction.foreignTransactionFee.toLocaleString()}`
-  }
+  const summary = transactionRewardValues(transaction)
+  if (summary.reward > 0) return `預估回饋 ${props.trip.currency} ${summary.reward.toLocaleString()}`
+  if (summary.fee > 0) return `海外手續費 ${props.trip.currency} ${summary.fee.toLocaleString()}`
   return '尚無回饋試算'
 }
 
